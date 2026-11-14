@@ -2,7 +2,11 @@
 
 > 这份文档回答四个问题：**这套东西由哪些进程组成**、**代码分成哪几层**、**一条消息/一次主动行为是怎么走完全程的**、**改了什么需要重启什么**。
 >
-> 逐模块的细节不在这里，见文末 [文档地图](#10-文档地图)。本文只描述**现状**，所有结论都能在代码里对上（关键处标了 `文件:行号`）。
+> 逐模块的细节不在这里，见文末 [文档地图](#10-文档地图)。
+> ⚠️ **本文含历史内容**：桌宠与语音子系统已随代码剥离，文中提到 `pet*` / `voice*` / `qq_send_voice`、
+  「载体 QQ/桌宠」、8765/8767 端口的段落都是**当时的设计记录**，当前代码里没有对应实现。
+  以本文为准的部分：进程划分、桥接模式、记忆与人格、调度与重启矩阵。
+>本文只描述**现状**，所有结论都能在代码里对上（关键处标了 `文件:行号`）。
 > **最后核对**：2026-10-26（全仓库逐行梳理）。配套阅读：总纲 [ARCHITECTURE.md](ARCHITECTURE.md) · 边界 [BOUNDARIES.md](../operations/BOUNDARIES.md) · 索引 [../README.md](../../README.md)。
 
 ---
@@ -318,12 +322,12 @@ QQ 仍读仓库根的 `config.json`，B站 仍读自己的配置，插件只是�
 | **总览、进程、数据流、重启矩阵** | 本文 |
 | 桥接 15,000 行里的每个功能 | [MODULE-BRIDGE.md](MODULE-BRIDGE.md) |
 | 核心引擎逐个（记忆/人格/目的/收尾/额度/计价） | [MODULE-CORE-A.md](MODULE-CORE-A.md) |
-| 核心引擎逐个（B站/内容处理/接入层/语音内核） | [MODULE-CORE-B.md](MODULE-CORE-B.md) |
+| 核心引擎逐个（B站/内容处理/接入层） | [MODULE-CORE-B.md](MODULE-CORE-B.md) |
 | 插件宿主（服务、调度、扩展、配置模型） | [MODULE-PLUGIN.md](MODULE-PLUGIN.md) |
-| 两套界面：设置页 14 个标签 + 控制台 10 个页面 | [UI-AND-CONSOLE.md](../subsystems/UI-AND-CONSOLE.md) |
-| 语音全链路 | [SUBSYSTEM-VOICE.md](../subsystems/SUBSYSTEM-VOICE.md) |
-| 桌宠全链路 | [SUBSYSTEM-PET.md](../subsystems/SUBSYSTEM-PET.md) |
-| B站 子系统（34 个命令 / 生物钟 / 鱼群） | [SUBSYSTEM-BILI.md](../subsystems/SUBSYSTEM-BILI.md) |
+| 两套界面：设置页 10 个标签 + 完整面板 6 个页面 / 31 张卡 | [UI-AND-CONSOLE.md](../subsystems/UI-AND-CONSOLE.md) |
+| ⚠️ 语音全链路（**已剥离**，仅历史留存） | [SUBSYSTEM-VOICE.md](../subsystems/SUBSYSTEM-VOICE.md) |
+| ⚠️ 桌宠全链路（**已剥离**，仅历史留存） | [SUBSYSTEM-PET.md](../subsystems/SUBSYSTEM-PET.md) |
+| B站 子系统（58 条 CLI 命令 / 生物钟 / 鱼群） | [SUBSYSTEM-BILI.md](../subsystems/SUBSYSTEM-BILI.md) |
 | 模型侧工具面与 preset | [AGENT-TOOLS-AND-PRESETS.md](../subsystems/AGENT-TOOLS-AND-PRESETS.md) |
 | 所有状态文件、所有配置键 | [DATA-AND-CONFIG.md](../operations/DATA-AND-CONFIG.md) |
 | 做不到什么、会在哪里坏 | [BOUNDARIES.md](../operations/BOUNDARIES.md) |

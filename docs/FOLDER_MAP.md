@@ -12,20 +12,18 @@
 
 ```
 <工作区根>/
-├── stellar/                ← 本仓库（QQ ↔ DSH 桥接 + DSH 插件 + B站 + 桌宠接口）
-├── pet/                     ← 桌宠工程（独立 Electron 工程，**不在本仓库**；通过
-│                               ~/.dsh/stellar/pet/host.json 发现插件接口）
-└── 重启DSH-加载语音工具.cmd  ← 工作区根的运维启动器（重启 DSH 让 MCP 工具重新挂载）
+├── stellar/                ← 本仓库（QQ ↔ DSH 桥接 + DSH 插件 + B站 + 控制台）
+└── （桌宠 / 语音工程已剥离，不在本仓库）
 ```
 
 `stellar/` 内部：
 
 | 目录 | 作用 | 能不能删/动 |
 | --- | --- | --- |
-| `src/` | **桥接内核与共享引擎**：主程序 `bridge.js`、DSH 客户端、三个 MCP server、黑话/表情/语音共享库、鱼群保护（`fish-guard.js`）、记忆卡引擎（`memory-card.js`）、目的机制纯逻辑（`purpose-engine.js`）、对话收尾判断（`conversation-closure.js`）、**每日 token 额度纯逻辑（`token-budget.js`）+ 账本（`token-ledger.js`）**、**状态目录 ACL 收紧（`state-acl.mjs`，与 `scripts/harden-state-acl.mjs` 同一实现）**、**安全抓取（`safe-fetch.js`）**、**上线补历史（`history-catchup.js`）**、**价目表（`model-prices.js`）**、**发送语音内核（`voice-core.js` / `voice-packs.js` / `voice-tts.js`，三者职责不同：解析与探测 / 语音包安装 / 本地 TTS 客户端）** | 不能动。`bridge.js` 是主程序（**约 15,000 行**，仍是全仓库最大单体，控制台 126 条路由写在同一条 if 链里）；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**；`memory-card.js` 同时被桥接/插件/单测引用，改评分权重必须跑 `npm run test:memory-card`；`purpose-engine.js` / `token-budget.js` 是纯逻辑，改它们要跑 `npm run test:audit`。**目录里只应有 `.js`/`.mjs`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
+| `src/` | **桥接内核与共享引擎**：主程序 `bridge.js`、DSH 客户端、三个 MCP server、黑话/表情共享库、鱼群保护（`fish-guard.js`）、记忆卡引擎（`memory-card.js`）、目的机制纯逻辑（`purpose-engine.js`）、对话收尾判断（`conversation-closure.js`）、**每日 token 额度纯逻辑（`token-budget.js`）+ 账本（`token-ledger.js`）**、**状态目录 ACL 收紧（`state-acl.mjs`，与 `scripts/harden-state-acl.mjs` 同一实现）**、**安全抓取（`safe-fetch.js`）**、**上线补历史（`history-catchup.js`）**、**价目表（`model-prices.js`）**、**发送语音内核（`voice-core.js` / `voice-packs.js` / `voice-tts.js`，三者职责不同：解析与探测 / 语音包安装 / 本地 TTS 客户端）** | 不能动。`bridge.js` 是主程序（**约 15,000 行**，仍是全仓库最大单体，控制台 126 条路由写在同一条 if 链里）；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**；`memory-card.js` 同时被桥接/插件/单测引用，改评分权重必须跑 `npm run test:memory-card`；`purpose-engine.js` / `token-budget.js` 是纯逻辑，改它们要跑 `npm run test:audit`。**目录里只应有 `.js`/`.mjs`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
 | `scripts/` | 调试 / 测试 / 一次性运维脚本（见第二节命名约定） | 测试脚本不能删；`cleanup-*` / `fix-*` / `patch-*` / `diag-*` 多为历史遗留 |
 | `dsh/` | 要装进 DSH 的东西：`agent-presets/qq-chat`、`agent-presets/qq-chat-v2`（preset 的**权威源**，含工具白名单 `qq-tool-restrict.mjs` 的 re-export 壳）。DSH 0.1.7 起 preset 以 bundle patch 形式安装，patch 由 `scripts/build-agent-preset-patches.mjs` 从这里的源生成到 `plugins/stellar/presets/` | 改 preset 会影响所有人设行为；改完必须重新生成 patch |
-| `plugins/` | DSH 插件：**`stellar`（合体插件：QQ 设置 + B站养鱼 + 双向记忆 + 身份对齐 + 鱼群保护 + 目的载体（QQ / 桌宠） + 桌宠对话/语音 + token 额度 + 扩展/平台接口；含 `qq-mode` 命名空间与设置窗口）**；两个 QQ preset 行与 `qq-tool-restrict` 权威实现也在同一个 bundle 的 `presets/` 里。原 `qq-mode-console` 已并入 Stellar，目录已从本仓库移除。桌宠相关：`lib/pet.js`（安装/启动）、`lib/pet-chat.js`（对话/语音/事件）、`lib/pet-purpose.js`（目的载体）、`lib/pet-api.js`（本地令牌接口），说明见 `plugins/stellar/docs/PET.md`。另外：`lib/token-budget.js`（用量采集器，纯逻辑在 `src/token-budget.js`）、`lib/http-guard.js`（设置页 API 与桌宠 API **共用**的回环/同源/令牌判据） | 改了要重装/重启 DSH。⚠️ 插件通过 `../../../src/*.js` **相对路径直接引用同仓库核心模块**（12 个），其中 `src/memory-card.js` 带 `?rev=` 缓存破坏后缀——热重载前要 bump，规则见 历史踩坑记录 |
+| `plugins/` | DSH 插件：**`stellar`（合体插件：QQ 设置 + B站养鱼 + 双向记忆 + 身份对齐 + 鱼群保护 + 目的载体（固定 QQ） + token 额度 + 扩展/平台接口；含 `qq-mode` 命名空间与设置窗口）**；两个 QQ preset 行与 `qq-tool-restrict` 权威实现也在同一个 bundle 的 `presets/` 里。原 `qq-mode-console` 已并入 Stellar，目录已从本仓库移除。桌宠相关：`lib/pet.js`（安装/启动）、`lib/pet-chat.js`（对话/语音/事件）、`lib/pet-purpose.js`（目的载体）、`lib/pet-api.js`（本地令牌接口），说明见 `plugins/stellar/docs/PET.md`。另外：`lib/token-budget.js`（用量采集器，纯逻辑在 `src/token-budget.js`）、`lib/http-guard.js`（设置页 API 与桌宠 API **共用**的回环/同源/令牌判据） | 改了要重装/重启 DSH。⚠️ 插件通过 `../../../src/*.js` **相对路径直接引用同仓库核心模块**（12 个），其中 `src/memory-card.js` 带 `?rev=` 缓存破坏后缀——热重载前要 bump，规则见 历史踩坑记录 |
 | `public/` | 浏览器静态资源：`console.html`（桥接自带控制台，127.0.0.1:3100） | 目录里只应有这一个文件；历史备份 `console.html.bak` 已移出仓库 |
 | `roles/` | 人格卡的**旧布局**（`roles/*.md`；角色人格系统启动时会自动迁移到 `~/.dsh/stellar/characters/<id>/persona.md`）：设置页「角色」页仍可查看/编辑当前人格卡 | 用户内容，别乱动 |
 | `assets/` | 仓库用图片等资源（`deepseek娘.png`；`project-intro.mp4` 已改为 Release 附件、不入库） | 别加体积大的二进制 |
@@ -48,11 +46,11 @@
 | `test-agent-preset-patches.mjs` | preset **防漂移**契约：`plugins/stellar/presets/*.patch.yml` 必须与 `dsh/agent-presets/` 逐字一致、守卫行只用裸说明符（`npm run test:preset-patches`） | 保留（**2026-10-26 起进 `test:audit`**；以前它既不在门禁也没 npm script，导致 patch 静默落后于源，见 历史踩坑记录） |
 | `test-core-rev-sync.mjs` | 插件 → `src/*.js` 的引用一致性：`?rev=` 三处必须相同、不许裸引用；并把「改了热重载也不生效」的模块清单打出来 | 保留（`npm run test:core-rev-sync`） |
 | `test-privacy-scan.mjs` + `privacy-rules-lib.mjs` | 隐私闸的**判据本身**：编译出的正则必须带 `g`（否则每条规则每文件只查第一个命中），以及噪音过滤的边界 | 保留（`npm run test:privacy-scan` / `privacy-scan:strict`） |
-| `test-voice-packs-default.mjs` | 语音包默认安装源必须是「仓库上级 / `voice/packages/<id>`」，不许硬编码盘符；8765/8767 与启停脚本名不能漂移 | 保留 |
+| ~~`test-voice-packs-default.mjs`~~ | 语音包已剥离，脚本不在了 | 已删除 |
 | `test-dsh-*.mjs` | **需要活的 DSH**（不在 `test:audit` 里）：`test-dsh-auth.mjs`（鉴权链路）、`test-dsh-inbox-projection.mjs`（会话队列投影解析，离线）、`test-dsh-session-retire.mjs`（退役会话的端到端回归）、`test-dsh-v2-wait.mjs`（preset 工具面） | 保留（改 DSH 契约时必须跑） |
 | `test-audit-*.mjs` | test-audit 的子模块（`test-audit-bridge` / `-protocol` / `-security` / `-setup` 及其 `-helpers`/`-guards`），被上一个直接运行 | 保留 |
 | `test-console-ui.mjs` + `console-ui-*.json` / `console-ui-fixture.mjs` / `fixtures/` | 控制台**离线浏览器回归**与基线（`npm run test:console-ui` / `npm run preview:console`），说明见 [guides/development/CONSOLE-UI-TESTING.md](guides/development/CONSOLE-UI-TESTING.md) | 保留（基线只在后端契约真变时才重录） |
-| `send-*.mjs` | 面向 SnowLuma/QQ 的**真发送**小工具（`send-voice.mjs` 走桥接；`send-test-group.mjs` 发测试群） | 保留，但注意会真的发消息 |
+| `send-*.mjs` | 面向 SnowLuma/QQ 的**真发送**小工具（`send-test-group.mjs` 发测试群） | 保留，但注意会真的发消息 |
 | `setup-*.mjs` | **安装/初始化**：把 preset、MCP 挂载写进目标设备的 DSH（`setup-dsh.mjs`，幂等） | 保留 |
 | `verify-*.mjs` | **一致性校验**：`verify-dsh-020-adaptation.mjs`（DSH 适配；`npm run verify:adaptation`）、`verify-persona-config.mjs`（人格配置） | 保留 |
 | `probe-*.mjs` | **探针**：用来问 DSH/SnowLuma「实际支持什么」（RPC 形状、工具清单、事件流、工作区、模型、协议帧、settings 命名空间）。鉴权统一走 `probe-auth.mjs` | 保留，按需重跑 |
@@ -83,13 +81,13 @@ docs/
 ├── README.md      # 文档索引（每篇一句话 + 是否仍然有效）  ← 先看这个
 ├── FOLDER_MAP.md  # 本文件
 ├── RELEASE.md     # 发布流程
-├── VOICE-PACKS.md # 语音与桌宠的独立组件
+├── VOICE-PACKS.md # ⚠️ 已剥离（历史留存）：语音包按需安装的设计
 └── guides/        # 按主题分六组
     ├── getting-started/  # 装上并跑起来：INSTALL / DSH_SETUP / AGENT-INSTALL-PROMPT /
     │                     #   VERSIONS / SNOWLUMA_TROUBLESHOOT
     ├── architecture/     # 总纲与逐段拆解：ARCHITECTURE / 12-LESSONS-ARCHITECTURE /
     │                     #   MODULE-BRIDGE / MODULE-CORE-A / MODULE-CORE-B / MODULE-PLUGIN
-    ├── subsystems/       # 子系统与界面：SUBSYSTEM-BILI / SUBSYSTEM-VOICE / SUBSYSTEM-PET /
+    ├── subsystems/       # 子系统与界面：SUBSYSTEM-BILI / SUBSYSTEM-VOICE(已剥离) / SUBSYSTEM-PET(已剥离) /
     │                     #   UI-AND-CONSOLE / AGENT-TOOLS-AND-PRESETS
     ├── features/         # 功能机制：MEMORY_CARD / VECTOR_MEMORY / EMBEDDING_PACKS /
     │                     #   CHARACTER_PERSONA / CROSS_PLATFORM_IDENTITY /
@@ -113,7 +111,7 @@ docs/
 ## 四、已被清理的一次性脚本
 
 > 早期仓库里混着 `cleanup-*` / `fix-*` / `diag-*` / `debug-*` / `patch-qq-chat-v2-*` /
-> `patch-web-mcp-timeout` / `probe-015` / `send-voice` 等绑定单次运行的一次性脚本；
+> `patch-web-mcp-timeout` / `probe-015` 等绑定单次运行的一次性脚本；
 > 它们已全部从仓库移除（既不在 `package.json`，也不在 `test-audit.mjs` 清单里）。
 > 现在 `scripts/` 只保留三类：**自动化测试**（`test-*.mjs`）、**按需重跑的探针与校验**
 > （`probe-*.mjs`、`verify-*.mjs`）、**日常运维与安装**（setup / patch-snowluma-sdk /

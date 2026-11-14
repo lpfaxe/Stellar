@@ -1,20 +1,21 @@
-# Stellar — 给 DSH agent 一个真实的身份：QQ × B站 × 桌宠
+# Stellar — 给 DSH agent 一个真实的身份：QQ × B站 × QQ空间
 
 **中文** | [English](README.en.md)
 
-> 一句话：**它不是"把大模型接进 QQ"的机器人框架，而是给模型一个身份、一套会遗忘的记忆、
-> 一份作息、两只手（QQ / B站）和一个能坐在你桌面上的分身。**
+> 一句话：**它不是“把大模型接进 QQ”的机器人框架，而是给模型一个身份、一套会遗忘也会记住的记忆、
+> 一份作息、两只手（QQ / B站），让它自己过一天。**
 
 | | |
 | --- | --- |
 | 版本 | `1.0.0` |
-| 目标 DSH | `0.2.1-rc.2 或更新（rc.3 已能安装，功能未完整回归）`（`npm run verify:adaptation` 可逐项复核） |
-| 平台 | Windows（沙箱 ACL / SnowLuma / 启动脚本都与它绑定） |
+| 目标 DSH | `0.2.1-rc.2 或更新`（本机长期跑在 `0.2.2-rc.1`；`node scripts/verify-dsh-020-adaptation.mjs` 可逐项复核） |
+| 平台 | Windows 10/11（沙箱 ACL、SnowLuma 接入与启动脚本都与它绑定） |
 | 许可 | MIT（SnowLuma 是第三方专有运行时，**不随本仓库分发**） |
-| 可选组件 | 语音引擎（本地 / 云端）、Electron 桌宠，均为**独立部署的第三方组件**，不随本仓库分发 |
+| 必装第三方 | SnowLuma2（QQ 接入，自行下载并扫码登录） |
 
-> 🔒 **本仓库不含任何真实数据**：角色卡是脱敏示例（`roles/`），记忆卡是空壳（`examples/`），
-> 群号 / 群友名单 / QQ 号 / B站 mid 全部为占位符。运行时数据永远只在你自己的机器上。
+> 🔒 **本仓库不含任何真实数据**：角色卡是空模板（`roles/`），记忆是空壳（`examples/`），
+> 群号 / 群友名单 / QQ 号 / B站 mid 全部为占位符，出厂人格是**空白**的（等你自己填）。
+> 运行时数据永远只在你自己的机器上。
 
 ---
 
@@ -26,15 +27,15 @@
 
 **顺序很重要**（DSH 常常先 install_bundle、后装依赖，结果激活时报 `Cannot find module '@deepseek-ai/schemastery'`）：
 
-1. `npm install`（没有 npm 就用 DSH 自带的 pnpm：`~/.dsh/dsh-runtimes/.../pnpm/bin/pnpm.cjs`）
+1. `npm install`（没有 npm 就用 DSH 自带的 pnpm：`~/.dsh/dsh-runtimes/*/dependencies/pnpm/bin/pnpm.cjs`）
 2. 再 `plugin_manager install_bundle`（或 `node scripts/setup-dsh.mjs`）
 3. 重启 DSH → 设置 → Stellar → 诊断 → 一键安装
 
 > 用 junction 链接安装时，模块是从**仓库真实路径**解析的，所以仓库根必须有 `node_modules` —— 这就是第 1 步不能省的原因。
 
-两个实测踩过的点（v0.4.5）：
+两个实测踩过的点：
 
-- **必须从仓库根目录安装**：插件里有 19 处 `../../../src/xxx.js`（人设、存储、token 预算等），
+- **必须从仓库根目录安装**：插件里有几十处 `../../../src/xxx.js`（人设、记忆、token 预算等），
   只装 `plugins/stellar` 会去找 `C:\src\...` 然后报模块不存在。
 - **装完要刷新页面**（F5）或重启 DSH：客户端模块图是页面加载时的快照，新 bundle 要重新拉，
   否则设置里暂时看不到 Stellar —— 不是装坏了。
@@ -45,7 +46,10 @@
 从 `config.example.json` 复制出一份 `config.json`、建 `state/`、收紧它的 ACL、装进 DSH、
 对齐 DSH 端口；缺什么补什么，**已有的 `config.json` 绝不覆盖**，重跑只是跳过已完成的步骤。
 
-> 机器上只有 DSH、没装 Node？`首次启动.bat` / `start.bat` / `配置.bat` 和 `bootstrap.mjs` 都会回退到 DSH 自带的 node 与 pnpm，不需要另外装。找不到 DSH 的 CLI（桌面版的 `dsh.cmd` 不在 PATH 里）时，`setup-dsh.mjs` 会把该手动跑的那条命令打印出来，不会回滚已经写好的 profile。
+> 机器上只有 DSH、没装 Node？`首次启动.bat` / `start.bat` / `配置.bat` 和 `bootstrap.mjs` 都会回退到
+> DSH 自带的 node 与 pnpm，不需要另外装。找不到 DSH 的 CLI（桌面版的 `dsh.cmd` 不在 PATH 里）时，
+> `setup-dsh.mjs` 会把该手动跑的那条命令打印出来，**不会**回滚已经写好的 profile。
+
 跑完给你一张表，写清楚还差哪几项要手动填（主人 QQ、白名单、SnowLuma 端口）。
 
 **命令版**：
@@ -68,7 +72,7 @@ node scripts/bootstrap.mjs --dry-run   # 只看计划，什么都不改
 
 最后重启 DSH → 设置 → Stellar → **诊断 → 一键安装（全部）**（自动发现 SnowLuma、写白名单、起桥接）。
 
-前置：Windows + Node ≥22.13 + DSH 0.2.1-rc.2 或更新（rc.3 已能安装，功能未完整回归） + SnowLuma（第三方，需自己装并扫码）。详见 [INSTALL.md](docs/guides/getting-started/INSTALL.md)。
+前置：Windows + Node ≥22.13（可由 DSH 提供）+ DSH 0.2.1-rc.2 或更新 + SnowLuma2（第三方，需自己装并扫码）。详见 [INSTALL.md](docs/guides/getting-started/INSTALL.md)。
 
 ---
 
@@ -81,7 +85,7 @@ node scripts/bootstrap.mjs --dry-run   # 只看计划，什么都不改
 - [五、架构一图](#五架构一图)
 - [六、文档地图](#六文档地图)
 - [七、安全与边界](#七安全与边界摘要)
-- [八、常见问题（FAQ）](#八常见问题faq)
+- [八、常见问题](#八常见问题faq)
 - [九、开发](#九开发)
 - [十、许可与合规](#十许可与合规)
 
@@ -91,19 +95,23 @@ node scripts/bootstrap.mjs --dry-run   # 只看计划，什么都不改
 
 一个跑在**你自己电脑上**的双进程系统：
 
-- **一条腿在 DSH 里**：`stellar` 插件 —— 设置窗口、B站 生物钟、记忆卡维护、桌宠接口。
+- **一条腿在 DSH 里**：`stellar` 插件 —— 设置窗口、B站 生物钟、记忆维护、看板。
 - **一条腿是独立进程**：`src/bridge.js` —— QQ 收发、会话映射、控制台、安全闸门。
 
 合起来，它让 agent 能：
 
-1. **在 QQ 里当一个群友**：自己判断要不要看、要不要说、说几条、引用谁；说完能判断"这段可以结束了"，带着"下次怎么接"潜水。
-2. **在 B站 当一个用户**：有自己的作息、偏好、每日额度；看视频会打分、会评论、会回帖、会发动态。
-3. **记得住也忘得掉**：一份会衰减的记忆卡（进提示词）+ 一份永不遗忘的全量卡（只存档）。
-4. **会主动找你**：从近期记忆里提炼"我想弄明白/想做点什么"，安静时段主动分享或索取；载体可选 QQ 或桌宠。
-5. **有一个桌面分身**：仓库外的 Electron 桌宠可以跟她文字/语音对话，也能接主动搭话的气泡。
+1. **在 QQ 里当一个群友**：自己判断要不要看、要不要说、说几条、引用谁；说完能判断“这段可以结束了”，带着“下次怎么接”潜水。
+2. **在 B站 当一个用户**：有自己的作息、偏好、每日额度；看视频会打分、会评论、会回帖、会发动态，想发的话还能自己做一条 vlog。
+3. **还会逛 QQ空间**：看「好友爱看」公开动态、给高分点赞、挑几条评论，自己发说说。
+4. **记得住**：聊过的话切成话题、生日这类私人信息单独存成「重要事实」、看过的视频与刷过的动态写进见闻区；问「我生日什么时候」她查得到。
+5. **会主动找你**：从近期记忆里提炼「我想弄明白/想做点什么」，在安静时段外主动分享或索取；也会按你记的待办到点提醒指定的人。
 
-> 它**不做**：不代你登录/扫码/绕过平台风控，不做多用户，不把控制台暴露到内网以外，
+> 它**不做**：不代你登录/扫码/绕过平台风控，不做多用户，不把控制台暴露到公网，
 > 不删除任何不可恢复的数据。完整边界见 [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md)。
+
+> **本仓库不含**：桌面宠物、语音合成/发语音。这两块在开源整理时已随代码一起剥离；
+> `docs/` 里还留着的相关旧文档、`config.json` 里残留的 `socialV2.voice` / `tools.sendVoice` 键都是历史遗留，
+> **没有对应实现**，照着它们装不会生效。
 
 ---
 
@@ -114,13 +122,12 @@ node scripts/bootstrap.mjs --dry-run   # 只看计划，什么都不改
 | 需要 | 版本 / 说明 | 必装？ |
 | --- | --- | --- |
 | Windows | 10/11（沙箱 ACL 与 `.bat` 启动器按 Windows 写） | ✅ |
-| Node.js | **≥ 22.13**。没单独装也行：DSH 桌面版自带一份 node（`~/.dsh/dsh-runtimes/.../node/bin/node.exe`），启动脚本与 `bootstrap.mjs` 会自动回退到它 | ✅（可由 DSH 提供） |
-| DeepSeek Harness（DSH） | **`0.2.1-rc.2 或更新（rc.3 已能安装，功能未完整回归）`**，能正常打开 Web GUI | ✅ |
-| SnowLuma2 | 第三方 QQ 运行时，**自己去官方 Releases 下载**并扫码登录 | ✅（只收 QQ 才需要） |
-| 语音引擎 | 两个配套仓库之一（本地/云端） | ⭕ 可选 |
-| 桌宠 | Electron 桌面分身（自备 Release 包） | ⭕ 可选 |
+| Node.js | **≥ 22.13**。没单独装也行：DSH 桌面版自带一份 node（`~/.dsh/dsh-runtimes/*/dependencies/node/bin/node.exe`），启动脚本与 `bootstrap.mjs` 会自动回退到它 | ✅（可由 DSH 提供） |
+| DeepSeek Harness（DSH） | **`0.2.1-rc.2 或更新`**，能正常打开 Web GUI | ✅ |
+| SnowLuma2 | 第三方 QQ 运行时，**自己去官方 Releases 下载**并扫码登录 | ✅（只玩 B站/记忆也要它来收 QQ） |
+| ffmpeg | 抽帧看视频、剪 vlog 时才需要（PATH 里、`<仓库>/bin/`、或 `~/.dsh/stellar/bili/bin/` 任一处） | ⭕ 按需 |
 
-> ⚠️ **Stellar 不下载、不安装、不打包 SnowLuma**（EULA §5.4）。它只做"检测已安装 + 一键打开窗口 + 连接状态"，
+> ⚠️ **Stellar 不下载、不安装、不打包 SnowLuma**（EULA §5.4）。它只做“检测已安装 + 一键打开窗口 + 连接状态”，
 > 登录与扫码始终由你自己完成。
 
 ### 2.2 五步装好
@@ -134,11 +141,10 @@ cd stellar
 
 # 2) 装依赖（postinstall 会自动修补 @snowluma/sdk 的 ESM bug）
 npm install
-#    没有 npm（只装了 DSH）？跳到第 4 步直接跑 bootstrap，它会用 DSH 自带的 pnpm 装依赖
+#    没有 npm（只装了 DSH）？直接跑第 4 步，bootstrap 会用 DSH 自带的 pnpm 装
 
-# 3) 复制配置模板，然后编辑 config.json（见 2.3，只填 4 处）
-#    Windows CMD: copy config.example.json config.json
-cp config.example.json config.json
+# 3) 复制配置模板（也可以直接跳到第 4 步，bootstrap 会替你复制）
+copy config.example.json config.json
 
 # 4) 装进 DSH（preset + 三个 MCP server + stellar bundle，幂等，可重复跑）
 node scripts/setup-dsh.mjs
@@ -149,11 +155,11 @@ node scripts/setup-dsh.mjs
 
 `setup-dsh.mjs` 做三件事：
 
-1. 把 `qq-chat` / `qq-chat-v2` 两条 **agent preset** 插进 DSH profile（DSH 0.1.7 起的 bundle patch 机制）；
+1. 把 `qq-chat` / `qq-chat-v2` / `bili-slim` 三条 **agent preset** 插进 DSH profile（DSH 0.1.7 起的 bundle patch 机制）；
 2. 在 profile 的 `cordis.patch.yml` 挂 **三个 MCP server**（QQ 工具 / SnowLuma 探活 / 只读联网搜索）；
 3. 在 profile `package.json` 注册唯一一个 bundle：`stellar`。
 
-> 需要装到别的 profile：`node scripts/setup-dsh.mjs <profile名>`（默认 `web`）。
+> 需要装到别的 profile：`node scripts/setup-dsh.mjs <profile名>`（默认自动探测，兜底 `web`）。
 
 ### 2.3 最小配置（只填这 4 处）
 
@@ -161,9 +167,9 @@ node scripts/setup-dsh.mjs
 
 | 位置 | 填什么 | 不填会怎样 |
 | --- | --- | --- |
-| `snowluma.wsUrl` / `httpUrl` / `accessToken` | SnowLuma 的 OneBot WS、HTTP、token（**HTTP 与 WS 可能是两个不同的值**） | 桥接连不上 QQ，控制台显示"未连接" |
+| `snowluma.wsUrl` / `httpUrl` / `accessToken` | SnowLuma 的 OneBot WS、HTTP、token（**HTTP 与 WS 端口可能是两个不同的值**） | 桥接连不上 QQ，控制台显示“未连接” |
 | `ownerQQ` | 你自己的 QQ 号（`closed-agent` 模式只认这个人） | 管理员功能失效 |
-| `allow.private` / `allow.groups` | 允许她接触的私聊/群（数组） | **白名单为空 = 谁都不响应**（不是全放行） |
+| `allow.private` / `allow.groups` | 允许她接触的私聊 / 群（数组） | **白名单为空 = 谁都不响应**（不是全放行） |
 | `consoleToken` | 控制台令牌；留空会自动生成到 `state/console-token` | 控制台需要令牌才能进 |
 
 最小可用示例（把占位符换成你的）：
@@ -177,7 +183,7 @@ node scripts/setup-dsh.mjs
 }
 ```
 
-> 其余几百个键都有默认值，全部含义见 [DATA-AND-CONFIG.md §1](docs/guides/operations/DATA-AND-CONFIG.md)。
+> 其余 20 多个顶层键都有默认值，全部含义见 [DATA-AND-CONFIG.md §1](docs/guides/operations/DATA-AND-CONFIG.md)。
 > 装好之后**建议一切都在设置页里改**（保存即生效，且会自动备份）。
 
 ### 2.4 首次验证
@@ -190,7 +196,7 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 
 真机验证三件事：**在群里 @ 她 → DSH 里出现对应会话 → 回复回到 QQ**。
 
-想先看一眼它现在的状态，双击 **启动控制台.bat**（见 [3.8](#38-浏览器控制台可选)）：桥接/DSH/SnowLuma 三个灯、今天花了多少、在聊几个会话、她手上有哪些待办、最近日志。
+想先看一眼它现在的状态，双击 **`启动控制台.bat`**（见 [3.7](#37-两个控制台)）：桥接 / DSH / SnowLuma 三个灯、今天花了多少、在聊几个会话、她手上有哪些待办、最近日志。
 
 ### 2.5 安装常见失败
 
@@ -202,6 +208,7 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 | agent 只会说话、不调工具 | MCP 没挂上 / 工具被安全守卫隐藏 / 工具开关关了 | 重跑 `setup-dsh.mjs`；看设置页工具开关 |
 | 控制台 401 | 没带令牌 | 用 `http://127.0.0.1:3100/?token=<consoleToken>` |
 | `npm install` 后启动报 ESM 错 | postinstall 补丁没跑 | `npm rebuild` 或手动 `node scripts/patch-snowluma-sdk.mjs` |
+| 面板打开一片空白 / 花费显示 “—” | 还没跑过桥接，没有数据 | 正常；先跑一次 `首次启动.bat`，再刷新 |
 
 更多故障与恢复见 [BOUNDARIES.md §3](docs/guides/operations/BOUNDARIES.md)。
 
@@ -211,71 +218,85 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 
 ### 3.1 设置页（DSH → 设置 → Stellar）
 
-14 个标签：概览 / 角色 / 目的 / QQ / 语音 / 桌宠 / B站 / Token 额度 / 观看历史 / 记忆 / 对齐 / 扩展 / 全部参数 / 诊断。
-逐个说明见 [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md)。
+**10 个标签**：概览 / 角色 / 目的 / QQ / B站 / 观看历史 / 记忆 / 扩展 / 全部参数 / 诊断。
 
-### 3.2 四种运行模式
+| 标签 | 你在这能干什么 |
+| --- | --- |
+| 概览 | 三个状态点（QQ / B站 / 生物钟）、一键启动或停止各平台、组件更新、诊断入口 |
+| 角色 | 人格卡与记忆卡整包切换、新建 / 复制 / 存档 / 回档 |
+| 目的 | 主动搭话的节奏、安静时段、预览与「试一次」 |
+| QQ | SnowLuma 地址与 token、白名单、管理员、二代仿真各项开关、工具开关 |
+| B站 | 扫码登录、作息窗口、偏好、每日额度、评论与动态开关 |
+| 观看历史 | 她看过的视频、打分、评论、收藏（可搜索、可展开） |
+| 记忆 | 记忆库状态、分层清理、向量记忆、双向记忆、风格参考库 |
+| 扩展 | 第三方扩展的启用 / 停用 / 参数 / 重载 |
+| 全部参数 | 三份配置（`config.json` / `config.json` 合体层 / `bili.config.json`）的全部键，可搜索可改 |
+| 诊断 | 新手体检、一键安装、自检、备份与恢复 |
+
+### 3.2 四种桥接模式
 
 | 模式 | 她是谁 | 能干什么 |
 | --- | --- | --- |
-| `chat` | 群友 | 白名单内聊天，工具面受安全守卫限制 |
+| `chat` | 普通群友 | 白名单内聊天，工具面受安全守卫限制 |
 | `closed-agent` | 只理管理员 | 私聊 owner，可用完整 DSH 工具 |
 | `reserved` | 一代仿真群友 | 状态机 + 空格分条 + `[SILENT]` |
 | `reserved2` | 二代仿真群友（**默认**） | 一切皆工具：自己看消息、发言、等待、潜水、收尾 |
 
+> 另有**三档运行模式**（面板 / 设置页里切，和上面这层是两回事）：
+> **正常**（照常跑每日任务）、**摸鱼**（只写日志，多刷多看多聊；周六日默认）、**最低限度**（只回消息，说完就睡；优先级最高）。
+> 三档之外还有「跟随默认」——不手动指定时按 `config.runMode` → 周末 → 正常 的顺序推。
+
 ### 3.3 让她主动找你（可选）
 
-设置页「目的」：选载体（QQ / 桌宠）、节奏、安静时段；先点**预览**（零副作用）再"试一次"。
-硬闸门：安静时段 / 每日上限 / 主人在聊 / token 额度 / 专注模式。
+设置页「目的」：节奏、安静时段；先点**预览**（零副作用）再「试一次」。
+硬闸门：安静时段 / 每日上限 / 主人在聊 / token 额度。载体固定走 QQ 桥接。
 
-### 3.4 可选装语音
-
-两个独立部署的语音引擎（本地 / 云端），装在仓库**外面**：
-
-| 仓库 | 端口 | 特点 |
-| --- | --- | --- |
-| 本地引擎 | 8765 | 本地 GPT-SoVITS，免费、断网可用 |
-| 云端引擎 | 8767 | 云端声音复刻，质量最好、按字符计费 |
-
-装法：`git clone` 到 `stellar/state/voice-packs/voice-local`（或 `voice-cloud`）→ 按该仓库 README 下载模型 →
-`run.bat` → 回到 Stellar **设置 → 语音** 选本地/云端并点「启动」。
-**AI 发语音默认关闭**（`socialV2.voice.enabled=false` + 工具开关 `tools.sendVoice`），要显式打开。
-
-> 模型不进 GitHub（太大）。仓库里只有启动脚本、配置与说明；模型按各自 README 的 `fetch-models` 下载。
-
-### 3.5 可选装桌宠
-
-Electron 桌面分身（配套仓库的 Release 里有安装包）。**用户装 Release 的 zip，开发者 clone 源码自己构建。**
-
-装法：设置页 **桌宠** → 填 zip 地址/目录 → 安装 → 选 `electron.exe` → 启动。
-装好后：右键「文本对话 / 语音对话」，气泡上所有她的话都有「回复」按钮，右键/托盘有**专注模式**。
-
-> 桌宠通过 `~/.dsh/stellar/pet/host.json` 发现插件接口（本机 + 一次性令牌），不需要 DSH 的登录态。
-
-### 3.6 B站（可选）
+### 3.4 B站（可选，但这是她的“日常”）
 
 设置页 **B站** → 扫码登录 → 填作息窗口（例如 `20:00–24:00`）→ 选偏好 → 设额度。
 她会在窗口内自己看视频、打分、评论、发动态；**默认不分享到 QQ**（可开）。
 
-### 3.7 角色与记忆
+面板「设置 → 她每天做什么」能逐项开关与调数量：刷视频（每天几次 / 几条 / 每周上限）、发动态（四个时段各一条）、
+刷好友爱看（看几条 / 赞几条 / 评几条 / 几点开始）、发说说（每周几条 / 每天几点提醒），改完下一轮 tick 就按新值跑。
 
-- **角色包** = 人格卡 + 记忆卡 + B站 行为账本，整包切换。
-- 新建：设置页「角色」→ 新建（或复制 `examples/character/` 到 `~/.dsh/stellar/characters/<id>/`）。
-- 记忆：QQ/B站/桌宠 三个场景写进**同一张卡**；每 10 分钟摄取一次，会衰减、会遗忘、80/90/100% 告警。
-- 示例人格卡在 `roles/`（已脱敏），记忆卡空壳在 `examples/`。
+### 3.5 角色与记忆
 
-### 3.8 浏览器控制台（可选）
+- **角色包** = 人格卡 + 记忆 + B站 行为账本，整包切换；新建 / 复制 / 存档 / 回档都在设置页「角色」。
+- **出厂人格是空白的**：`roles/示例角色.md` 是一份填空模板（你是谁、说话风格、性格、梗、回复示例），复制到
+  `~/.dsh/stellar/characters/<id>/persona.md` 再改；不填她就没性格。
+- **记忆**在这几层：
 
-**仓库自带完整面板，只是里面还没有你的数据。**
+| 层 | 存什么 | 在哪看 |
+| --- | --- | --- |
+| 缓存 | 原始消息（等你和她都说过话才成话题） | 面板「记忆」顶部 |
+| 话题 | 一段对话的摘要 + 重要性 + 归属人 | 面板「话题目录」 |
+| 重要事实 | 生日 / 忌口 / 过敏 / 地址 / 电话 / 称呼 / 约定 | 面板「重要事实」（可注入、可改、可删） |
+| 见闻区 | 她自己在 B站 看了什么、在好友爱看刷到什么（自己写 ≤200 字） | 面板「B站记忆」「好友爱看记忆」 |
+| 人物侧写 | 一句话记住一个人（≤50 字，每日复核） | 面板「通讯录 → 人物侧写」 |
 
-双击仓库根目录的 **启动控制台.bat**，浏览器自动打开 `http://127.0.0.1:3300/`。它和开发机上那个面板是同一套代码：概览、她今天（动态 / 日报 / 待办 / 图片池）、通讯录、记忆（话题 / 事实 / 见闻区）、B站视频、空间、运行日志、设置（每日任务、能力开关、白名单、远程访问）全都在。
+> 记忆按**对象**分：问她「你知道我的生日吗」，她查的是你；问「你昨天和 XX 聊了什么」，她查 XX，再看能不能说。
+> 隐私分三级：`normal`（谁问都能说）/ `private`（只在跟本人说话时提）/ `secret`（只本人私聊或面板）。
 
-**第一次打开是空的，这是正常的** —— 它读的是 `~/.dsh/stellar/` 和仓库里的 `config.json`，你还没跑过就没有内容。对应关系：
+### 3.6 待办与提醒
+
+你说「后天提醒我买东西」，她记下来，到点提醒**你**；说「提醒小土豆带伞」，就提醒小土豆（`targetKey` / `targetName`）。
+面板「她的事项」可以替她加一条、指定提醒谁、删掉旧的；到点由调度器叫她起来发消息，发完自动收尾。
+
+### 3.7 两个控制台
+
+**① 完整面板（推荐）** —— 双击仓库根目录的 **`启动控制台.bat`**，浏览器打开 `http://127.0.0.1:3300/`。
+
+六个页面：**概览 / 她今天 / 通讯录 / 记忆 / 运行日志 / 设置**，共 31 张卡。
+概览有运行状态、快捷操作（自检 / 启动 SnowLuma / 重连 DSH / 重启 DSH / 紧急停止）、运行模式切换、花费看板、
+待办审批；「她今天」有每日任务打卡、B站 与空间动态、视频清单、日报、待办、图片池；
+「通讯录」管白名单与人物侧写；「记忆」看话题 / 事实 / 见闻区 / 侧写；「设置」是每日任务、能力开关、白名单、远程访问。
+
+**第一次打开是空的，这是正常的** —— 它读的是 `~/.dsh/stellar/` 和仓库里的 `config.json`，你还没跑过就没有内容：
 
 | 卡片 | 空的原因 | 什么时候有 |
 | --- | --- | --- |
-| 她此刻在做什么 / 运行状态 | 桥接没起过 | 跑过 首次启动.bat 之后 |
-| 通讯录 | 还没人跟它说过话 | 收到第一条私聊/群消息后自动建档 |
+| 她此刻在做什么 / 运行状态 | 桥接没起过 | 跑过 `首次启动.bat` 之后 |
+| 通讯录 | 还没人跟它说过话 | 收到第一条私聊 / 群消息后自动建档 |
 | 记忆库 / 重要事实 | 缓存没攒够 | 聊几轮，切分后出话题；生日这类自动进事实 |
 | B站 / 空间 | 还没刷过 | 调度器按生物钟跑一轮后 |
 | 花费 | 没有用量 | 有对话后按价目折算 |
@@ -283,19 +304,19 @@ Electron 桌面分身（配套仓库的 Release 里有安装包）。**用户装
 - 只监听 `127.0.0.1`；换端口 `set STELLAR_PANEL_PORT=3301`。
 - 页面拿不到桥接的 `consoleToken`，由面板后端转发时自带。
 - 面板口令与审计日志写在 `~/.dsh/stellar/`，**不写进仓库目录**（`.gitignore` 已兜）。
-- 想让同一 WiFi 的手机连：`set STELLAR_PANEL_HOST=0.0.0.0`；要出门也能连，见「设置 → 手机访问」里的隧道。
+- 想让同一 WiFi 的手机连：`set STELLAR_PANEL_HOST=0.0.0.0`；要出门也能连，见「设置 → 远程访问」里的隧道。
 
-另外桥接自己也带一个单页控制台：`http://127.0.0.1:3100/?token=<consoleToken>`（运行总览、会话与审批、令牌与花费、访问与安全）。它不需要面板进程，桥接跑着就有。
+**② 桥接自带单页控制台** —— `http://127.0.0.1:3100/?token=<consoleToken>`。
+它不需要面板进程，桥接跑着就有：运行模式 / 会话映射 / 挂起审批 / 活动日志 / 人格与角色 / 一代仿真 / 二代仿真 /
+黑话库 / MCP 工具 / 白名单 / 静默开关 / DSH 模型与思考强度 / 安全拦截通知 / 访问令牌 / 测试发送 / 桥接控制 / 令牌与花费。
 
 细节见 [stellar-manager/README.md](stellar-manager/README.md)。
 
-### 3.9 检查更新
+### 3.8 检查更新
 
-**设置 → 概览 → 更新**：一次同时查 Stellar / 两个语音包 / 桌宠。
-
-- 本体与语音包走 **git**（`fetch` 只读 + `merge --ff-only`；本地有改动会拒绝）；
-- 桌宠走 **Release 的 `version.json`**（比版本号 → 下 zip → sha256 校验 → 替换，**保留 `data/`**）；
-- DSH 启动后 20 秒自动查一次，有更新时打开概览会弹窗，可勾「不再提示本次」。
+**设置 → 概览 → 更新**：检查 `Stellar 本体`（走 git：`fetch` 只读 + `merge --ff-only`，本地有改动会拒绝）
+以及 `config.json` 的 `updates.components[]` 里登记的其他组件（`git` / `release` 两种来源，release 会下 zip 并校验 sha256）。
+DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「不再提示本次」。
 
 ---
 
@@ -303,16 +324,17 @@ Electron 桌面分身（配套仓库的 Release 里有安装包）。**用户装
 
 | 子系统 | 你能看到的能力 | 细节 |
 | --- | --- | --- |
-| **QQ** | 群/私聊收发、引用回复、分条、表情包、图片/动图、语音、拍一拍、合并转发展开、上线补历史、提问/审批回传、四种运行模式 | [MODULE-BRIDGE.md](docs/guides/architecture/MODULE-BRIDGE.md) |
-| **B站** | 扫码登录、看视频/打分/收藏、评论与回帖、发动态、分享到 QQ、私信、直播间监听、34 个 CLI 命令 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
-| **记忆** | 衰减卡（清晰度/遗忘/容量告警/压缩）、全量卡（append-only）、三场景共享、隐私 scope、双向记忆 | [MEMORY_CARD.md](docs/guides/features/MEMORY_CARD.md) |
-| **人格** | 多角色整包切换、自动存档/回档、管理员双身份、身份对齐 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) |
-| **主动** | 目的机制（目标假设/载体 QQ·桌宠/互斥回落）、对话收尾、二代 proactive | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) |
-| **语音** | 语音库发送、本地/云端 TTS 现场合成、语音包安装启停、音量/响度、频率上限；`qq_send_voice` / `qq_list_voices`（**AI 发语音默认关闭**） | [SUBSYSTEM-VOICE.md](docs/guides/subsystems/SUBSYSTEM-VOICE.md) |
-| **桌宠** | 文本/语音对话、气泡与回复按钮、专注模式、目的载体、断线重连 | [SUBSYSTEM-PET.md](docs/guides/subsystems/SUBSYSTEM-PET.md) |
-| **额度** | 每日 token 额度（QQ/B站/其他/总额，双单位，80% 提醒、100% 停）、消费看板 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) |
-| **工具面** | 39 个 `qq_*` 工具、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
-| **界面** | 设置页 14 个标签、控制台 10 个页面 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
+| **QQ** | 群 / 私聊收发、引用回复、分条、表情包、图片 / 动图、拍一拍、合并转发展开、上线补历史、提问 / 审批回传、四种桥接模式 | [MODULE-BRIDGE.md](docs/guides/architecture/MODULE-BRIDGE.md) |
+| **B站** | 扫码登录、看视频 / 打分 / 收藏、评论与回帖、发动态（含图文）、弹幕、私信、三连、直播间监听、每日 vlog、分享到 QQ；**58 条 CLI 命令** | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
+| **QQ空间** | 看自己的 / 好友的 / 通讯录里某个人的说说、点赞、评论与回复、删自己发的评论；「好友爱看」公开流（看 → 打分 → 点赞 → 评论） | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
+| **记忆** | 话题切分、重要事实（生日 / 忌口 / 过敏 / 地址 / 电话）、见闻区（B站 / 好友爱看）、人物侧写、风格参考库、向量检索、三级隐私 | [MEMORY_CARD.md](docs/guides/features/MEMORY_CARD.md) · [VECTOR_MEMORY.md](docs/guides/features/VECTOR_MEMORY.md) |
+| **人格** | 多角色整包切换、自动存档 / 回档、管理员双身份、跨平台身份对齐、风格参考片段注入 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) · [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) |
+| **主动** | 目标假设 → 主动搭话 / 分享、对话收尾（带「下次怎么接」）、二代 proactive | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) · [CONVERSATION_CLOSURE.md](docs/guides/features/CONVERSATION_CLOSURE.md) |
+| **日常** | 三档运行模式（正常 / 摸鱼 / 最低限度）、生物钟、每日任务清单、待办提醒、安静时段 | 本文 §3.2 / §3.6 |
+| **图片** | 网图池（每天清空、最多 30 张、可单删全删）、B站 封面池、每日截图留存 | 面板「她今天」 |
+| **额度** | 每日 token 额度（QQ / B站 / 其他 / 总额，80% 提醒、100% 停）、消费看板、按价目折算成本 | [TOKEN_USAGE_CONSOLE.md](docs/guides/operations/TOKEN_USAGE_CONSOLE.md) |
+| **工具面** | **67 个 MCP 工具**（36 个 `qq_*` + 31 个 `stellar_*`）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
+| **界面** | 设置页 10 个标签、完整面板 6 个页面 / 31 张卡、桥接自带单页控制台 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
 
 ---
 
@@ -320,11 +342,11 @@ Electron 桌面分身（配套仓库的 Release 里有安装包）。**用户装
 
 ```
 ┌──────────────── 用户可见 ────────────────┐
-│ DSH Web GUI    控制台 :3100    桌宠窗口   │
+│ DSH Web GUI     面板 :3300    控制台 :3100 │
 └──────┬──────────────┬─────────────┬──────┘
 ┌──────▼──────────────▼─────────────▼──────────────────────────┐
 │ DSH 宿主  └─ stellar 插件（bundle）                            │
-│     设置页 · 设置页 API · 桌宠 API · B站调度 · 记忆卡 · 额度    │
+│     设置页 · 设置 API · B站 调度 · 记忆维护 · 额度 · 扩展宿主   │
 └──────┬───────────────────────────────────────────────────────┘
        │ HTTP（会话 Cookie） + 子进程管理
 ┌──────▼───────────────────────────────────────────────────────┐
@@ -333,22 +355,20 @@ Electron 桌面分身（配套仓库的 Release 里有安装包）。**用户装
 └──┬────────────┬──────────────┬───────────────────────────────┘
    │ WS         │ stdio        │ HTTP
 ┌──▼────────┐ ┌─▼──────────┐ ┌─▼─────────────────┐
-│ SnowLuma2 │ │ DSH MCP    │ │ 语音引擎 8765/8767 │
-│（第三方）  │ │ 客户端      │ │（本地/云端）        │
+│ SnowLuma2 │ │ DSH MCP    │ │ B站 / 空间 / 搜索  │
+│（第三方）  │ │ 客户端      │ │（命令行与 HTTP）    │
 └───────────┘ └────────────┘ └───────────────────┘
 ```
 
 - **两套状态根**：桥接数据在 `<仓库根>/state/`，插件数据在 `~/.dsh/stellar/`。
-- **三份配置**：`config.json`（QQ）、`~/.dsh/stellar/config.json`（合体层）、`~/.dsh/stellar/bili.config.json`（B站）。
+- **三份配置**：`<仓库>/config.json`（QQ 与桥接）、`~/.dsh/stellar/config.json`（合体层）、`~/.dsh/stellar/bili.config.json`（B站调度）。
 - **DSH 端口会漂移**：桥接与插件都用 `discoverDshBaseUrl()` 发现，不要硬编码。
 
-完整说明（含 6 条数据流与重启矩阵）：[ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md)。
+完整说明（含数据流与重启矩阵）：[ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md)。
 
 ---
 
 ## 六、文档地图
-
-> **2026-10-26 全仓库逐行梳理**：12 篇、约 8,700 行、3,150 处 `文件:行号`。
 
 | 步 | 读什么 | 读到什么程度 |
 | --- | --- | --- |
@@ -358,34 +378,42 @@ Electron 桌面分身（配套仓库的 Release 里有安装包）。**用户装
 
 | # | 文档 | 行数 | 什么时候翻它 |
 | --- | --- | --- | --- |
-| 1 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) | 335 | 总纲 |
-| 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 351 | 三份配置每个键、约 95 个状态文件 |
-| 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 181 | 做不到什么、坏了怎么恢复 |
-| 4 | [MODULE-BRIDGE.md](docs/guides/architecture/MODULE-BRIDGE.md) | 1,020 | 桥接全文 |
-| 5 | [MODULE-CORE-A.md](docs/guides/architecture/MODULE-CORE-A.md) | 1,001 | 记忆/人格/目的/收尾/额度/账本/计价/身份 |
-| 6 | [MODULE-CORE-B.md](docs/guides/architecture/MODULE-CORE-B.md) | 1,098 | B站/鱼群/表情/黑话/文本化/SSRF/DSH 客户端 |
-| 7 | [MODULE-PLUGIN.md](docs/guides/architecture/MODULE-PLUGIN.md) | 1,101 | 插件宿主：装配、配置模型、设置页 API、B站 调度 |
-| 8 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 677 | 设置页 14 标签 + 控制台 10 页 |
-| 9 | [SUBSYSTEM-VOICE.md](docs/guides/subsystems/SUBSYSTEM-VOICE.md) | 855 | 语音三条链路 |
-| 10 | [SUBSYSTEM-PET.md](docs/guides/subsystems/SUBSYSTEM-PET.md) | 904 | 桌宠全链路 |
-| 11 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 981 | B站 34 命令 / 23 库 |
-| 12 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 233 | 39 个工具、守卫、两代 preset |
+| 1 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) | 338 | 总纲 |
+| 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 353 | 三份配置每个键、状态文件 |
+| 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 182 | 做不到什么、坏了怎么恢复 |
+| 4 | [MODULE-BRIDGE.md](docs/guides/architecture/MODULE-BRIDGE.md) | 1,025 | 桥接全文 |
+| 5 | [MODULE-CORE-A.md](docs/guides/architecture/MODULE-CORE-A.md) | 1,002 | 记忆 / 人格 / 目的 / 收尾 / 额度 / 账本 / 计价 / 身份 |
+| 6 | [MODULE-CORE-B.md](docs/guides/architecture/MODULE-CORE-B.md) | 1,099 | B站 / 鱼群 / 表情 / 黑话 / 文本化 / SSRF / DSH 客户端 |
+| 7 | [MODULE-PLUGIN.md](docs/guides/architecture/MODULE-PLUGIN.md) | 1,102 | 插件宿主：装配、配置模型、设置页 API、B站 调度 |
+| 8 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 679 | 设置页与控制台 |
+| 9 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 982 | B站 命令与库、空间功能 |
+| 10 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 234 | 67 个工具、守卫、两代 preset |
+| 11 | [MEMORY_CARD.md](docs/guides/features/MEMORY_CARD.md) | 337 | 记忆怎么切、怎么存、怎么注入 |
+| 12 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 570 | 主动搭话的完整逻辑 |
 
-其它：DSH 装配 [DSH_SETUP.md](docs/guides/getting-started/DSH_SETUP.md) · 安全基线 [SECURITY_BASELINE.md](docs/guides/operations/SECURITY_BASELINE.md) ·
-全部索引 [docs/README.md](docs/README.md)。
+其它：DSH 装配 [DSH_SETUP.md](docs/guides/getting-started/DSH_SETUP.md) · SnowLuma 排错 [SNOWLUMA_TROUBLESHOOT.md](docs/guides/getting-started/SNOWLUMA_TROUBLESHOOT.md) ·
+安全基线 [SECURITY_BASELINE.md](docs/guides/operations/SECURITY_BASELINE.md) · 全部索引 [docs/README.md](docs/README.md)。
+
+> `docs/guides/subsystems/SUBSYSTEM-PET.md`、`SUBSYSTEM-VOICE.md`、`docs/VOICE-PACKS.md` 描述的是**已剥离**的桌宠与语音子系统，
+> 仅作历史留存，代码里没有对应实现。
 
 ---
 
 ## 七、安全与边界（摘要）
 
 - **群友碰不到你的机器**：仿真会话的工具面是白名单、fail-closed，本地执行能力全部被 restrict。
-- **发送必须命中白名单**：没有"管理员例外"这种后门。
-- **控制台只接受本机回环** + 令牌（定长比较）+ Host/Origin 校验 + 写操作强制 JSON。
-- **密钥不落日志**；`state/` 用 icacls 切断 ACL 继承。
-- **不可逆删除 = 事故**：清理一律先隔离到 `_backups/`。
+- **发送必须命中白名单**：没有“管理员例外”这种后门。
+- **身份靠会话令牌，不靠自报**：`stellar_*` 主人工具要带唤醒提示里的【会话令牌】，桥接回验后才认；
+  内部调度会话另有一枚短期 operator 令牌（10 分钟、只存内存、登记在脱敏集合里）。
+- **控制台只接受本机回环** + 令牌（定长比较）+ Host / Origin 校验 + 写操作强制 JSON。
+- **密钥不落日志**；`state/` 与 `config.json` 用 icacls 切断 ACL 继承（原子写之后也会重新收紧）。
+- **不可逆删除 = 事故**：清理一律先隔离到 `_backups/` 或 `memory-trash/`。
 - **不承诺**提示注入的语义层 100% 防护（真正的边界是工具面与白名单）。
-- **隐私闸（2026-11-10）**：出站文本在离开本机前多了一道确定性检查 —— 主人的生日/所在城市/住址/手机号/身份证、通讯录里别人的 QQ 号（公开面还包括别人的备注与昵称），命中即拒绝发送。覆盖 QQ 私聊/群聊出站（bridge `onebotSend`）、B站动态/评论/私信（`lib/outbound-guard.mjs`）、QQ空间说说与评论（`qzone.mjs`）、视频脚本（`vlog render` 与 `vlog publish` 两处，命中退出码 8，不渲染不发布）。实现在 [plugins/stellar/tools/lib/privacy-guard.mjs](plugins/stellar/tools/lib/privacy-guard.mjs)。
-- **跨会话主动发消息**：主人私聊侧发起时，允许用主人自己的会话令牌向白名单里的其他人发消息（`/api/socialV2/send-message` 的 `ownerScopedKeyOf`）；其他来源的令牌仍必须与目标会话一致，不会因此变成"谁都能代表她发"。
+- **隐私闸**：出站文本在离开本机前多一道确定性检查 —— 主人的生日 / 所在城市 / 住址 / 手机号 / 身份证、
+  通讯录里别人的 QQ 号（公开面还包括别人的备注与昵称），命中即拒绝发送。覆盖 QQ 私聊 / 群聊出站、
+  B站 动态 / 评论 / 私信、QQ空间说说与评论、视频脚本（`vlog render` / `vlog publish`，命中退出码 8，不渲染不发布）。
+  实现在 [plugins/stellar/tools/lib/privacy-guard.mjs](plugins/stellar/tools/lib/privacy-guard.mjs)。
+- **文件读取有闸**：`stellar_file_read` 的本地路径必须在工作区内、URL 必须过公网白名单（挡 SSRF）。
 
 详见 [SECURITY_BASELINE.md](docs/guides/operations/SECURITY_BASELINE.md)、[BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md)、[RULES.md](RULES.md)。
 
@@ -395,30 +423,34 @@ Electron 桌面分身（配套仓库的 Release 里有安装包）。**用户装
 
 | 问题 | 回答 |
 | --- | --- |
-| 能不装 SnowLuma 吗？ | QQ 部分不能（它负责登录与收发）。只要 B站/记忆/桌宠可以。 |
+| 能不装 SnowLuma 吗？ | QQ 部分不能（它负责登录与收发）。只想要 B站 / 记忆 / 空间可以，但她听不到 QQ 消息。 |
 | 能不用 DSH 吗？ | 不能，插件与 preset 都跑在 DSH 里。 |
-| 会自己发消息吗？ | 默认不会。主动搭话要显式开「目的」；二代下发言必须调工具。 |
+| 会自己发消息吗？ | 默认不会。主动搭话要显式开「目的」；二代模式下发言必须调工具。 |
 | 数据会上传吗？ | 只有拼进提示词的文本会发给模型 API；不想让黑话词条出机就关 `slang.autoResearch`。 |
-| 支持 Linux/macOS 吗？ | 暂不支持（沙箱 ACL 与启动脚本按 Windows 写）。 |
-| 能多用户/远程吗？ | 不做。控制台只接受回环。 |
-| 语音包/桌宠必须装吗？ | 不必须。不装则语音不可用、目的机制走 QQ。 |
-| 改名/换角色会丢记忆吗？ | 不会。角色包整包隔离，切换带快照，可回档。 |
+| 支持 Linux / macOS 吗？ | 暂不支持（沙箱 ACL 与启动脚本按 Windows 写）。 |
+| 能多用户 / 远程吗？ | 面板默认只听回环；要远程得自己开隧道或改 `STELLAR_PANEL_HOST`，并配上口令。 |
+| 有语音 / 桌宠吗？ | **没有**。这两块在开源整理时随代码一起剥离了，本仓库不含实现。 |
+| 改名 / 换角色会丢记忆吗？ | 不会。角色包整包隔离，切换带快照，可回档；记忆按对象存在 `memory.db` 里。 |
+| 记忆存哪？ | `~/.dsh/stellar/characters/<id>/memory/memory.db`（SQLite）。删它等于让她失忆。 |
+| 花多少钱？ | 只有调模型才花钱；面板「花费」按价目折算，可设每日额度。 |
 
 ---
 
 ## 九、开发
 
 ```bash
-npm run test:audit              # 默认门禁（159 个脚本，离线；需要控制台的 6 条在公开仓库里自动 SKIP）
-npm run test:regressions        # 桥接/协议回归
-cd plugins/stellar && npm test # 插件侧（含更新检查、桌宠更新保留数据的回归）
-
+npm run test:audit              # 默认门禁（159 个脚本，离线；需要完整面板的几条在公开仓库里自动 SKIP）
+npm run test:regressions        # 桥接 / 协议回归
 npm run privacy-scan:strict     # 发布前隐私扫描（0 命中才可发布）
 npm run guard:check             # DSH 升级后先跑（asar 会话护栏补丁是否还在）
 node scripts/setup-dsh.mjs      # 重装 preset + MCP
+node scripts/release-manifest.mjs    # 生成安装清单（对 git HEAD 算哈希）
 ```
 
-目录结构见 [docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)；代码分层与"改什么要重启什么"见
+> **发布顺序固定**：先 commit 代码 → 再 `node scripts/release-manifest.mjs` → 单独提交清单 → 再 push。
+> 顺序反了，`--verify` 会一直红（清单里哈希对不上 HEAD）。
+
+目录结构见 [docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)；代码分层与“改什么要重启什么”见
 [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md)。
 
 ---
@@ -426,6 +458,8 @@ node scripts/setup-dsh.mjs      # 重装 preset + MCP
 ## 十、许可与合规
 
 - 本仓库 **MIT**。
-- **SnowLuma2 是第三方专有组件**，不随仓库分发、不打包；按 EULA §5.4，本程序不对它做安装/部署/代扫码。
+- **SnowLuma2 是第三方专有组件**，不随仓库分发、不打包；按 EULA §5.4，本程序不对它做安装 / 部署 / 代扫码。
+  SnowLuma 的许可若有疑问，请联系其作者。
 - 请自行遵守 QQ / B站 服务条款与当地法律；本项目不提供绕过风控的能力。
+- 第三方组件与合规边界详见 [LICENSE](LICENSE)。
 

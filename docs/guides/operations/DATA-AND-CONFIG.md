@@ -1,5 +1,9 @@
 # 数据与配置（DATA-AND-CONFIG）
 
+> ⚠️ **本文含已剥离项**：`socialV2.voice`（§1.11.1）与 `pet/*` 状态文件、`<工作区>/voice|pet/` 都是桌宠/语音子系统留下的历史键，
+> 代码里没有对应实现；保留它们是因为 `config.example.json` 里还残留着这些键（读了不生效）。其余配置与状态文件均为现状。
+
+
 > 这份文档回答：**配置写在哪、每个键管什么、改了什么时候生效**；**运行时数据存在哪、谁写谁读、能不能删**。
 >
 > 一句话记住：**三份配置、两个状态根、一个角色包**。
@@ -15,19 +19,18 @@
    ▼
 <仓库根>/state/                       ← 桥接的运行时数据（gitignore）
    sessions.json  mode.json  social-v2.json  console-token  bridge.log  …
-   voice-packs/  voice-tts/
+   （voice-packs/ 已剥离）
 
 ~/.dsh/stellar/                     ← 插件的运行时数据（gitignore 不到的机外目录）
    config.json                       ← 合体层配置（记忆同步/身份对齐/管理员/扩展/平台/UI）
    bili.config.json                  ← B站 配置
    characters/<id>/                  ← 角色包：人格卡 + 记忆卡 + B站 行为账本
    memory/                           ← 当前角色的记忆卡（有角色时在角色包里）
-   pet/                              ← 桌宠发现文件与令牌
+   （pet/ 已剥离）
    bili/credentials.json, owner-credentials.json
    backups/  plugin.log  audit.jsonl
 
 <仓库根>/roles/*.md                   ← 旧布局人格卡（角色系统会迁移）
-<工作区>/voice/, <工作区>/pet/          ← 仓库外的语音引擎与桌宠工程
 ```
 
 ---
@@ -131,14 +134,14 @@
 | 子段 | 关键键 | 作用 |
 | --- | --- | --- |
 | 总开关 | `enabled`、`autoReplyCheckMs`、`agentPreset`（`qq-chat-v2`）、`provideRecommendations` | 二代是"一切皆工具"，文本不自动发送 |
-| `tools` | 31 个布尔开关 | **逐个工具的开关**：发消息/引用/分条/等待/表情/语音/记忆/黑话/收尾…默认全开，`setStickerRemark` 与 `sendVoice` 默认**关** |
+| `tools` | 31 个布尔开关 | **逐个工具的开关**：发消息/引用/分条/等待/表情/记忆/黑话/收尾…默认全开，`setStickerRemark` 默认**关**（`sendVoice` 是已剥离的语音残留键） |
 | `wake` | `defaultMode`（diving）、`preSleepWaitEnabled`、`preSleepWaitMs`（300000）、`batchWindowMs`、`maxWakePerMinute/Hour`、`noActionLimit`、`recommended*` | 唤醒调度与"沉睡前观察"的强制窗口 |
 | `closure` | `enabled`、`cooldownMs`（20 分钟）、`requireNoOpenQuestion`、`promptInWake`、`maxSummaryChars`、`maxNextOpeningChars` | 对话收尾：冷却只压普通概率唤醒，@/提问/私聊不压 |
 | `send` | `burstMaxMessages`（8）、`maxSendPerMinute/Hour/Day`（自然日 0 点清零，0=不限）、`maxMessageChars`（500）、`gap*` | 发送节流与硬上限（超长 400、超条数 429） |
 | `tokenGuard` | `maxWakesPerDay`（群 20 / 私聊 10）、`minWakeGapMs`（2 分钟）、`directBypassGap`、`maxOutboundPerTurn`、`maxDailyCostCNY` | 防爆破：@/引用/拍一拍可越过 2 分钟间隔，但每日次数仍生效 |
 | `wait` | `defaultMs`、`minMs/maxMs`、`defaultQuietMs`、`minQuietAfterNewMs` | `qq_wait_for_messages` 的参数边界 |
 | `sticker` | `syncTtlMs`、`maxListCount`、`includeInPrompt`、`promptMaxStickers`、`match.topK/minScore`、`collect.*` | 表情包语义化与收藏限流 |
-| `voice` | 见 §1.11.1 | 语音 |
+| `voice` ⚠️ | 见 §1.11.1 | 已剥离：读了不生效，留着是因为模板里还有 |
 | `proactive` | `enabled`、`checkInterval*`、`idleThresholdMs`、`probability` | 二代自己的主动搭话（与目的机制是**两套**，可分别关） |
 | `feedback` | `maxLength`、`notifyOwnerOnError` | `qq_report_feedback` 工具 |
 | `context` | `recentLimit`、`unreadLimit`、`contextWindow`、`inlineWakeMessages`、`wakeMessageLimit`、`wakeRecentLimit`、`wakeMaxChars`、`wakeFoldOld` | 注入多少上下文（token 成本的主要旋钮）。`wakeFoldOld`（默认 `true`）= 唤醒只带**最近一窗**、更早未读折叠成计数；设 `false` 恢复"从最早未读开始塞"的旧行为 |
@@ -146,7 +149,7 @@
 | `initialPromptMaxChars` | `2000` | 每会话首次唤醒的"环境说明"上限 |
 | `media` | `maxBytes`（8MB）、`maxPixels`（64MP）、`maxCount`（5） | 图片/表情/动图限制 |
 
-#### 1.11.1 语音（`socialV2.voice`）
+#### 1.11.1 语音（`socialV2.voice`）⚠️ 已剥离
 
 | 键 | 默认 | 作用 |
 | --- | --- | --- |
@@ -202,7 +205,7 @@
 | `extensions` | `enabled`、`disabled` | 扩展总开关与禁用列表 |
 | `platforms` | `enabled`（qq/bili）、`planned`（tieba）、`start.qq/bili` | **平台启动开关的唯一真相**（关掉即停，打开即启） |
 | `ui` | `activeTab`、`showAdvanced` | 界面偏好 |
-| `updates` | `enabled`、`checkOnStart`、`startDelayMs`（20s）、`intervalMs`（6h）、`components[]`、`pet.versionUrl`、`voice.localVersionUrl`、`voice.cloudVersionUrl` | **组件更新**（2026-10-26）：一个面板同时查 Stellar 本体 / 两个语音包 / 桌宠 / 自定义组件。两条通道：**git**（`fetch` 只读 + `merge --ff-only`，本地有改动或未推送提交被拒）与 **release**（比 `version.json` 里的版本号，下 zip → sha256 校验 → 交给组件自己的安装器；桌宠走这条，更新时保留 `data/`，见 历史踩坑记录）。`components[]` 每项 `{id,name,dir,kind,branch,versionUrl}` 可把别的仓库纳入检查。状态落 `updates.json`（`dismissed[id]=remote commit 或版本号`，"不再提示本次"只对这一版生效） |
+| `updates` | `enabled`、`checkOnStart`、`startDelayMs`（20s）、`intervalMs`（6h）、`components[]` | **组件更新**：一个面板查 Stellar 本体与 `components[]` 里登记的其他组件。两条通道：**git**（`fetch` 只读 + `merge --ff-only`，本地有改动或未推送提交被拒）与 **release**（比版本号，下 zip → sha256 校验 → 交给组件自己的安装器）。`components[]` 每项 `{id,name,dir,kind,branch,versionUrl}`。状态落 `updates.json`（`dismissed[id]`，"不再提示本次"只对这一版生效） |
 
 记忆卡子键（`memoryCard.*`，完整语义见 [MEMORY_CARD.md](../features/MEMORY_CARD.md)）：
 `enabled`、`maxChars`、`warnChars`（60000）、`injectMaxChars.qq/bili`（2200/2000）、`recentDays`（7）、
@@ -245,7 +248,7 @@
 | --- | --- | --- | --- |
 | `sessions.json` 🔒 | 桥接 | 桥接/插件 | QQ 会话 ↔ DSH 会话映射 + **每会话 agentToken** + 退役记录。删了 = 所有会话重新开会话（上下文丢） |
 | `mode.json` | 桥接/控制台 | 桥接 | 运行模式（chat/closed-agent/reserved/reserved2） |
-| `social-v2.json` 🔒 | 桥接 | 桥接/插件/桌宠 | 二代仿真全部状态：未读池、唤醒配置、收尾记录、表情、鱼群、token 计数。（单文件约 400KB 量级） |
+| `social-v2.json` 🔒 | 桥接 | 桥接/插件 | 二代仿真全部状态：未读池、唤醒配置、收尾记录、表情、鱼群、token 计数。（单文件约 400KB 量级） |
 | `console-token` 🔒 | 桥接 | 控制台 | 自动生成的控制台令牌 |
 | `bridge.lock` | 桥接 | 桥接 | 单实例锁（PID + 端口二次判据） |
 | `bridge.log` / `.log.1` | 桥接 | 控制台 | 运行日志（滚一代）；`qq-activity.log` 是"说了什么"的活动日志（500 行） |
@@ -253,14 +256,14 @@
 | `tool-calls.jsonl` | 桥接 | 控制台 | 工具调用审计（按时间追加） |
 | `token-usage.jsonl` | 桥接 | 控制台 | 逐轮 token 用量明细（看板数据源） |
 | `greetings.json` | 桥接 | 桥接 | 早安问候状态（今天发没发、重试次数） |
-| `self-identity.json` | 桥接 | 插件/桌宠 | 跨平台自我识别（QQ 资料卡、B站 mid、主页） |
+| `self-identity.json` | 桥接 | 插件 | 跨平台自我识别（QQ 资料卡、B站 mid、主页） |
 | `feedback.json` | 桥接 | 控制台 | agent 反馈（`qq_report_feedback`） |
 | `current-role.json` | 控制台/插件 | 桥接/插件 | 当前角色（人格卡文件路径 + id） |
 | `alignment-brief.md` | 插件 | 桥接 | 身份对齐的注入摘要 |
 | `initial-prompts.json` | 桥接 | 桥接 | 二代"会话初始提示词"（每会话只注入一次） |
 | `pending-replies.json` | 桥接 | 桥接 | 待回复队列（提问/审批等待中的消息） |
 | `bili-memory.json/.md`、`bili-dynamics-*.json`、`bili-share-*.json`、`bili-video-titles.json` | 桥接 | 桥接/插件 | 桥接侧的 B站 记忆镜像（有角色时改用角色包） |
-| `voice-packs/`、`voice-tts/` | 桥接 | 桥接/插件 | 语音包安装目录（**几百 MB 到几 GB**，用户素材）与 TTS 缓存 |
+| ~~`voice-packs/`、`voice-tts/`~~ | — | — | 已剥离，不再使用 |
 | `boot-target.json` | 启动器 | 桥接 | 「这次重启要去哪」的意图标记 |
 
 ### 4.2 `~/.dsh/stellar/`（插件）
@@ -272,14 +275,14 @@
 | `memory/memory-card.json` 🔒 | **插件（唯一写者）** | 插件 | 衰减卡真相（记录、清晰度、重要度、scope） |
 | `memory/memory-card.md` | 插件 | 人 | 给人看的人话版 |
 | `memory/memory-card-prompt-{qq,bili}.md` | 插件 | 桥接 / 调度器 | **两份场景化注入块**（读取方不解析 JSON） |
-| `memory/memory-inbox.jsonl` | 桥接/桌宠（只 append） | 插件 | 待摄取事件（`platform=qq/bili/pet`） |
+| `memory/memory-inbox.jsonl` | 桥接（只 append） | 插件 | 待摄取事件（`platform=qq/bili`） |
 | `memory/memory-card-full.jsonl` + `-stats.json` + `.md` | 插件 | 人 | 全量卡：append-only 存档，**永不进提示词** |
 | `memory/qq-for-bili.md` / `bili-for-qq.md` | 插件 | 桥接/调度器 | 双向记忆的成品文本 |
 | `characters/<id>/` 🔒 | 插件 | 插件/桥接 | 角色包（见 §4.3） |
-| `pet/host.json` | 插件（每 2 分钟） | 桌宠 | 发现文件：baseUrl + token + api + version |
-| `pet/host-token` 🔒 | 插件 | 插件 | 24B 随机令牌（`0600`） |
-| `pet/focus.json` | 插件/桌宠 | 插件/桥接/桌宠 | **专注模式的单一真相** |
-| `pet/chat/history-<role>.json` | 插件 | 插件 | 桌宠对话历史（按角色） |
+| ~~`pet/host.json`~~ | — | — | 已剥离，不再生成 |
+| ~~`pet/host-token`~~ | — | — | 已剥离，不再生成 |
+
+
 | `bili/credentials.json` 🔒 | B站 工具 | B站 工具 | 鱼的 cookie（`sessdata`/`bili_jct`/`buvid3`） |
 | `bili/owner-credentials.json` 🔒 | 工具 | 工具 | 主人的 B站 cookie（**只用于只读抓偏好**，绝不用于发评论） |
 | `token-budget.json`、`token-usage-daily.json`、`token-usage-state.json`、`token-alert.json` | 插件/工具 | 插件 | 每日额度、当日用量、事件水位、80% 提醒去重 |
@@ -308,8 +311,8 @@ snapshots/             自动存档（每 6 小时一份，滚动保留）
 
 | 位置 | 归属 | 说明 |
 | --- | --- | --- |
-| `<工作区>/voice/` | 语音引擎（voxd）与语音包安装源 | stellar 只调用、不打包 |
-| `<工作区>/pet/` | 桌宠 Electron 工程 | 通过 `host.json` 发现插件接口 |
+
+
 | `<home>/dsh-runtimes/` | DSH | 插件用它找真正的 `node.exe`（Electron 的 execPath 跑不了部分脚本） |
 
 ---
@@ -343,7 +346,7 @@ snapshots/             自动存档（每 6 小时一份，滚动保留）
 ## 7. 清理约定（什么能删、什么绝不能删）
 
 **可以删（会自动重建）**：`bridge.log*`、`qq-activity.log*`、`plugin.log*`、`backups/` 里的旧备份、
-`voice-tts/` 缓存、`snapshots/` 里的旧快照、`state/*.jsonl` 的历史（想省磁盘时）。
+`snapshots/` 里的旧快照、`state/*.jsonl` 的历史（想省磁盘时）。
 
 **绝不能删**：`sessions.json`、`console-token`、`mode.json`、`social-v2.json`、
 `characters/`（人格与记忆）、`bili/credentials.json`、`bili.config.json`、`config.json`、

@@ -2,7 +2,7 @@
 
 > 文档分三层：根目录的 `README.md` / `README.en.md`（5 分钟概览）→ **本索引** → `guides/`（逐模块细节）。
 > 仓库目录结构与 `scripts/` 命名约定见 **[FOLDER_MAP.md](FOLDER_MAP.md)**。
-> 发布流程见 **[RELEASE.md](RELEASE.md)**；语音/桌宠的独立组件见 **[VOICE-PACKS.md](VOICE-PACKS.md)**。
+> 发布流程见 **[RELEASE.md](RELEASE.md)**。
 
 ---
 
@@ -35,11 +35,11 @@
 | --- | --- |
 | [guides/architecture/MODULE-BRIDGE.md](guides/architecture/MODULE-BRIDGE.md) | **桥接内核**（`src/bridge.js`）：启动序列、入站/出站全链路、会话与状态、控制台 API、安全闸门、定时器、失败模式 |
 | [guides/architecture/MODULE-CORE-A.md](guides/architecture/MODULE-CORE-A.md) | **核心引擎 A**：记忆卡、角色人格、目的机制、对话收尾、每日额度、token 账本、价目表、身份闸 |
-| [guides/architecture/MODULE-CORE-B.md](guides/architecture/MODULE-CORE-B.md) | **核心引擎 B**：B站 API/记忆/动态/卡片、鱼群、表情语义、黑话、md→纯文本、转发展开、SSRF、DSH 客户端、语音内核、ACL |
+| [guides/architecture/MODULE-CORE-B.md](guides/architecture/MODULE-CORE-B.md) | **核心引擎 B**：B站 API/记忆/动态/卡片、鱼群、表情语义、黑话、md→纯文本、转发展开、SSRF、DSH 客户端、ACL |
 | [guides/architecture/MODULE-PLUGIN.md](guides/architecture/MODULE-PLUGIN.md) | **插件宿主**：装配顺序、配置模型（脱敏/原子写/备份）、设置页 API、B站 调度器、记忆与对齐、token 采集 |
 | [guides/subsystems/SUBSYSTEM-BILI.md](guides/subsystems/SUBSYSTEM-BILI.md) | **B站 子系统**：账号与凭据、生物钟、内容生产/消费、CLI 命令与库、四本账额度、鱼群、配置全解 |
-| [guides/subsystems/SUBSYSTEM-VOICE.md](guides/subsystems/SUBSYSTEM-VOICE.md) | **语音子系统**：三条链路、状态机、本地↔云端路由、合成契约、发送全链路、触发规则 |
-| [guides/subsystems/SUBSYSTEM-PET.md](guides/subsystems/SUBSYSTEM-PET.md) | **桌宠子系统**：拓扑、发现与鉴权、pet-api 端点、对话链路、事件队列、目的载体、专注模式 |
+| [guides/subsystems/SUBSYSTEM-VOICE.md](guides/subsystems/SUBSYSTEM-VOICE.md) | ⚠️ **已剥离**（历史留存）：语音子系统设计，代码里已无实现 |
+| [guides/subsystems/SUBSYSTEM-PET.md](guides/subsystems/SUBSYSTEM-PET.md) | ⚠️ **已剥离**（历史留存）：桌宠子系统设计，代码里已无实现 |
 | [guides/subsystems/AGENT-TOOLS-AND-PRESETS.md](guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | **工具面与 preset**：三个 MCP server、`qq_*` 工具全表与开关、权限与会话绑定、fail-closed 守卫、两代 preset |
 | [guides/subsystems/UI-AND-CONSOLE.md](guides/subsystems/UI-AND-CONSOLE.md) | **两套界面**：插件设置页逐标签（控件↔配置键↔API）、浏览器控制台各页面 |
 
@@ -52,7 +52,7 @@
 | [guides/features/EMBEDDING_PACKS.md](guides/features/EMBEDDING_PACKS.md) | **Embedding 按需安装包**：pack.json 契约、安装/校验/卸载、与发布清单隔离 |
 | [guides/features/CHARACTER_PERSONA.md](guides/features/CHARACTER_PERSONA.md) | **角色人格系统**：每角色目录包、切换序列与隔离、自动存档/回档、迁移 |
 | [guides/features/CROSS_PLATFORM_IDENTITY.md](guides/features/CROSS_PLATFORM_IDENTITY.md) | **跨平台自我识别**：自我卡、来源判断、标签与规则双写、隐私打码 |
-| [guides/features/PURPOSE_OUTREACH.md](guides/features/PURPOSE_OUTREACH.md) | **目的机制（主动找主人）**：载体 QQ/桌宠、排程与硬闸门、素材与提示词、预览/试一次 |
+| [guides/features/PURPOSE_OUTREACH.md](guides/features/PURPOSE_OUTREACH.md) | **目的机制（主动找主人）**：载体固定 QQ、排程与硬闸门、素材与提示词、预览/试一次 |
 | [guides/features/CONVERSATION_CLOSURE.md](guides/features/CONVERSATION_CLOSURE.md) | **对话收尾判断**：六类信号 → continue/linger/close；与 mark_read/潜水的边界 |
 | [guides/operations/TOKEN_USAGE_CONSOLE.md](guides/operations/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、峰谷计价、API、配置 |
 

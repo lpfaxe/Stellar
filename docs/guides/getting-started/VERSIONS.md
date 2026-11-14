@@ -43,17 +43,14 @@
 | 组件 | 仓库 | 当前版本 | 版本清单 | 升级方式 |
 | --- | --- | --- | --- | --- |
 | Stellar 本体 | 本仓库 | **1.0.0** | git tag | `git` 快进（`--ff-only`） |
-| 语音包（本地） | 独立组件（不随本仓库分发） | 由组件自己声明 | `models.json` | git 快进 / 拉模型 |
-| 语音包（云端） | 独立组件（不随本仓库分发） | 由组件自己声明 | `models.json` | git 快进 / 拉模型 |
-| 桌宠 | 独立组件（不随本仓库分发） | 由组件自己声明 | `version.json` | 下 zip → sha256 → 替换 |
 
 ### 兼容性约定
 
 | 组合 | 要求 |
 | --- | --- |
-| Stellar ↔ 桌宠 | 桌宠 `version.json` 协议 **v1**（`{version, notes, file:{url,sha256,size}}`）；Stellar ≥ 0.1.0 可读 |
-| Stellar ↔ 语音包 | 语音包提供 `/v1/speak/file`；`models.json` 支持 `archives[]`（v1） |
-| 桌宠 ↔ 语音 | 桌宠只读 Stellar 的语音设置，不直连语音包 |
+| ~~Stellar ↔ 桌宠~~ | 桌宠已剥离，协议仅历史留存 |
+| ~~Stellar ↔ 语音包~~ | 语音已剥离，契约仅历史留存 |
+
 
 > 破坏上面任一协议 = **Stellar minor bump**，并在 CHANGELOG 的「破坏性变更」里写明。
 
@@ -91,7 +88,7 @@ node scripts/version.mjs tag --push    # 打 tag 并推送
 [ ] 6. node scripts/version.mjs tag
 [ ] 7. git push origin main && git push origin vX.Y.Z
 [ ] 8. GitHub → Releases → 用 tag 建 Release（正文从 CHANGELOG 抄）
-[ ] 9. 桌宠/语音包：make-manifest / make-models 重新生成 version.json / models.json，上传资产
+[ ] 9. 组件更新：确认 `config.json` 的 `updates.components[]` 与实际发布一致
 [ ] 10. 发布后跑一次 设置 → 概览 → 检查更新，确认新版本能被识别
 ```
 

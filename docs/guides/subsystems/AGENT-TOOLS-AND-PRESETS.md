@@ -1,6 +1,6 @@
 # 工具面与 preset（AGENT-TOOLS-AND-PRESETS）
 
-> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 39 个 `qq_*` 工具）、**哪些手被绑住**
+> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 36 个 `qq_*` 工具）、**哪些手被绑住**
 > （五层闸门 + fail-closed 守卫）、**她戴哪张面具**（`qq-chat` / `qq-chat-v2` 两代 preset）、
 > **这些是怎么装进 DSH 的**。
 > **最后核对**：2026-10-26（全仓库逐行梳理）。配套阅读：总纲 [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) · 边界 [BOUNDARIES.md](../operations/BOUNDARIES.md) · 索引 [../README.md](../../README.md)。
@@ -11,7 +11,7 @@
 
 **两个 MCP 手 + 一张面具。**
 
-- `snowluma`（39 个 `qq_*` 工具）是主力手：读消息、发消息、等待、表情、语音、记忆。
+- `snowluma`（36 个 `qq_*` 工具）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏。
 - `snowluma-host`（1 个）是探活手：只问 SnowLuma 在不在，**没有启停能力**（EULA）。
 - `web-search-safe`（2 个）是外部信息手：只读搜索与抓取，带 SSRF 防护。
 - preset 决定"她是谁、在哪说话"：`qq-chat`（一代/普通）与 `qq-chat-v2`（二代仿真）。
@@ -22,7 +22,7 @@
 
 | server | 入口 | 工具 | 挂载 | 边界 |
 | --- | --- | --- | --- | --- |
-| `snowluma` | `src/mcp-snowluma-safe.js`（1,410 行） | 39 个 `qq_*` | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
+| `snowluma` | `src/mcp-snowluma-safe.js`（1,410 行） | 36 个 `qq_*` | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
 | `snowluma-host` | `src/mcp-host-server.js`（93 行） | `snowluma_status` | 同上 | **只读探活**；v0.1.5 起移除了 `start_snowluma`/`stop_snowluma` |
 | `web-search-safe` | `src/mcp-web-search-safe.js`（92 行） | `web_search`、`web_fetch` | 同上 | 只读；禁内网/环回/CGNAT；DNS 解析后逐地址校验；重定向每跳复核 |
 
@@ -33,7 +33,7 @@
 
 ---
 
-## 2. `qq_*` 工具全表（39 个）
+## 2. `qq_*` 工具全表（36 个）
 
 **配置开关**列对应 `config.json` 的 `socialV2.tools.<key>`（`true` 才注册；默认只有
 `setStickerRemark` 与 `sendVoice` 是 `false`）。**需要令牌**列：二代模式下所有 `qq_*` 调用都要带
@@ -49,7 +49,6 @@
 | `qq_get_group_history` | 群最近消息历史（可按 messageSeq 往前翻） | — |
 | `qq_get_active_members` | 最近活跃成员（判断话题参与者） | `getActiveMembers` |
 | `qq_get_self_image` | 看自己的 Q 版形象（按角色包里的图） | `getSelfImage` |
-| `qq_list_voices` | 语音库清单（名字/时长/大小） | `sendVoice` |
 | `qq_list_stickers` | 收藏表情清单（编号/情绪/内容/关键词） | `listStickers` |
 
 ### 2.2 只读：消息与上下文
@@ -76,7 +75,6 @@
 | `qq_send_burst` | 分多条发（随机真人间隔） | `sendBurst` | 最多 8 条 |
 | `qq_send_poke` | 拍一拍（群聊需 targetUserId） | `sendPoke` | 频率限制 |
 | `qq_send_sticker` | 发一张收藏表情（一条只能一张，不能带文字） | `sendSticker` | 同上 |
-| `qq_send_voice` | 发语音：`text` 现场合成 / `voice` 用语音库现成文件 | `sendVoice`（默认**关**） | 需引擎；120 字；2/分钟 |
 
 ### 2.4 等待与状态机
 
@@ -216,7 +214,7 @@ plugins/stellar/presets/<preset>.patch.yml                    ← 生成物（�
 | 429 | 频率超限 | 减条数/放慢 |
 | 工具名拼错 → 静默失效 | `restrict()` 对未知名字抛错被吞 | 跑 `npm run scan:tool-names` |
 | DSH 升级后工具集体消失 | MCP 配置被覆盖 / preset 行没重建 | 重跑 `setup-dsh.mjs` |
-| `qq_send_voice` 一直 502 | 语音引擎没启动 | 设置页语音页启动对应包 |
+| 想看某个工具的完整参数 | — | 设置 → 扩展 / 诊断里的工具清单，或直接看 `src/mcp-snowluma-safe.js` |
 | `qq_wait_for_messages` 报「必须先做沉睡前观察」 | 直接 `set_wake_config` 潜水 | 先 wait 300000 |
 
 ---

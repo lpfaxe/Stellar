@@ -245,37 +245,20 @@ http://127.0.0.1:3100/?token=<consoleToken>
 
 ---
 
-## 7. 可选：语音包 / 桌宠
+## 7. 可选组件（当前没有）
 
-### 语音（二选一或都装）
-
-语音引擎是**独立部署的第三方组件**，不随本仓库分发。装进 `state/voice-packs/` 两个子目录之一：
-
-```text
-state/voice-packs/voice-local/    # 本地引擎（体积大，约 1.8GB）
-state/voice-packs/voice-cloud/    # 云端引擎
-```
-
-各自的获取方式与模型下载见组件自己的说明；目录名保持上面两个即可被识别。
-
-装好后：**设置 → 语音 → 选本地/云端 → 启动**。
-⚠️ **AI 发语音默认是关的**，要在语音页和「工具开关」里打开 `sendVoice`。
-
-### 桌宠
-
-桌宠同样是**独立部署的第三方组件**，不随本仓库分发。
-
-1. 拿到它的 `pet-pack.zip`（含 Electron 运行时的打包产物）；
-2. 设置 → 桌宠 → 填 Electron 路径（`electron.exe`）→ 填 zip 路径 → 安装 → 启动。
-
+> ⚠️ 桌宠与语音子系统**已随代码剥离**，本仓库不含实现。旧版文档里「设置 → 语音 / 桌宠」两个标签、
+> `state/voice-packs/`、`sendVoice` 开关、`pet-pack.zip` 都不存在了，照着装不会生效。
+>
+> 想装语音只能自己接一个 TTS，再改桥接的发送路径——目前没有现成入口。
 ---
 
 ## 8. 升级
 
 **设置 → Stellar → 概览 → 更新 → 检查更新**。
 
-- 本体与语音包走 git：只做 `--ff-only` 快进，**绝不覆盖你的 `config.json` / `state/`**（实测见下）；
-- 桌宠走版本清单：下 zip → 校验 sha256 → 替换，**保留 `data/`**；
+- 本体走 git：只做 `--ff-only` 快进，**绝不覆盖你的 `config.json` / `state/`**；
+- `updates.components[]` 里登记的其他组件按各自来源更新（git / release zip + sha256）；
 - 有本地未提交改动时会**拒绝更新**并说明原因，不会强行合并。
 
 > 什么时候会被拒：你改过仓库里**被跟踪**的文件（例如 `config.example.json`、`roles/*.md`）。
@@ -296,7 +279,6 @@ state/voice-packs/voice-cloud/    # 云端引擎
 | 双击 `首次启动.bat` 一闪就没了 | 没装 Node / 版本太旧 | 那个窗口会停住并提示；实在看不到就开 PowerShell 跑 `node scripts/bootstrap.mjs` |
 | 想确认它到底会改什么 | — | `npm run bootstrap:check`（只打印计划，不落盘） |
 | 更新一直说"本地有改动" | 改过被跟踪的文件 | `git status` 看是哪个；恢复或改成放 `~/.dsh` 里 |
-| 桌宠装完起不来 | Electron 路径不对 | 设置 → 桌宠，重新选 `electron.exe` |
 
 还不行，先点设置页的 **诊断 → 环境体检**（9 项检查，每项都有"怎么补"），
 能自动补齐的缺项点 **一键配置**（只补缺的，不覆盖已有值）。

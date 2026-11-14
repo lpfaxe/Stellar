@@ -1,5 +1,10 @@
 # 桌宠子系统（SUBSYSTEM-PET）
 
+> ⚠️ **已剥离（历史文档）**：桌宠 / 语音子系统已随代码一起从本仓库剥离，
+> `plugins/stellar/lib/pet*.js`、`voice*.js`、`pet-api.js`、`http-guard.js` 以及桥接侧的语音/桌宠读点
+> **在当前代码里都不存在**。本文保留是为了记录当初的设计与踩过的坑，照着它装配不会生效。
+
+
 > 范围：插件侧四个模块（`plugins/stellar/lib/pet.js` / `pet-chat.js` / `pet-purpose.js` / `pet-api.js`
 > + 共用准入判据 `http-guard.js`）、它们在 `lib/index.js` 的装配、桥接侧的两处读点
 > （`src/bridge.js` 的载体与专注），以及仓库外 Electron 工程 `<桌宠工程>` 的客户端契约。

@@ -1,7 +1,7 @@
 # Embedding 包：模型 / 运行时 / 云端，按需安装
 
 > 状态：核心/插件/API/UI/runtime 已实现（2026-11-04）。runtime 自带 Ollama CPU 运行时，模型包安装后自动 `ollama create` 注册；bge-small、qwen3、bge-m3 在本机无系统 Ollama 的情况下完成安装/选择/启动/检索验收；干净 Windows VM 待跑。
-> 目标：Stellar 本体**不打包**模型权重、不打包 Python/Ollama 运行时；像语音包一样按需安装、独立升级、可卸载。
+> 目标：Stellar 本体**不打包**模型权重、不打包 Python/Ollama 运行时；按需安装、独立升级、可卸载。
 
 ## 1. 为什么不能塞进 Stellar
 
@@ -166,7 +166,7 @@ modelSpace qwen3.7-text-embedding-flash@cloud-v1
 - Stellar 更新包只带：`src/vector-memory.js`、插件、包目录/安装器；
 - `install-manifest.json` 校验不包含 `state/embedding-packs/`；
 - 包升级独立：新版本装到新目录，旧的保留；设置页切换/回滚；
-- 语音包已有同样纪律（见 [`../VOICE-PACKS.md`](../../VOICE-PACKS.md)）：**不自动更新、不进安装清单**。
+- 同样纪律：**不自动更新、不进安装清单**（这样用户能随时删掉而不影响主程序）。
 
 ## 8. 当前实现状态
 

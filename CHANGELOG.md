@@ -4,6 +4,9 @@
 
 ### 变更
 
+- **README 按真实代码重写**：旧 README 还在宣传早已剥离的桌面宠物与语音合成，并给出错误的数字（工具 39 个 → 实际 36 个 `qq_*` + 31 个 `stellar_*`；B站 CLI 34 条 → 实际 58 条；设置页 14 个标签 → 实际 10 个；控制台 10 个页面 → 实际 6 个页面 / 31 张卡）。
+  新版标题去掉「桌宠」，各节按代码现状重写（记忆改成 memory.db 五层结构、控制台改成完整面板、新增三种运行模式与待办提醒对象），并补一张「首次打开是空的，为什么」的对照表。`README.en.md` 同步重写。
+- 桌宠 / 语音残留文档收口：`docs/guides/subsystems/SUBSYSTEM-PET.md`、`SUBSYSTEM-VOICE.md`、`docs/VOICE-PACKS.md`、`plugins/stellar/docs/PET.md` 顶部加「已剥离（历史文档）」横幅；`docs/README.md`、`FOLDER_MAP.md`、`ARCHITECTURE.md`、`DATA-AND-CONFIG.md`、`INSTALL.md`、`RULES.md`、`AGENTS-TOOLS` 等索引处的引用逐条标注，`INSTALL.md` 的「可选：语音包 / 桌宠」整节改为「当前没有」。
 - 项目更名为 Stellar，仓库整理为单一发布单元；移除全部历史品牌残留（代码标识符、文档链接、发布记录、安装清单路径）。
 - 删除不再被运行时引用的内容：介绍视频工程与构建脚本、旧安装器目录、只服务于本地开发的内部笔记与 case 归档。
 - 文档重编：根目录只留 `README.md` / `README.en.md` / `RULES.md` / `AGENTS.md` / `CHANGELOG.md` / `LICENSE`，其余按主题归入 `docs/guides/`，索引重写为与实际文件一一对应。
