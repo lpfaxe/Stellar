@@ -5,7 +5,12 @@
 #    · GitHub 下载的 ZIP 里就是仓库里的字节。release/install-manifest.json 是对
 #      文件字节做的 sha256，一旦 git 在提交时把 CRLF 转成 LF，用户下下来的包
 #      verify-dir 会全部对不上。
-# 2) 其余文件本来就是 LF，交给默认策略即可，不做额外转换。
+# 2) 其余文本一律 **LF**（显式写死，不靠 core.autocrlf）。
+#    2026-11-15 踩到：本机 core.autocrlf=true，只要 git 碰过一次文件（checkout /
+#    git add），工作区就变 CRLF；而 release/install-manifest.json 是对 LF blob 算的
+#    sha256，于是 `--verify .` 报「不符」，Stellar.exe 里嵌的载荷也跟着对不上。
+#    显式 eol=lf 之后，新克隆、exe 载荷、清单三者字节一致。
+* text=auto eol=lf
 *.bat  -text
 *.cmd  -text
 *.ps1  -text
