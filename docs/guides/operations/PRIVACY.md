@@ -1,0 +1,97 @@
+# 发布前隐私检查（PRIVACY）
+
+> 这个项目在一台**真实机器**上运行过，工作树里天然散落着真实 QQ 号、群号、本机绝对路径、
+> 令牌、以及个人化的人格卡内容。任何一次「忘了就 push」都会把这些**永久写进公开仓库历史**
+> ——Git 历史里的东西删提交也删不干净（还会被 fork 保留）。
+>
+> 所以发布前跑一遍扫描，是发布流程的**硬性一步**，不是可选建议。
+
+---
+
+## 一、跑扫描
+
+```bash
+node scripts/privacy-scan.mjs                # 扫"将要提交的内容"（推荐）
+node scripts/privacy-scan.mjs --tracked-only # 只扫 git 已跟踪文件
+node scripts/privacy-scan.mjs --json         # 机读输出（给 CI 用）
+```
+
+退出码：`0` = 干净，`1` = 有命中（**必须逐个判读**），`2` = 规则文件坏了或目录扫不动。
+
+它扫描：`git ls-files` + 未被 ignore 的未跟踪文件（git 不可用时退化为目录遍历，并尽力套用 `.gitignore`；
+遍历会跳过 junction/symlink，免得被指回自身的联接搞成无限递归）。
+
+## 二、内置规则（挡住最常见的泄漏）
+
+| 规则 | 说明 |
+| --- | --- |
+| 本机绝对路径 | `%USERPROFILE%\…`（Windows 用户目录）与 `C:\<工作盘>\…` 这类非系统盘路径 |
+| QQ 号 / 群号 | 9–10 位连续数字（真实账号长度；文档里的 `123456789` 属占位符） |
+| 高熵串 | 疑似令牌/密钥。**过滤掉**全 hex（git SHA）、全大写下划线（环境变量名）、小写文件名式串 —— 真凭据是"大小写+数字混合" |
+| 凭据赋值 | `accessToken: "<12 位以上实际值>"` 形态（空值/模板不算，避免噪音） |
+| 私钥头 / 带凭据的 URL | `-----BEGIN … PRIVATE KEY-----`；URL 里直接嵌账号口令（`scheme://账号:口令@主机` 这种形态） |
+| 不应入库的文件 | `config.json`、`state/`、`audio/`、`*.log`、`*.bak*` |
+
+## 三、判读命中：三种处理，别一律"忽略"
+
+| 情况 | 处理 |
+| --- | --- |
+| **真实数据**（你的 QQ 号、群号、本机路径、令牌） | 换成占位符（`123456789` / `C:\path\to\…`），或把该文件移出版本控制 |
+| **该文件本来就不该入库** | 加进 `.gitignore`；若已提交过，见下面第四节 |
+| **误报**（脱敏模板、测试夹具、文档示例） | 加进白名单 —— 两种方式：<br>① 文件级：`scripts/privacy-rules.json` 的 `allowPaths`；<br>② 规则级：在同一文件里加一条更精确的 `deny` 规则覆盖默认规则 |
+
+### `scripts/privacy-rules.json`（可选的本地规则文件）
+
+- **它含你机器上的真实标识，必须加进 `.gitignore`**（模板见 `privacy-rules.example.json`）。
+- 结构：
+
+```jsonc
+{
+  "comment": "本机专用；不入库",
+  "deny": [
+    { "name": "我的真实群号", "pattern": "1001[0-9]{6}", "flags": "" }
+  ],
+  "denyFiles": ["notes/", "*.private.md"],
+  "allowPaths": ["config.example.json", "scripts/console-ui-"]
+}
+```
+
+`allowPaths` 支持前缀或 `*` 通配。**加入白名单前先确认那个文件里确实只有占位数据**——
+白名单是"误报豁免"，不是"这个文件不用检查"。
+
+## 四、已经提交进去了怎么办
+
+| 情况 | 处理 |
+| --- | --- |
+| 还没 push | `git reset --soft` 回退提交、清掉敏感内容、重新提交 |
+| 已 push，但**没有被 fork / 没人拉过** | `git filter-repo --replace-text` 清历史，再 `git push --force`。要提前通知协作者 |
+| 已 push 且可能被 fork / 已公开一段时间 | **当作已泄露**：① 立刻**轮换**所有涉及的凭据（控制台令牌、SnowLuma token、DSH launch token 都是本地生成，轮换成本低）；② 再清历史；③ 新仓库从干净起点开始，不带旧历史 |
+
+> 这也是建议**新建仓库、不带上游历史**的原因之一：
+> 旧历史里既有 11 MB 演示视频，也有难以逐条确认的本地痕迹。新起点一次扫干净，成本最低。
+
+## 五、CI 里怎么用
+
+```yaml
+# .github/workflows/ci.yml 片段
+- name: Privacy scan
+  run: node scripts/privacy-scan.mjs --tracked-only
+```
+
+CI 上只扫**已跟踪**文件（未跟踪文件在干净 checkout 里不存在），命中即失败。
+
+## 六、当前状态
+
+仓库里**不含**真实 QQ 号、群号、B站 mid、本机用户名与绝对路径：测试夹具一律用
+`100000000x` 这类占位号，文档里的路径写成 `%USERPROFILE%` / `C:\workspace` 这类中性形式。
+`scripts/privacy-scan.mjs --strict` 在当前树上是 0 命中，可以直接当发布前的硬门禁。
+
+两个已知的误报来源，已在扫描规则里处理（不是靠白名单掩盖）：
+
+| 位置 | 命中 | 为什么不是泄露 |
+| --- | --- | --- |
+| `plugins/stellar/package-lock.json`、`plugins/stellar/tools/vendor/package-lock.json` | `sha512-…` 高熵串 | npm 完整性哈希，不是密钥；已在 `allowPaths` 里按前缀放行 |
+| `src/bridge.js` 等处的 `apiKey: someVar` / `password = defaultValue` | 「疑似凭据赋值」 | 右侧是变量或形参默认值，没有字面量秘密；规则已要求值必须带引号 |
+
+**结论**：真实值只存在于 `config.json`、`state/` 与 `~/.dsh`（都在 `.gitignore` 里），
+仓库本身是干净的。

@@ -1,0 +1,194 @@
+// state/ 目录 ACL 收紧的**唯一实现**。
+//
+// 为什么单独成模块：这套逻辑原本在桥接进程（`src/bridge.js` 的 hardenStateDirAcl）和
+// 安装脚本（`scripts/harden-state-acl.mjs`）里各写了一份，两份带着**同一个** bug：
+//
+//   icacls DIR /inheritance:r /grant:r "u:(OI)(CI)F" /grant:r ... /T /C
+//
+// `(OI)(CI)` 是**目录专用**的继承标志。icacls 把它套到 `/T` 展开出来的**文件**上会失败，
+// 而同一句里的 `/inheritance:r` 已经把文件原有的继承 ACE 摘掉了 —— 净结果是**子文件
+// DACL 被清空，连属主自己都读不了**。实测后果：state/ 下 50 个子文件变成空 DACL，
+// 桥接读不到自己的控制台令牌（"Access to the path ... is denied"），而启动日志只报
+// 「未能收紧权限」，完全看不出已经造成了破坏。
+//
+// 第二个 bug 让第一个 bug 反复发生：回读自检用 `/\(I\)/.test(整段输出)` 判断「继承链是否
+// 断干净」。但 DSH 的 ACL 沙箱会把工作区（含 state/）标记为 Low 完整性，而
+// `Mandatory Label\Low Mandatory Level:(I)(OI)(CI)(NW)` 这一行**永远**带 (I) ——
+// 于是「已收紧」被误判成「未收紧」，**每次启动都重跑一遍那个破坏性命令**。
+//
+// 合并成一份实现，从结构上杜绝两份逻辑再次漂移。
+//
+// 正确顺序是四步，缺一不可：
+//   1. 目录上停止继承；
+//   2. 按 **SID** 删除宽松主体（不受系统显示语言影响）；
+//   3. 对**每一个**条目显式授权 —— 不带 (OI)(CI)，所以对文件同样有效；
+//   4. 给目录补一份可继承 ACE，让以后新建的文件自动拿到权限。
+// 最后自检由调用方按需做（{@link isHardened}）。
+
+import fs from 'node:fs';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+
+// Authenticated Users=S-1-5-11, BUILTIN\Users=S-1-5-32-545, Everyone=S-1-1-0
+const PERMISSIVE_SIDS = ['*S-1-5-11', '*S-1-5-32-545', '*S-1-1-0'];
+
+/**
+ * 收紧 ACL 时用的账户名。
+ *
+ * 为什么不能只看 `process.env.USERNAME`：桥接由计划任务/DSH 子进程拉起时环境可能被裁剪
+ * （2026-11-13 实测：DSH 工具进程里 `process.env` 连 USERNAME 都没有），此时 hardenFile
+ * 会直接失败退出，而失败信息只说「无法确定当前用户名」，排查方向全错。
+ * 回退到 `os.userInfo().username` —— 它走 Win32 API，不依赖环境变量。
+ */
+export function resolveAclUser() {
+  const fromEnv = String(process.env.USERNAME ?? '').trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const name = String(os.userInfo().username ?? '').trim();
+    return name || '';
+  } catch { return ''; }
+}
+
+/**
+ * 需要「写完就收紧」的敏感文件名（basename 精确匹配）。
+ *
+ * 背景（2026-11-13）：`atomicWriteJson` 走「临时文件 + rename」，新文件的 DACL 是从父目录
+ * **继承**来的。stellar/config.json 所在目录的继承项含 `Authenticated Users:(M)`，
+ * 所以每次桥接回写 DSH 端口，手工加固过的 ACL 就被悄悄换回宽松版 —— 加固成了
+ * 「直到下一次写配置为止」。
+ */
+export const SENSITIVE_BASENAMES = new Set([
+  'config.json',
+  'bili.config.json',
+  'panel-token.txt',
+  // Cloudflare 命名隧道 token = 直接能把隧道带到你账号里的凭据（2026-11-13）
+  'cloudflare-tunnel-token.txt',
+]);
+
+/** 这个路径是不是需要写完收紧的敏感文件。 */
+export function isSensitiveFile(file) {
+  try { return SENSITIVE_BASENAMES.has(path_basename(file).toLowerCase()); } catch { return false; }
+}
+
+function path_basename(file) {
+  return String(file ?? '').split(/[\\/]/).pop() ?? '';
+}
+
+/**
+ * 写入敏感文件后调用：命中白名单才真跑 icacls，其余直接跳过（不拖慢普通写）。
+ * @param {string} file
+ * @returns {{ok: boolean, detail: string, skipped?: boolean}}
+ */
+export function hardenSensitiveFile(file) {
+  if (!isSensitiveFile(file)) return { ok: true, detail: 'not-sensitive', skipped: true };
+  return hardenFile(file);
+}
+
+/** icacls 的可执行封装（统一超时与隐藏窗口）。 */
+export function icacls(args, timeout = 30000) {
+  return spawnSync('icacls', args, { encoding: 'utf8', timeout, windowsHide: true });
+}
+
+/**
+ * icacls 输出里是否还有**继承来的权限** ACE。
+ *
+ * 必须排除 Mandatory Label 行：那不是权限，而且 DSH 沙箱打过 Low 标签后它永远带 (I)。
+ * 用全文 `/\(I\)/` 扫描会把「已收紧」判成「未收紧」，进而让调用方反复重跑破坏性命令。
+ */
+export function hasInheritedPermissionAce(icaclsOutput) {
+  return String(icaclsOutput ?? '')
+    .split(/\r?\n/)
+    .filter((line) => !/Mandatory Label/i.test(line))
+    .some((line) => /\(I\)/.test(line));
+}
+
+/** 是否还有本机任意用户可读的宽松主体授权。 */
+export function hasPermissiveTrustee(icaclsOutput) {
+  return /Authenticated Users|BUILTIN\\Users|\bEveryone\b/i.test(String(icaclsOutput ?? ''));
+}
+
+/**
+ * 目标路径的权限是否已收紧：既没有继承来的权限 ACE，也没有宽松主体。
+ * @param {string} target - 目录或文件路径。
+ */
+export function isHardened(target) {
+  if (process.platform !== 'win32') {
+    try { return (fs.statSync(target).mode & 0o077) === 0; } catch { return false; }
+  }
+  const res = icacls([target], 10000);
+  if (res.error || res.status !== 0) return false;
+  const out = res.stdout ?? '';
+  return !hasInheritedPermissionAce(out) && !hasPermissiveTrustee(out);
+}
+
+/**
+ * 收紧一个**目录**及其整棵子树的权限。
+ * @param {string} dir - 目标目录。
+ * @returns {{ok: boolean, detail: string}}
+ */
+export function hardenDir(dir) {
+  if (process.platform !== 'win32') {
+    try { fs.chmodSync(dir, 0o700); return { ok: true, detail: 'chmod 700' }; }
+    catch (error) { return { ok: false, detail: error?.message ?? String(error) }; }
+  }
+  const user = resolveAclUser();
+  if (!user) return { ok: false, detail: '无法确定当前用户名（%USERNAME% 与 os.userInfo() 都为空）' };
+  const steps = [
+    [dir, '/inheritance:r', '/C', '/Q'],
+    [dir, '/remove:g', ...PERMISSIVE_SIDS, '/T', '/C', '/Q'],
+    [dir, '/T', '/C', '/Q', '/grant', `${user}:F`, '/grant', 'SYSTEM:F', '/grant', 'Administrators:F'],
+    [dir, '/Q', '/grant', `${user}:(OI)(CI)F`, '/grant', 'SYSTEM:(OI)(CI)F', '/grant', 'Administrators:(OI)(CI)F']
+  ];
+  for (const args of steps) {
+    // 启动路径不能为了 ACL 把控制台事件循环卡 30 秒/步；超时就明确失败，交给安全页手动重试。
+    const res = icacls(args, 3000);
+    const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+    if (res.error) return { ok: false, detail: res.error.message };
+    // /C 会让 icacls 继续处理剩余文件、即使全失败退出码仍是 0，所以必须看输出。
+    if (/access is denied/i.test(out)) {
+      return { ok: false, detail: out.split('\n').filter(Boolean).slice(-3).join(' / ') };
+    }
+  }
+  // 自检：属主必须仍能读到目录内容（防止把 DACL 清空这种"成功"的破坏）。
+  try { fs.readdirSync(dir); }
+  catch (error) { return { ok: false, detail: `收紧后目录已不可读，请检查 ACL（${error?.message ?? error}）` }; }
+  return { ok: true, detail: 'icacls' };
+}
+
+/**
+ * 收紧一个**文件**的权限（凭据文件用；文件不能带 (OI)(CI)）。
+ * @param {string} file - 目标文件。
+ * @returns {{ok: boolean, detail: string}}
+ */
+export function hardenFile(file) {
+  if (process.platform !== 'win32') {
+    try { fs.chmodSync(file, 0o600); return { ok: true, detail: 'chmod 600' }; }
+    catch (error) { return { ok: false, detail: error?.message ?? String(error) }; }
+  }
+  const user = resolveAclUser();
+  if (!user) return { ok: false, detail: '无法确定当前用户名（%USERNAME% 与 os.userInfo() 都为空）' };
+  const res = icacls([file, '/inheritance:r',
+    '/grant:r', `${user}:F`, '/grant:r', 'SYSTEM:F', '/grant:r', 'Administrators:F', '/C', '/Q']);
+  const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+  if (res.error) return { ok: false, detail: res.error.message };
+  if (/access is denied/i.test(out)) {
+    return { ok: false, detail: out.split('\n').filter(Boolean).slice(-2).join(' / ') };
+  }
+  return { ok: true, detail: 'icacls' };
+}
+
+/**
+ * 给人看的手动收紧命令（失败降级时打印）。
+ *
+ * 必须是**安全**的那一版：把 (OI)(CI) 授权和 /T 混在同一句里会把子文件 DACL 清空。
+ */
+export function manualDirCommand(dir) {
+  if (process.platform !== 'win32') return `chmod -R go-rwx "${dir}"`;
+  const d = `"${dir}"`;
+  return [
+    `icacls ${d} /inheritance:r /C /Q`,
+    `icacls ${d} /remove:g "*S-1-5-11" "*S-1-5-32-545" "*S-1-1-0" /T /C /Q`,
+    `icacls ${d} /T /C /Q /grant "%USERNAME%:F" /grant "SYSTEM:F" /grant "Administrators:F"`,
+    `icacls ${d} /Q /grant "%USERNAME%:(OI)(CI)F" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F"`
+  ].join('\n             ');
+}

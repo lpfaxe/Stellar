@@ -1,0 +1,3 @@
+name: B站鲸鱼（精简工具面）
+description: B站生物钟会话专用：与 DSH standard 相同，但不把 univer/remote/acp 等无关工具塞进 schema。
+order: 12

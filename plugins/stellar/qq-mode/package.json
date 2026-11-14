@@ -1,0 +1,11 @@
+{
+  "name": "stellar-qq-mode",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stellar host-only qq-mode settings namespace (no dsh.client).",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  }
+}

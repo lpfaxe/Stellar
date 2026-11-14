@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Stellar 配置编辑器</title>
+<style>
+:root{
+  --bg:#f6f7fb; --card:#fff; --border:#e2e7f0; --border-strong:#cfd7e6;
+  --text:#1f2637; --muted:#66718a; --faint:#8a95ab;
+  --accent:#4d6bfe; --accent-hover:#3f5ce6; --accent-soft:#eef2ff; --accent-border:#c7d2ff;
+  --ok:#168467; --ok-soft:#e8f7f0; --warn:#8e652a; --warn-soft:#fff7ea; --warn-border:#f2d9ae;
+  --err:#b93b3b; --err-soft:#fff2f0; --err-border:#f3d2ce;
+  --field:#fdfdff; --radius:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14161c; --card:#1b1e26; --border:#2a2f3b; --border-strong:#3a4152;
+    --text:#e7eaf3; --muted:#a2acc2; --faint:#7d879b;
+    --accent:#7c92ff; --accent-hover:#93a5ff; --accent-soft:#232a44; --accent-border:#3a4470;
+    --ok:#5cc79e; --ok-soft:#1c2a25; --warn:#e0b879; --warn-soft:#2a2419; --warn-border:#4a3d26;
+    --err:#ef8a80; --err-soft:#2c1e1d; --err-border:#4d2f2c;
+    --field:#171a21;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--text);
+  font:15px/1.6 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+  padding-bottom:96px;
+}
+header.bar{
+  position:sticky; top:0; z-index:20; backdrop-filter:blur(8px);
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  border-bottom:1px solid var(--border);
+  padding:14px 20px; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+}
+header.bar h1{font-size:16px; margin:0; letter-spacing:.2px}
+header.bar .sub{color:var(--faint); font-size:12.5px}
+main{max-width:900px; margin:0 auto; padding:20px}
+.card{
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px 18px; margin-bottom:14px;
+}
+.card > h2{
+  font-size:13px; text-transform:none; letter-spacing:.4px; margin:0 0 4px;
+  color:var(--accent); font-weight:650;
+}
+.card > .desc{margin:0 0 14px; color:var(--muted); font-size:12.5px}
+.row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.row + .row{margin-top:10px}
+.field{display:grid; grid-template-columns:190px 1fr; gap:10px 14px; align-items:start; padding:9px 0}
+.field + .field{border-top:1px dashed var(--border)}
+.field > label{color:var(--muted); font-size:13px; padding-top:7px}
+.field .lab{display:flex; flex-direction:column; gap:2px; padding-top:4px}
+.field .lab code{font-size:11.5px; color:var(--faint); font-family:ui-monospace,Consolas,monospace}
+.field .control{display:flex; flex-direction:column; gap:6px; min-width:0}
+.field .hint{color:var(--faint); font-size:12px; line-height:1.5}
+input[type=text],input[type=password],input[type=number],select,textarea{
+  width:100%; padding:8px 10px; font:inherit; font-size:14px;
+  color:var(--text); background:var(--field);
+  border:1px solid var(--border-strong); border-radius:8px; outline:none;
+}
+input[type=number]{max-width:160px}
+textarea{min-height:70px; resize:vertical; font-family:ui-monospace,Consolas,monospace; font-size:13px}
+input:focus,select:focus,textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent)}
+.check{display:flex; gap:8px; align-items:center; font-size:14px; padding-top:6px}
+.check input{width:16px; height:16px; accent-color:var(--accent)}
+button{
+  font:inherit; font-size:14px; padding:8px 14px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--border-strong); background:var(--card); color:var(--text);
+}
+button:hover{border-color:var(--accent-border); background:var(--accent-soft)}
+button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+button.primary:hover{background:var(--accent-hover); border-color:var(--accent-hover)}
+button:disabled{opacity:.5; cursor:not-allowed}
+#path{flex:1 1 340px; min-width:220px; font-family:ui-monospace,Consolas,monospace; font-size:13px}
+.state{font-size:12.5px; color:var(--muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.pill{display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; border:1px solid transparent}
+.pill.ok{background:var(--ok-soft); color:var(--ok); border-color:color-mix(in srgb, var(--ok) 28%, transparent)}
+.pill.warn{background:var(--warn-soft); color:var(--warn); border-color:var(--warn-border)}
+.pill.err{background:var(--err-soft); color:var(--err); border-color:var(--err-border)}
+.pill.dim{background:transparent; color:var(--faint); border-color:var(--border)}
+.note{margin:12px 0 0; color:var(--faint); font-size:12.5px; line-height:1.65}
+.errors{
+  border:1px solid var(--err-border); background:var(--err-soft); color:var(--err);
+  border-radius:var(--radius); padding:12px 16px; margin-bottom:14px;
+}
+.errors ul{margin:6px 0 0; padding-left:20px}
+.errors code{font-family:ui-monospace,Consolas,monospace; font-size:12.5px}
+.savebar{
+  position:fixed; left:0; right:0; bottom:0; z-index:30;
+  display:flex; gap:12px; align-items:center;
+  padding:12px 20px; border-top:1px solid var(--border);
+  background:color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter:blur(10px);
+}
+.savebar .grow{flex:1}
+.savebar .msg{font-size:13px; color:var(--muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.toast{
+  position:fixed; right:20px; bottom:74px; z-index:40; max-width:420px;
+  padding:10px 14px; border-radius:10px; font-size:13.5px;
+  background:var(--card); border:1px solid var(--border-strong); box-shadow:0 8px 24px #0002;
+}
+.toast.ok{border-left:3px solid var(--ok)}
+.toast.err{border-left:3px solid var(--err)}
+.hidden{display:none !important}
+@media (max-width:640px){
+  .field{grid-template-columns:1fr}
+  .field .lab{padding-top:0}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Stellar 配置编辑器</h1>
+  <span class="sub">只改你选中的那个 config.json · 表单没覆盖的键会原样保留</span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>一、配置文件</h2>
+    <p class="desc">路径由你指定。这个页面不会去扫描磁盘找 config.json。</p>
+    <div class="row">
+      <input id="path" type="text" spellcheck="false" placeholder="粘贴完整路径，例如 C:\Users\你\.dsh\stellar\config.json">
+      <button id="browse" type="button">浏览…</button>
+      <button id="load" type="button" class="primary">读取</button>
+    </div>
+    <div class="row">
+      <button id="create" type="button">没有这个文件？按模板新建</button>
+      <span id="fileState" class="state"></span>
+    </div>
+    <p class="note" id="preserveNote"></p>
+  </section>
+
+  <div id="errors" class="errors hidden"></div>
+
+  <form id="form" class="hidden" autocomplete="off">
+    <section class="card">
+      <h2>二、接哪个 DSH</h2>
+      <p class="desc">桥接要把 QQ 消息投给一个正在运行的 DSH，这里填它的地址与要用的模型。</p>
+      <div class="field">
+        <div class="lab"><label for="f-dsh-baseUrl">DSH 地址</label><code>dsh.baseUrl</code></div>
+        <div class="control"><input id="f-dsh-baseUrl" type="text" spellcheck="false" data-path="dsh.baseUrl">
+          <span class="hint">本机一般就是 http://127.0.0.1:3080；端口会随 DSH 重启变，可用「首次启动.bat」或 npm run bootstrap 同步。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-dsh-provider">模型提供方</label><code>dsh.provider</code></div>
+        <div class="control"><input id="f-dsh-provider" type="text" spellcheck="false" data-path="dsh.provider" placeholder="deepseek-official"></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-dsh-model">模型</label><code>dsh.model</code></div>
+        <div class="control"><input id="f-dsh-model" type="text" spellcheck="false" data-path="dsh.model" placeholder="deepseek-flash"></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-dsh-follow">跟随 DSH 默认模型</label><code>dsh.followDefaultModel</code></div>
+        <div class="control"><label class="check"><input id="f-dsh-follow" type="checkbox" data-path="dsh.followDefaultModel" data-kind="bool"> 打开后在 DSH 里换模型，这里也跟着换</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-dsh-token">鉴权令牌</label><code>dsh.authToken</code></div>
+        <div class="control"><input id="f-dsh-token" type="password" spellcheck="false" data-path="dsh.authToken" placeholder="本地回环通常留空">
+          <span class="hint">留空表示不带鉴权头。填了就会以 Bearer 形式发出去。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-dsh-remote">允许连远程 DSH</label><code>dsh.allowRemote</code></div>
+        <div class="control"><label class="check"><input id="f-dsh-remote" type="checkbox" data-path="dsh.allowRemote" data-kind="bool"> 允许非回环地址（放开前先确认那是你自己的机器）</label></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>三、是谁在用</h2>
+      <p class="desc">白名单为空 = 谁都不理。这是最容易漏的一步。</p>
+      <div class="field">
+        <div class="lab"><label for="f-ownerQQ">主人 QQ</label><code>ownerQQ</code></div>
+        <div class="control"><input id="f-ownerQQ" type="text" inputmode="numeric" spellcheck="false" data-path="ownerQQ" placeholder="纯数字，例如 1000000001">
+          <span class="hint">只有这个号能改设置、能看控制台之外的敏感信息。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-admin">管理员 QQ</label><code>admin</code></div>
+        <div class="control"><input id="f-admin" type="text" inputmode="numeric" spellcheck="false" data-path="admin" placeholder="可留空">
+          <span class="hint">管理员能触发审批类操作，但改不了主人专属的设置。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-allow-private">私聊白名单</label><code>allow.private</code></div>
+        <div class="control"><textarea id="f-allow-private" spellcheck="false" data-path="allow.private" data-kind="list" placeholder="一行一个 QQ 号"></textarea>
+          <span class="hint">一行一个数字。留空 = 不回应任何私聊。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-allow-groups">群白名单</label><code>allow.groups</code></div>
+        <div class="control"><textarea id="f-allow-groups" spellcheck="false" data-path="allow.groups" data-kind="list" placeholder="一行一个群号"></textarea>
+          <span class="hint">不在这里的群，一条消息都不会处理。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-deny-users">拉黑的人</label><code>deny.users</code></div>
+        <div class="control"><textarea id="f-deny-users" spellcheck="false" data-path="deny.users" data-kind="list" placeholder="一行一个 QQ 号，可留空"></textarea>
+          <span class="hint">拉黑优先于白名单。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-allow-empty">白名单为空时放行所有人</label><code>allowAllWhenEmpty</code></div>
+        <div class="control"><label class="check"><input id="f-allow-empty" type="checkbox" data-path="allowAllWhenEmpty" data-kind="bool"> 危险：打开后任何人都能用，一般不要开</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-ack">收到消息先回一句</label><code>ackMessage</code></div>
+        <div class="control"><input id="f-ack" type="text" data-path="ackMessage" placeholder="留空 = 不回执">
+          <span class="hint">模型慢的时候用户不会以为掉线了。</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>四、SnowLuma 网关</h2>
+      <p class="desc">SnowLuma 是第三方程序，本仓库不代装。它跑起来之后，桥接靠这两个地址连它。</p>
+      <div class="field">
+        <div class="lab"><label for="f-snow-http">HTTP 地址</label><code>snowluma.httpUrl</code></div>
+        <div class="control"><input id="f-snow-http" type="text" spellcheck="false" data-path="snowluma.httpUrl" placeholder="http://127.0.0.1:3000"></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-snow-ws">WebSocket 地址</label><code>snowluma.wsUrl</code></div>
+        <div class="control"><input id="f-snow-ws" type="text" spellcheck="false" data-path="snowluma.wsUrl" placeholder="ws://127.0.0.1:3001"></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-snow-token">访问令牌</label><code>snowluma.accessToken</code></div>
+        <div class="control"><input id="f-snow-token" type="password" spellcheck="false" data-path="snowluma.accessToken" placeholder="SnowLuma 设置里生成的那串">
+          <span class="hint">这个值属于密码级，别贴进聊天记录或截图。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-snow-follow">自动跟随发现的地址</label><code>snowluma.followDiscoveredEndpoint</code></div>
+        <div class="control"><label class="check"><input id="f-snow-follow" type="checkbox" data-path="snowluma.followDiscoveredEndpoint" data-kind="bool"> 网关换端口时自动跟上（推荐开）</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-snow-launcher">启动器路径</label><code>snowluma.launcherPath</code></div>
+        <div class="control"><div class="row"><input id="f-snow-launcher" type="text" spellcheck="false" data-path="snowluma.launcherPath" placeholder="不填就只用现成在跑的网关"><button type="button" id="pick-launcher">浏览…</button></div>
+          <span class="hint">想在这里点按钮拉起 SnowLuma 才需要填。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-snow-allowlaunch">允许从本程序启动它</label><code>snowluma.allowLaunch</code></div>
+        <div class="control"><label class="check"><input id="f-snow-allowlaunch" type="checkbox" data-path="snowluma.allowLaunch" data-kind="bool"> 允许桥接替你拉起 SnowLuma</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-snow-home">数据目录</label><code>snowluma.homeDir</code></div>
+        <div class="control"><div class="row"><input id="f-snow-home" type="text" spellcheck="false" data-path="snowluma.homeDir" placeholder="SnowLuma 自己的数据目录，可留空"><button type="button" id="pick-home">浏览…</button></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>五、桥接本体</h2>
+      <div class="field">
+        <div class="lab"><label for="f-port">控制台端口</label><code>consolePort</code></div>
+        <div class="control"><input id="f-port" type="number" min="0" max="65535" data-path="consolePort" data-kind="number" placeholder="3100">
+          <span class="hint">默认 3100。填 0 让系统自动挑一个。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-token">控制台令牌</label><code>consoleToken</code></div>
+        <div class="control"><input id="f-token" type="password" spellcheck="false" data-path="consoleToken" placeholder="留空由程序首次启动时自动生成">
+          <span class="hint">留空最省事：桥接会生成一个写进 state/console-token。自己填要 16~128 位字母数字。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-preset">用哪套人格预设</label><code>agentPreset</code></div>
+        <div class="control"><select id="f-preset" data-path="agentPreset" data-kind="select">
+          <option value="qq-chat">qq-chat（一代：模型自己决定何时回）</option>
+          <option value="qq-chat-v2">qq-chat-v2（二代：工具面更全，推荐）</option>
+        </select></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-wstitle">会话标题</label><code>workspaceTitle</code></div>
+        <div class="control"><input id="f-wstitle" type="text" data-path="workspaceTitle" placeholder="QQ 聊天">
+          <span class="hint">在 DSH 会话列表里显示的名字。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-cwd">会话工作目录</label><code>sessionCwd</code></div>
+        <div class="control"><div class="row"><input id="f-cwd" type="text" spellcheck="false" data-path="sessionCwd" placeholder="留空用仓库根目录"><button type="button" id="pick-cwd">浏览…</button></div></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-senddelay">分条间隔（毫秒）</label><code>sendDelayMs</code></div>
+        <div class="control"><input id="f-senddelay" type="number" min="0" max="600000" data-path="sendDelayMs" data-kind="number" placeholder="300">
+          <span class="hint">0~600000。太小会像机器刷屏。</span></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-qtimeout">问句等待上限（毫秒）</label><code>questionTimeoutMs</code></div>
+        <div class="control"><input id="f-qtimeout" type="number" min="1000" max="86400000" data-path="questionTimeoutMs" data-kind="number" placeholder="300000"></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-maxinject">人格卡注入上限</label><code>role.maxInjectChars</code></div>
+        <div class="control"><input id="f-maxinject" type="number" min="1000" max="100000" data-path="role.maxInjectChars" data-kind="number" placeholder="6000">
+          <span class="hint">字。太大吃上下文，太小人格会变淡。</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>六、功能开关</h2>
+      <p class="desc">不确定就先保持默认；关掉不会删数据。</p>
+      <div class="field">
+        <div class="lab"><label for="f-bili">B 站模块</label><code>biliBridge.enabled</code></div>
+        <div class="control"><label class="check"><input id="f-bili" type="checkbox" data-path="biliBridge.enabled" data-kind="bool"> 允许看视频/评论、发动态（要登录态）</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-social">二代社交引擎</label><code>socialV2.enabled</code></div>
+        <div class="control"><label class="check"><input id="f-social" type="checkbox" data-path="socialV2.enabled" data-kind="bool"> 主动判断要不要说话、何时收尾</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-purpose">目的机制</label><code>purpose.enabled</code></div>
+        <div class="control"><label class="check"><input id="f-purpose" type="checkbox" data-path="purpose.enabled" data-kind="bool"> 允许它自己攒素材来找你聊</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-fish">鱼群保护</label><code>fishGuard.enabled</code></div>
+        <div class="control"><label class="check"><input id="f-fish" type="checkbox" data-path="fishGuard.enabled" data-kind="bool"> 挡掉刷屏/钓鱼式试探</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-intercept">拦截通知</label><code>security.interceptNotify</code></div>
+        <div class="control"><label class="check"><input id="f-intercept" type="checkbox" data-path="security.interceptNotify" data-kind="bool"> 拦下危险调用时告诉主人</label></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-webprovider">联网搜索</label><code>webSearch.provider</code></div>
+        <div class="control"><select id="f-webprovider" data-path="webSearch.provider" data-kind="select">
+          <option value="auto">auto（有 key 就用 DeepSeek，否则回退）</option>
+          <option value="deepseek">deepseek</option>
+          <option value="off">off（完全关掉）</option>
+        </select></div>
+      </div>
+      <div class="field">
+        <div class="lab"><label for="f-webkey">搜索用 API Key</label><code>webSearch.apiKey</code></div>
+        <div class="control"><input id="f-webkey" type="password" spellcheck="false" data-path="webSearch.apiKey" placeholder="留空则读环境变量">
+          <span class="hint">留空时会去读 webSearch.apiKeyEnv 指的环境变量，不落盘更安全。</span></div>
+      </div>
+    </section>
+  </form>
+</main>
+
+<div class="savebar">
+  <button id="save" type="button" class="primary" disabled>保存</button>
+  <button id="reload" type="button" disabled>放弃改动并重读</button>
+  <span class="grow"></span>
+  <span id="saveMsg" class="msg"></span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var TOKEN = '__CONFIG_UI_TOKEN__';
+  var STORE_KEY = 'stellar-config-ui-path';
+  var pathInput = document.getElementById('path');
+  var form = document.getElementById('form');
+  var errorsBox = document.getElementById('errors');
+  var fileState = document.getElementById('fileState');
+  var preserveNote = document.getElementById('preserveNote');
+  var saveBtn = document.getElementById('save');
+  var reloadBtn = document.getElementById('reload');
+  var saveMsg = document.getElementById('saveMsg');
+  var current = null;
+  var dirty = false;
+
+  function api(route, body) {
+    return fetch(route, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { 'content-type': 'application/json', 'x-config-ui-token': TOKEN },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    }).then(function (res) { return res.json(); });
+  }
+
+  function toast(text, kind) {
+    var el = document.createElement('div');
+    el.className = 'toast ' + (kind || '');
+    el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(function () { el.remove(); }, 4200);
+  }
+
+  function getPath(obj, p) {
+    var parts = p.split('.');
+    var node = obj;
+    for (var i = 0; i < parts.length; i += 1) {
+      if (node === null || typeof node !== 'object') return undefined;
+      node = node[parts[i]];
+    }
+    return node;
+  }
+
+  function setPath(obj, p, value) {
+    var parts = p.split('.');
+    var node = obj;
+    for (var i = 0; i < parts.length - 1; i += 1) {
+      if (node[parts[i]] === null || typeof node[parts[i]] !== 'object' || Array.isArray(node[parts[i]])) node[parts[i]] = {};
+      node = node[parts[i]];
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+
+  function fields() { return Array.prototype.slice.call(form.querySelectorAll('[data-path]')); }
+
+  function fillForm(config) {
+    fields().forEach(function (el) {
+      var value = getPath(config, el.getAttribute('data-path'));
+      var kind = el.getAttribute('data-kind');
+      if (kind === 'bool') { el.checked = value === true; return; }
+      if (kind === 'list') {
+        el.value = Array.isArray(value) ? value.join('\n') : '';
+        return;
+      }
+      if (value === undefined || value === null) { el.value = ''; return; }
+      if (kind === 'select') {
+        var has = Array.prototype.some.call(el.options, function (o) { return o.value === String(value); });
+        if (!has) {
+          var opt = document.createElement('option');
+          opt.value = String(value);
+          opt.textContent = String(value) + '（文件里的值）';
+          el.appendChild(opt);
+        }
+      }
+      el.value = String(value);
+    });
+    document.getElementById('form').classList.remove('hidden');
+  }
+
+  function buildPatch() {
+    var patch = {};
+    fields().forEach(function (el) {
+      var p = el.getAttribute('data-path');
+      var kind = el.getAttribute('data-kind');
+      if (kind === 'bool') { setPath(patch, p, el.checked); return; }
+      if (kind === 'list') {
+        var items = el.value.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+        setPath(patch, p, items);
+        return;
+      }
+      if (kind === 'number') {
+        if (String(el.value).trim() === '') return;
+        var num = Number(el.value);
+        setPath(patch, p, Number.isFinite(num) ? num : el.value);
+        return;
+      }
+      setPath(patch, p, el.value);
+    });
+    return patch;
+  }
+
+  function countPreserved(config) {
+    var covered = {};
+    fields().forEach(function (el) { covered[el.getAttribute('data-path')] = true; });
+    var total = 0;
+    var shown = 0;
+    (function walk(node, prefix) {
+      if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+      Object.keys(node).forEach(function (key) {
+        var full = prefix ? prefix + '.' + key : key;
+        var value = node[key];
+        if (value && typeof value === 'object' && !Array.isArray(value)) { walk(value, full); return; }
+        total += 1;
+        if (covered[full]) shown += 1;
+      });
+    })(config, '');
+    return { total: total, shown: shown };
+  }
+
+  function markDirty(value) {
+    dirty = value;
+    saveBtn.disabled = !value;
+    reloadBtn.disabled = !value;
+    saveMsg.textContent = value ? '有改动没保存' : '';
+    document.title = (value ? '• ' : '') + 'Stellar 配置编辑器';
+  }
+
+  function showErrors(list) {
+    if (!list || !list.length) { errorsBox.classList.add('hidden'); errorsBox.innerHTML = ''; return; }
+    var html = '<strong>保存前先改这几处：</strong><ul>';
+    list.forEach(function (item) {
+      html += '<li><code>' + String(item.field || '(根)') + '</code> — ' + String(item.message) + '</li>';
+    });
+    html += '</ul>';
+    errorsBox.innerHTML = html;
+    errorsBox.classList.remove('hidden');
+  }
+
+  function applyState(state) {
+    fileState.innerHTML = '';
+    if (!state || !state.path) { return; }
+    if (!state.exists) {
+      var p1 = document.createElement('span');
+      p1.className = 'pill warn';
+      p1.textContent = '文件还不存在';
+      fileState.appendChild(p1);
+      return;
+    }
+    if (!state.ok) {
+      var p2 = document.createElement('span');
+      p2.className = 'pill err';
+      p2.textContent = state.error || '读不出来';
+      fileState.appendChild(p2);
+      return;
+    }
+    var ok = document.createElement('span');
+    ok.className = 'pill ok';
+    ok.textContent = '已读取';
+    fileState.appendChild(ok);
+    var size = document.createElement('span');
+    size.className = 'pill dim';
+    size.textContent = Math.max(1, Math.round(state.size / 1024)) + ' KB';
+    fileState.appendChild(size);
+    if (state.mtime) {
+      var when = document.createElement('span');
+      when.className = 'pill dim';
+      when.textContent = '改于 ' + state.mtime.replace('T', ' ').slice(0, 19);
+      fileState.appendChild(when);
+    }
+  }
+
+  function loadConfig(pathText) {
+    var target = String(pathText || pathInput.value || '').trim();
+    if (!target) { showErrors([{ field: '', message: '先填配置文件路径，或者点「浏览…」选一个' }]); return; }
+    saveMsg.textContent = '正在读取…';
+    api('/api/read', { path: target }).then(function (res) {
+      pathInput.value = target;
+      try { localStorage.setItem(STORE_KEY, target); } catch (e) {}
+      if (!res.ok) {
+        current = null;
+        form.classList.add('hidden');
+        markDirty(false);
+        applyState({ path: target, exists: res.missing ? false : true, ok: false, error: res.error });
+        showErrors([{ field: '', message: res.error }]);
+        saveMsg.textContent = '';
+        return;
+      }
+      current = res.config;
+      fillForm(current);
+      var stat = countPreserved(current);
+      preserveNote.textContent = '这个文件里共 ' + stat.total + ' 个叶子配置项；本页只覆盖其中 ' + stat.shown +
+        ' 个，剩下的 ' + (stat.total - stat.shown) + ' 个保存时原样保留（不会因为页面没显示就被删掉）。';
+      applyState(res.state);
+      showErrors([]);
+      markDirty(false);
+      saveMsg.textContent = '已读取：' + res.path;
+    }).catch(function (error) {
+      showErrors([{ field: '', message: '连不上本地页面服务：' + error }]);
+    });
+  }
+
+  function save() {
+    if (!current) return;
+    var target = String(pathInput.value || '').trim();
+    saveBtn.disabled = true;
+    saveMsg.textContent = '正在保存…';
+    api('/api/write', { path: target, patch: buildPatch() }).then(function (res) {
+      if (!res.ok) {
+        showErrors(res.validation || [{ field: '', message: res.error || '保存失败' }]);
+        saveMsg.textContent = '没有写入任何东西';
+        saveBtn.disabled = false;
+        return;
+      }
+      markDirty(false);
+      showErrors([]);
+      applyState(res.state);
+      saveMsg.textContent = res.changed
+        ? ('已保存' + (res.backup ? '（旧文件备份为 ' + res.backup.split(/[\\/]/).pop() + '）' : ''))
+        : '内容没变，没有写盘';
+      toast(res.changed ? '保存成功。重启桥接后生效。' : '没有变化。', 'ok');
+      loadConfig(target);
+    }).catch(function (error) {
+      saveMsg.textContent = '保存失败：' + error;
+      saveBtn.disabled = false;
+    });
+  }
+
+  document.getElementById('browse').addEventListener('click', function () {
+    api('/api/pick', { mode: 'file', title: '选择要编辑的 config.json' }).then(function (res) {
+      if (!res.ok) { if (!res.cancelled) toast(res.error || '没选到文件', 'err'); return; }
+      pathInput.value = res.path;
+      loadConfig(res.path);
+    });
+  });
+
+  function pickInto(buttonId, inputId, mode, title) {
+    document.getElementById(buttonId).addEventListener('click', function () {
+      api('/api/pick', { mode: mode, title: title }).then(function (res) {
+        if (!res.ok) { if (!res.cancelled) toast(res.error || '没选到', 'err'); return; }
+        document.getElementById(inputId).value = res.path;
+        markDirty(true);
+      });
+    });
+  }
+  pickInto('pick-launcher', 'f-snow-launcher', 'file', '选择 SnowLuma 的启动文件');
+  pickInto('pick-home', 'f-snow-home', 'dir', '选择 SnowLuma 的数据目录');
+  pickInto('pick-cwd', 'f-cwd', 'dir', '选择会话工作目录');
+
+  document.getElementById('load').addEventListener('click', function () {
+    if (dirty && !window.confirm('当前改动还没保存，重新读取会丢掉它们。继续？')) return;
+    loadConfig();
+  });
+  document.getElementById('reload').addEventListener('click', function () { loadConfig(); });
+
+  document.getElementById('create').addEventListener('click', function () {
+    var target = String(pathInput.value || '').trim();
+    if (!target) { showErrors([{ field: '', message: '先在上面填好要新建的完整路径' }]); return; }
+    if (!window.confirm('将按 config.example.json 在这个位置新建一个配置文件：\n' + target)) return;
+    api('/api/create', { path: target }).then(function (res) {
+      if (!res.ok) { showErrors([{ field: '', message: res.error }]); return; }
+      toast('已按模板新建。接着把主人 QQ 和白名单填上。', 'ok');
+      loadConfig(target);
+    });
+  });
+
+  form.addEventListener('input', function () { markDirty(true); });
+  form.addEventListener('change', function () { markDirty(true); });
+  document.addEventListener('keydown', function (event) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      if (!saveBtn.disabled) save();
+    }
+  });
+  window.addEventListener('beforeunload', function (event) {
+    if (!dirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
+  try {
+    var saved = localStorage.getItem(STORE_KEY);
+    if (saved) { pathInput.value = saved; loadConfig(saved); }
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>

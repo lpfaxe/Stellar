@@ -1,0 +1,11 @@
+# 换行策略（发版前请勿随手删）
+#
+# 1) .bat / .cmd / .ps1 以 -text 原样入库，保持工作区的 CRLF。理由有两条：
+#    · 双击运行的老 cmd 解析 LF 结尾的 .bat 不稳（goto/label 容易出错）；
+#    · GitHub 下载的 ZIP 里就是仓库里的字节。release/install-manifest.json 是对
+#      文件字节做的 sha256，一旦 git 在提交时把 CRLF 转成 LF，用户下下来的包
+#      verify-dir 会全部对不上。
+# 2) 其余文件本来就是 LF，交给默认策略即可，不做额外转换。
+*.bat  -text
+*.cmd  -text
+*.ps1  -text

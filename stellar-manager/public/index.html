@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0c10">
+<meta name="description" content="Stellar 控制台 · 她的世界：QQ 机器人 / B站 / QQ空间 / 常驻守护">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stellar">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<title>Stellar 控制台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="appbar">
+  <div class="bar-top">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.4l2.3 6.1 6.1 2.3-6.1 2.3L12 19.2l-2.3-6.1L3.6 10.8l6.1-2.3z" fill="currentColor"/><circle cx="19.2" cy="5" r="1.4" fill="currentColor" opacity=".9"/><circle cx="5.2" cy="18.6" r=".95" fill="currentColor" opacity=".65"/></svg></span>
+      <span class="brand-text"><h1>Stellar</h1><p>人格化 AI · QQ / B站 / 空间 / 守护</p></span>
+    </div>
+    <div class="bar-status"><div class="pills" id="pills" aria-label="运行状态"></div></div>
+  </div>
+  <div class="her-head" id="herHead">
+    <i class="her-dot" id="herDot"></i>
+    <div class="her-text"><b id="herLabel">读取中…</b><small id="herSub">状态</small></div>
+    <span class="her-now" id="herNow">正在读取…</span>
+    <span class="her-emotion" id="herEmotion"></span>
+  </div>
+  <div class="rail-tools">
+    <button class="lt" id="ltDense" title="卡片收小一点，一屏放更多">紧凑</button>
+    <button class="lt" id="ltCollapse" title="把所有卡片收成标题（再点展开）">全收起</button>
+  </div>
+<nav class="tabbar" id="tabbar" aria-label="主导航">
+  <button data-tab="overview"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span><span class="tb-label">概览</span><span class="tb-wide">概览</span></button>
+  <button data-tab="her"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-9.3A4.1 4.1 0 0 1 12 7a4.1 4.1 0 0 1 7 3.7C19 15.6 12 20 12 20z"/></svg></span><span class="tb-label">她</span><span class="tb-wide">她今天</span></button>
+  <button data-tab="people"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5"/><circle cx="17.5" cy="9.5" r="2.3"/><path d="M15.5 14.3c2.6.3 4.5 2 4.5 4.7"/></svg></span><span class="tb-label">通讯录</span><span class="tb-wide">通讯录</span></button>
+  <button data-tab="memory"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 7.5 12 11l8-3.5M12 11v9"/></svg></span><span class="tb-label">记忆</span><span class="tb-wide">记忆</span></button>
+  <button data-tab="ops"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></span><span class="tb-label">运行</span><span class="tb-wide">运行日志</span></button>
+  <button data-tab="settings"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></span><span class="tb-label">设置</span><span class="tb-wide">设置</span></button>
+</nav>
+<footer class="foot rail-foot">
+  <span class="foot-brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.4l2.3 6.1 6.1 2.3-6.1 2.3L12 19.2l-2.3-6.1L3.6 10.8l6.1-2.3z" fill="currentColor"/></svg>Stellar 控制台</span>
+  <span id="paths"></span>
+  <span class="foot-meta">本地运行 · 只连这台电脑</span>
+</footer>
+</header>
+
+<main>
+  <!-- ══ 概览 ══ -->
+  <section class="card now-card" id="nowCard" data-tab="overview">
+    <h2>她此刻在做什么 <span class="hint" id="nowAgo"></span></h2>
+    <div class="now-main">
+      <div class="now-icon" id="nowIcon">…</div>
+      <div class="now-copy"><b id="nowLabel">读取中…</b><p id="nowDetail">正在汇总最近的动作</p></div>
+      <div class="now-next"><span>下次计划</span><b id="nowNext">—</b><small id="nowNextHint"></small></div>
+    </div>
+    <div class="now-recent" id="nowRecent"></div>
+    <div class="row"><button id="nowRefresh" class="ghost">刷新</button><span class="msg" id="nowMsg"></span></div>
+  </section>
+
+  <section class="card" id="quickCard" data-tab="overview">
+    <h2>快捷操作 <span class="hint">出问题先来这里</span></h2>
+    <div id="stopBanner" class="stop-banner" hidden></div>
+    <div id="restartAdvice" class="rada"></div>
+    <div class="act-grid">
+      <button id="actKeepalive" class="act"><b>自检</b><small>缺什么拉什么</small></button>
+      <button id="actSnow" class="act"><b>SnowLuma</b><small>启动 / 确认在线</small></button>
+      <button id="actBridge" class="act"><b>桥接</b><small>重连 DSH</small></button>
+      <button id="actCleanSnow" class="act"><b>清理多开</b><small>只留一套</small></button>
+      <button id="actReplan" class="act"><b>重排计划</b><small>按新生物钟</small></button>
+      <button id="actRestartDsh" class="act danger"><b>重启 DSH</b><small>先看上面的建议</small></button>
+    </div>
+    <div class="act-danger">
+      <div class="act-danger-head"><b>运行模式</b><span class="rw">选一档，立刻生效</span></div>
+      <div class="mode-row" id="modeRow">
+        <button class="mode" data-mode="normal"><b>正常模式</b><small>照常做每日任务</small></button>
+        <button class="mode" data-mode="idle"><b>摸鱼模式</b><small>只写日志、多刷多看、多找人聊</small></button>
+        <button class="mode" data-mode="minimal"><b>最低限度</b><small>只回消息，说完就睡</small></button>
+      </div>
+      <div class="msg" id="modeMsg"></div>
+      <div class="act-danger-head"><b>停 / 恢复</b><span class="rw">停了就一直停，只有你能恢复</span></div>
+      <div class="row wrap">
+        <button id="actStop" class="danger">紧急停止</button>
+        <button id="actResume" class="ghost">恢复运行</button>
+      </div>
+      <div class="msg" id="stopMsg"></div>
+    </div>
+    <div class="msg" id="dshMsg"></div>
+    <pre id="actionOut" class="out"></pre>
+    <p class="muted">面板跑在这台电脑上，DSH 重启只影响它自己；SnowLuma 与桥接由守护拉起。</p>
+  </section>
+
+  <section class="card" id="approvalCard" data-tab="overview">
+    <h2>待办审批 <span class="hint" id="apprHint">非主人发东西要先过你这一关</span></h2>
+    <div id="apprList" class="appr-list"><span class="muted">读取中…</span></div>
+    <details class="fold">
+      <summary>最近处理过的</summary>
+      <div id="apprDone" class="appr-list"><span class="muted">还没有记录。</span></div>
+    </details>
+    <div class="row"><button id="apprRefresh" class="ghost">刷新</button><span class="msg" id="apprMsg"></span></div>
+    <p class="muted">只读动作（看空间、看视频、搜索）不打扰你；发说说、发动态、评论、点赞、画图这类才算。30 分钟没人处理就作废。</p>
+  </section>
+
+  <section class="card" id="costCard" data-tab="overview">
+    <h2>今天的花费 <span class="hint">按 DeepSeek 官方价目表折算</span></h2>
+    <div class="cost-head">
+      <div class="cost-total"><span id="costTotal">¥--</span><small id="costTokens">读取中…</small></div>
+      <div class="cost-budget">
+        <div class="bar"><i id="costBar"></i></div>
+        <span class="muted" id="costBudgetText"></span>
+      </div>
+    </div>
+    <div id="costCats" class="cost-cats"></div>
+    <h3 class="peer-title">和谁聊的 <span class="hint" id="costPeerHint">按人汇总 QQ 花费</span></h3>
+    <div id="costPeers" class="peer-list"></div>
+    <details class="fold">
+      <summary>明细：会话与计费</summary>
+      <h3>花在什么地方</h3>
+      <div id="costSessions" class="cost-sessions"></div>
+      <h3>钱是按什么算的 <span class="hint">每 100 万 token：命中 ¥0.02 / 未命中 ¥1 / 输出 ¥4</span></h3>
+      <div id="costBuckets" class="cost-buckets"></div>
+      <p class="muted" id="costCache"></p>
+    </details>
+    <h3>最近 24 小时 <span class="hint" id="costSeriesHint"></span></h3>
+    <div id="costChart" class="cost-chart"></div>
+    <p class="muted" id="costNote"></p>
+    <div class="row"><button id="costRefresh" class="ghost">刷新</button><span class="msg" id="costMsg"></span></div>
+  </section>
+
+  <!-- ══ 她 ══ -->
+  <section class="card" id="herCard" data-tab="her">
+    <h2>她的状态 <span class="hint">在线 / 休眠 · 情绪 · 在惦记什么</span></h2>
+    <div class="her-state">
+      <div class="her-big"><i class="her-dot" id="herDot2"></i><b id="herState">—</b></div>
+      <div class="her-since" id="herSince">还没有状态记录</div>
+      <div class="her-mood" id="herMood">—</div>
+    </div>
+    <div class="her-grid">
+      <div class="mem-cell"><span class="k">最近在做什么</span><b id="herPurpose">—</b><span class="hint" id="herPurposeAt"></span></div>
+      <div class="mem-cell"><span class="k">今日醒来</span><b id="herWakes">—</b><span class="hint" id="herWakesHint"></span></div>
+      <div class="mem-cell"><span class="k">心里的惦记</span><b id="herPending">—</b><span class="hint">她想找你说的事</span></div>
+      <div class="mem-cell"><span class="k">会话状态</span><b id="herCounts">—</b><span class="hint">在线 / 待机 / 冷却 / 休眠</span></div>
+    </div>
+    <p class="muted" id="herNote"></p>
+    <div class="row"><button id="herRefresh" class="ghost">刷新</button><span class="msg" id="herMsg"></span></div>
+  </section>
+
+  <section class="card" id="dailyCard" data-tab="her">
+    <h2>她今天的任务清单 <span class="hint">看视频 / 刷动态 / 说说 / 三连 / 日报 / 搭话 / 记忆</span></h2>
+    <div id="dlRings" class="ring-rings"></div>
+    <div class="row wrap">
+      <b id="dlSummary" class="dl-summary">读取中…</b>
+      <button id="dlRefresh" class="ghost">刷新</button>
+      <span class="msg" id="dlMsg"></span>
+    </div>
+    <div class="dl-legend">
+      <span class="dl-badge is-done">做完了</span>
+      <span class="dl-badge is-partial">做了一半</span>
+      <span class="dl-badge is-pending">还没动</span>
+      <span class="dl-badge is-off">今天不做</span>
+      <span class="hint">按状态排的：没做的在上面。数字是「已完成 / 目标」。</span>
+    </div>
+    <div id="dlList" class="dl-list"><p class="muted">加载中…</p></div>
+    <p class="muted">这一栏只读：数据全是她自己跑出来的（watch-history、daily-dynamic、qzone-public-day、triple、reports、quota、whale-night、todos、记忆卡）。</p>
+  </section>
+  <section class="card" id="qzoneCard" data-tab="her">
+    <h2>QQ空间说说 <span class="hint" id="weekHint">每周至少 3 条</span></h2>
+    <div class="progress"><div class="bar"><i id="weekBar"></i></div><span id="weekText"></span></div>
+    <p class="muted" id="lastPost">还没有记录</p>
+    <textarea id="qzoneText" rows="3" placeholder="手动发一条（留空则只保存设置）"></textarea>
+    <details class="fold">
+      <summary>配图 / 可见范围 / 数量上限</summary>
+      <div class="grid">
+        <label>配图路径（可空）<input id="qzoneImage" placeholder="generate/image/xxx.jpg"></label>
+        <label>可见范围<select id="qzoneRight"><option value="4">好友可见</option><option value="1">所有人</option><option value="64">仅自己</option></select></label>
+        <label>每周最少条数<input id="weeklyMin" type="number" min="1" max="21"></label>
+        <label>每日上限<input id="dailyLimit" type="number" min="1" max="10"></label>
+      </div>
+    </details>
+    <div class="row"><button id="qzoneDry">演练</button><button id="qzoneGo" class="primary">发布到空间</button><span class="msg" id="qzoneMsg"></span></div>
+  </section>
+
+  <section class="card" id="dynCard" data-tab="her">
+    <h2>她的 B 站动态 <span class="hint">四类动态 + 分享型</span></h2>
+    <div class="row wrap">
+      <b id="dynSummary" class="dyn-summary">读取中…</b>
+      <button id="dynRefresh" class="ghost">刷新</button>
+      <span class="msg" id="dynMsg"></span>
+    </div>
+    <div id="dynList" class="dyn-list"><p class="muted">加载中…</p></div>
+    <p class="muted">发出后记在角色的 daily-dynamic.json 里；正文从发布记录读，旧的那几条只留了开头。</p>
+  </section>
+
+  <section class="card" id="qzpCard" data-tab="her">
+    <h2>今天刷的动态 <span class="hint">好友爱看 · 她看了什么 / 几分 / 赞没赞 / 评论了什么</span></h2>
+    <div class="row wrap">
+      <b id="qzpSummary" class="dyn-summary">读取中…</b>
+      <button id="qzpRefresh" class="ghost">刷新</button>
+      <button id="qzpShotsClear" class="ghost">清空截图</button>
+      <span class="msg" id="qzpMsg"></span>
+    </div>
+    <div id="qzpRings" class="ring-rings"></div>
+    <div id="qzpList" class="qzp-list"><p class="muted">加载中…</p></div>
+    <div class="row pager hide" id="qzpPager">
+      <button id="qzpPrev" class="ghost">‹ 上一页</button>
+      <span id="qzpPageLabel" class="muted"></span>
+      <button id="qzpNext" class="ghost">下一页 ›</button>
+    </div>
+    <p class="muted">每天到点她按配置的条数翻公开动态、逐条打分，给分数最高的几条点赞、再随机挑几条真心评论。分数和评论都记在这里；<b>截图当天清空、文字一直留着</b>，想看新图就让她再刷一次。</p>
+  </section>
+
+  <section class="card" id="webimgCard" data-tab="her">
+    <h2>她自己找的图 <span class="hint">每天清空 · 最多 30 张 · 删了会留记录</span></h2>
+    <div class="row wrap">
+      <span id="wiSummary" class="pill">—</span>
+      <button id="wiRefresh" class="ghost small">刷新</button>
+      <button id="wiClear" class="ghost small">全删</button>
+    </div>
+    <div id="wiMsg" class="msg"></div>
+    <div id="wiRings" class="ring-row"></div>
+    <div id="wiGrid" class="wi-grid"></div>
+    <details class="fold" id="wiLogFold">
+      <summary>删除记录</summary>
+      <div id="wiLog" class="wi-log"></div>
+    </details>
+    <p class="muted small">她自己在外面找的图和 B站封面分开放。图片每天清空，第二天这里只剩文字记录；点图上的 ✕ 删单张，删掉之后会记进上面的「删除记录」。</p>
+  </section>
+  <section class="card" id="bvCard" data-tab="her">
+    <h2>今天刷的 B站视频 <span class="hint">她看了什么 · 封面和标题原样留在这里</span></h2>
+    <div class="row wrap">
+      <b id="bvSummary" class="dyn-summary">读取中…</b>
+      <button id="bvRefresh" class="ghost">刷新</button>
+      <button id="bvCoversClear" class="ghost">清空封面</button>
+      <span class="msg" id="bvMsg"></span>
+    </div>
+    <div id="bvRings" class="ring-rings"></div>
+    <div id="bvList" class="bv-list"><p class="muted">加载中…</p></div>
+    <div class="row pager hide" id="bvPager">
+      <button id="bvPrev" class="ghost">‹ 上一页</button>
+      <span id="bvPageLabel" class="muted"></span>
+      <button id="bvNext" class="ghost">下一页 ›</button>
+    </div>
+    <p class="muted">封面来自她刷视频时顺手存的图（今日图片池）；<b>图每天清空，标题文字保留</b>。每条右边可以单独删掉这条记录。</p>
+  </section>
+
+
+  <section class="card" id="reportCard" data-tab="her">
+    <h2>她的日报 <span class="hint">每天一条，她自己写</span></h2>
+    <div class="row wrap">
+      <span class="date-pager" id="reportPager">
+        <button id="reportPrev" class="ghost" title="更早一份">‹</button>
+        <span id="reportDateLabel" class="dp-label">—</span>
+        <button id="reportNext" class="ghost" title="更新一份">›</button>
+      </span>
+      <select id="reportDate" class="hide"></select>
+      <button id="reportReq" class="primary">让她现在写</button>
+      <button id="reportRefresh" class="ghost">刷新</button>
+      <span class="msg" id="reportMsg"></span>
+    </div>
+    <pre id="reportText" class="report">（还没有报告）</pre>
+    <p class="muted">23:30 自动提醒。点「让她现在写」需要 DSH 开着，她下一分钟收到提醒；没写这里就是空的。</p>
+  </section>
+
+  <section class="card" id="todoCard" data-tab="her">
+    <h2>她的事项 <span class="hint">到点先叫醒她，她再提醒指定的人</span></h2>
+    <div class="row wrap">
+      <b id="todoSummary" class="todo-summary">读取中…</b>
+      <button id="todoRefresh" class="ghost">刷新</button>
+      <button id="todoAddToggle" class="primary small">替她加一条</button>
+      <span class="msg" id="todoMsg"></span>
+    </div>
+    <div id="todoForm" class="todo-form hide">
+      <div class="row wrap">
+        <input id="tdText" class="grow" maxlength="300" placeholder="提醒什么事（比如：把 FES 门票链接发给他）">
+      </div>
+      <div class="row wrap">
+        <input id="tdWhen" type="datetime-local" class="td-when">
+        <select id="tdTarget" class="td-target"></select>
+        <button id="tdSave" class="primary">加进去</button>
+        <button id="tdCancel" class="ghost">收起</button>
+        <span class="msg" id="tdMsg"></span>
+      </div>
+      <p class="muted small">「提醒谁」决定她到点把话发给哪个会话：选主人就发你私聊，选联系人就发他的私聊，选群就发群里。留着「让记这件事的人」就按原来那条的委托人。</p>
+    </div>
+    <div id="todoList" class="todo-list"><p class="muted">加载中…</p></div>
+    <p class="muted">她在 QQ 里听到「后天提醒我买东西」会记在这里；你也能替她加。到点调度器先叫醒她，她再用 QQ 提醒「提醒谁」里那个人。过期未提醒的会标红。</p>
+  </section>
+
+  <!-- ══ 记忆 ══ -->
+  <section class="card" id="memDbCard" data-tab="memory">
+    <h2>记忆库 <span class="hint">话题 · 重要 · 零碎 · 侧写</span></h2>
+    <div class="memdb-stats" id="mdbStats"></div>
+    <div class="memdb-meta" id="mdbMeta"><span class="muted">读取中…</span></div>
+    <div class="row wrap">
+      <button id="mdbRefresh" class="ghost small">刷新</button>
+      <button id="mdbSplit" class="ghost small">立即切分</button>
+      <button id="mdbReview" class="ghost small" title="把前天的条目交给模型判一遍：值得的升成重要，其余清掉">复核前天</button>
+      <span class="msg" id="mdbMsg"></span>
+    </div>
+    <p class="muted small" id="mdbNote">她说话和你说话都存进缓存；攒够了才切成「话题」。一个话题里有你说的话，也有她回的话。</p>
+  </section>
+  <section class="card" id="topicCard" data-tab="memory">
+    <h2>话题目录 <span class="hint">唤醒时她只看到目录，想知道细节才去翻</span></h2>
+    <div class="row wrap" id="tpOwners"></div>
+    <div class="row wrap">
+      <select id="tpTier" class="grow-lite">
+        <option value="">全部</option>
+        <option value="important">只看重要</option>
+        <option value="daily">只看日常</option>
+      </select>
+      <input id="tpSearch" class="grow" placeholder="搜标题 / 摘要">
+      <button id="tpSearchBtn" class="ghost small">搜索</button>
+      <button id="tpRefresh" class="ghost small">刷新</button>
+    </div>
+    <div id="tpList" class="memdb-list"><span class="muted">读取中…</span></div>
+    <div class="row pager">
+      <button id="tpPrev" class="ghost small">上一页</button>
+      <span id="tpPage" class="muted">-</span>
+      <button id="tpNext" class="ghost small">下一页</button>
+    </div>
+  </section>
+  <section class="card" id="fragCard" data-tab="memory">
+    <h2>零碎记忆 <span class="hint">单边的一句话 · 还没凑成话题</span></h2>
+    <div class="row wrap">
+      <span id="fgSummary" class="pill">—</span>
+      <button id="fgRefresh" class="ghost small">刷新</button>
+      <span class="msg" id="fgMsg"></span>
+    </div>
+    <div id="fgList" class="memdb-list"><span class="muted">读取中…</span></div>
+    <p class="muted small">零碎是「只有一方说的话」——比如她在群里自言自语、或你发完她还没回。攒够两小时后会自动降级成零碎，不再当成对话。</p>
+  </section>
+  <section class="card" id="factCard" data-tab="memory">
+    <h2>重要事实 <span class="hint">生日 / 忌口 / 联系方式 · 按人对号存，不按话题分类</span></h2>
+    <div class="row wrap">
+      <span id="ftSummary" class="pill">—</span>
+      <select id="ftOwnerFilter"><option value="">全部人</option></select>
+      <button id="ftRefresh" class="ghost small">刷新</button>
+      <span class="msg" id="ftMsg"></span>
+      <button id="ftToggle" class="ghost small">注入一条</button>
+    </div>
+    <div id="ftList" class="memdb-list"><span class="muted">读取中…</span></div>
+    <div id="ftForm" class="fold-body" hidden>
+      <h3 id="ftFormTitle">注入一条新事实</h3>
+      <div class="grid">
+        <label>是谁<select id="ftOwner"></select></label>
+        <label>类型<select id="ftKind"></select></label>
+        <label>标题<input id="ftLabel" placeholder="如 生日 / 不吃 / 手机号" maxlength="40"></label>
+        <label>隐私级<select id="ftPrivacy"></select></label>
+        <label>权重<input id="ftWeight" type="number" min="1" max="9" value="3"></label>
+      </div>
+      <label class="block">内容<textarea id="ftText" rows="2" maxlength="400" placeholder="如 1月1日 / 香菜 / 138xxxx"></textarea></label>
+      <div class="row">
+        <button id="ftSave" class="primary">保存</button>
+        <button id="ftCancel" class="ghost">取消</button>
+        <span class="msg" id="ftFormMsg"></span>
+      </div>
+      <p class="muted small">她的唤醒提示里会按「正在跟谁说话」挑着注入：private 只在这个人面前提，secret 只在本人私聊与这个面板可见，normal 群里也能用。同一个人 + 同一个标题会覆盖旧的，权重取更高。写完下一轮唤醒就生效。</p>
+    </div>
+  </section>
+  <section class="card" id="zoneBiliCard" data-tab="memory">
+    <h2>B站记忆 <span class="hint">不按话题分类 · 她自己看完写的总结</span></h2>
+    <div class="row wrap">
+      <span id="zbSummary" class="pill">—</span>
+      <button id="zbRefresh" class="ghost small">刷新</button>
+      <button id="zbClear" class="ghost small">清空</button>
+      <span class="msg" id="zbMsg"></span>
+    </div>
+    <div id="zbList" class="memdb-list"><span class="muted">读取中…</span></div>
+    <p class="muted small">她每刷完一趟 B站 会往这里写一段（≤200 字），被问「今天在b站看了什么」时她先查这里。删掉的会先导出到 memory-trash。</p>
+  </section>
+  <section class="card" id="zoneQzoneCard" data-tab="memory">
+    <h2>好友爱看记忆 <span class="hint">不按话题分类 · 她刷公开动态后的总结</span></h2>
+    <div class="row wrap">
+      <span id="zqSummary" class="pill">—</span>
+      <button id="zqRefresh" class="ghost small">刷新</button>
+      <button id="zqClear" class="ghost small">清空</button>
+      <span class="msg" id="zqMsg"></span>
+    </div>
+    <div id="zqList" class="memdb-list"><span class="muted">读取中…</span></div>
+    <p class="muted small">每天看完「好友爱看」那一批，她写一段总结存这里（不抄原文、不写别人隐私）。被问「你今天刷到什么」时先查这里。</p>
+  </section>
+
+  <!-- ══ 运行 ══ -->
+  <section class="card" id="bioCard" data-tab="ops">
+    <h2>生物钟 <span class="tier" id="clockTier"></span> <span class="hint">窗口内随机醒来</span></h2>
+    <h3>今天的计划</h3>
+    <div id="slots" class="slots"></div>
+    <details class="fold">
+      <summary>调整生物钟（窗口 / 视频数 / 抽帧）</summary>
+      <div id="windows" class="windows"></div>
+      <div class="grid">
+        <label>每天看视频总数<input id="videoTarget" type="number" min="0" max="200"></label>
+        <label>每天最多醒几次<input id="maxWakes" type="number" min="0" max="12"></label>
+        <label>跳过一次的概率<input id="skipChance" type="number" min="0" max="1" step="0.05"></label>
+        <label>两次醒来至少间隔（分）<input id="minGap" type="number" min="0" max="240"></label>
+        <label>看视频方式<select id="frames"><option value="none">不抽帧（只看标题/简介/弹幕/热评）</option><option value="auto">抽帧看图</option></select></label>
+      </div>
+      <div class="row"><button id="saveClock" class="primary">保存生物钟</button><span class="msg" id="clockMsg"></span></div>
+      <p class="muted">调度跑在 DSH 里，改完要完全退出重开 DSH 才按新设置醒来；说说提醒同理。</p>
+      <p class="muted">只在她便宜的时候醒：工作日 09:00–12:00、14:00–18:00 是峰时（单价 ×2），落在峰时的点会顺到谷期；整窗都在峰时的那一趟跳过。周末和节假日全天谷期。</p>
+    </details>
+  </section>
+
+  <section class="card" id="taskCard" data-tab="ops">
+    <h2>停 / 唤醒 / 传话 <span class="hint">直接指挥她</span></h2>
+    <p class="muted">强制休眠会停掉全部自动唤醒和等待，**不会自动恢复**（只有点「恢复运行」才解除）；立即唤醒是让她现在就处理主人的消息。快捷指令以主人身份进入她的会话，不会出现在主人手机上。</p>
+    <div class="row wrap">
+      <span class="pill" id="taskState">读取中…</span>
+      <span class="muted" id="taskMsg"></span>
+    </div>
+    <div class="row wrap">
+      <button id="taskPause" class="danger">强制休眠</button>
+      <button id="taskResume" class="ghost">恢复运行</button>
+      <button id="taskWake" class="primary">立即唤醒</button>
+      <span class="msg" id="taskActMsg"></span>
+    </div>
+    <label class="block">以主人身份跟她说一句（最多 1500 字）
+      <textarea id="taskText" rows="3" maxlength="1500" placeholder="例如：去空间看看我新发的说说，挑一条评论回一下"></textarea>
+    </label>
+    <div class="row"><button id="taskSend" class="primary">发给她</button><span class="msg" id="taskSendMsg"></span></div>
+  </section>
+
+  <section class="card" id="logCard" data-tab="ops">
+    <h2>日志 <span class="hint">守护 / 桥接 / 面板</span></h2>
+    <div class="tabs" id="logTabs">
+      <button data-log="keepalive" class="active">守护</button>
+      <button data-log="bridge">桥接</button>
+      <button data-log="panel">面板</button>
+      <button id="logRefresh" class="ghost">刷新</button>
+    </div>
+    <pre id="logText" class="out">加载中…</pre>
+    <p class="muted cookie-guard" id="cookieGuardLine"></p>
+  </section>
+
+  <section class="card" id="opsCard" data-tab="ops">
+    <h2>运行数据 <span class="hint">调度 · 记忆 · 词汇本 · 表情包</span></h2>
+    <div class="tabs" id="opsTabs">
+      <button data-ops="agent" class="active">调度</button>
+      <button data-ops="mem">记忆</button>
+      <button data-ops="lex">词汇本</button>
+      <button data-ops="stk">表情包</button>
+      <button data-ops="log">日志</button>
+    </div>
+    <div class="row wrap ops-tools">
+      <select id="opsLogName" class="hide">
+        <option value="events">面板事件</option>
+        <option value="toolcalls">工具调用</option>
+        <option value="qzone">空间操作</option>
+        <option value="reports">日报</option>
+        <option value="telemetry">上下文遥测</option>
+        <option value="audit">操作审计</option>
+      </select>
+      <select id="opsTier" class="hide">
+        <option value="">全部层级</option>
+        <option value="L1">一级（长期）</option>
+        <option value="L2">二级（本周）</option>
+        <option value="L3">三级（当日）</option>
+      </select>
+      <input id="opsSearch" placeholder="搜索…" autocomplete="off">
+      <button id="opsRefresh" class="ghost">刷新</button>
+      <span class="msg" id="opsMsg"></span>
+    </div>
+    <div id="opsList" class="ops-list">加载中…</div>
+    <div class="row ops-pager">
+      <button id="opsPrev" class="ghost">上一页</button>
+      <span id="opsPage" class="muted">-</span>
+      <button id="opsNext" class="ghost">下一页</button>
+    </div>
+  </section>
+
+  <!-- ══ 设置 ══ -->
+  <section class="card" id="toggleCard" data-tab="settings">
+    <h2>她的能力 <span class="hint">每个开关都真的生效</span></h2>
+    <p class="muted">关掉哪项，她就不再自动做那件事；已经记下的待办、发过的内容不会丢。改动下一轮生效，不用重启。</p>
+    <div class="cap-groups" id="capGroups"><span class="muted">读取中…</span></div>
+    <div class="row wrap">
+      <button id="capSave" class="primary">保存能力开关</button>
+      <button id="capRefresh" class="ghost">重新读取</button>
+      <span class="msg" id="capMsg"></span>
+      <span class="muted" id="capReadonly"></span>
+    </div>
+  </section>
+
+  <section class="card" id="planCard" data-tab="settings">
+    <h2>她每天做什么 <span class="hint">做不做 · 做多少，改完下一轮生效</span></h2>
+    <p class="muted">左边开关决定她今天要不要做这件事，右边的数字是她自己的目标量（看几条、赞几条、每天醒几次）。<b>关掉不等于删记录</b>，已经跑出来的东西都还在。写完立刻写进她的配置，调度器下一分钟就按新值跑。</p>
+    <div class="row wrap">
+      <button id="planSave" class="primary">保存</button>
+      <button id="planRefresh" class="ghost">重新读取</button>
+      <span class="msg" id="planMsg"></span>
+      <span class="muted" id="planReadonly"></span>
+    </div>
+    <div id="planList" class="plan-list"><p class="muted">读取中…</p></div>
+    <p class="muted">配置写在两处：<code id="planFile">—</code>（调度器读）与 <code id="planFileBridge">—</code>（发说说/刷动态的脚本读）。两边都写，省得你改了一边不生效。</p>
+  </section>
+  <section class="card" id="peopleCard" data-tab="settings">
+    <h2>谁能跟她说上话 <span class="hint">改了立刻生效</span></h2>
+    <p class="muted">白名单里的人/群她会回；黑名单里的人/群<b>完全不回</b>——不叫醒、不进记忆，只在下面记一条审计。管理员 QQ：<code id="acOwner">—-</code></p>
+    <div class="ac-grid">
+      <label>私聊白名单<textarea id="acAllowPrivate" rows="2" placeholder="每行一个 QQ 号"></textarea></label>
+      <label>群白名单<textarea id="acAllowGroups" rows="2" placeholder="每行一个群号"></textarea></label>
+    </div>
+    <details class="fold">
+      <summary>黑名单（拦了绝对不回话，只记审计）</summary>
+      <div class="ac-grid">
+        <label>拒绝名单（人）<textarea id="acDenyUsers" rows="2" placeholder="这个人无论在群还是私聊都不理"></textarea></label>
+        <label>私聊黑名单<textarea id="acDenyPrivate" rows="2" placeholder="只拦私聊，群里照常"></textarea></label>
+      </div>
+      <label>群黑名单<textarea id="acDenyGroups" rows="2" placeholder="整个群都不理"></textarea></label>
+      <p class="muted">拒绝名单（人）优先级最高；私聊黑名单只拦私聊，群里还会回。管理员 QQ 不能进拒绝名单，保存时会直接报错。</p>
+    </details>
+    <div class="row wrap">
+      <button id="acSave" class="primary">保存名单</button>
+      <button id="acReload" class="ghost">重新读取</button>
+      <span class="msg" id="acMsg"></span>
+      <span class="muted" id="acBridge"></span>
+    </div>
+    <h3 class="ac-sub">最近被拦下的消息 <span class="hint">只记审计，她没看到</span></h3>
+    <div id="acBlocked" class="blocked-list"><span class="muted">读取中…</span></div>
+  </section>
+
+  <section class="card" id="contactsCard" data-tab="people">
+    <h2>通讯录 <span class="hint">她按这里认人 · 保存后下一句话生效</span></h2>
+    <p class="muted">私聊/群消息进来时，她会先查这张表，把「正在和谁说话、什么关系」写进提示词；没登记的人会自动建一条陌生人档案，并提醒她别透露主人的信息。</p>
+    <p class="muted">每个人的「私聊白名单」开关就在这里点：加进去她才会回这个人的私聊；移出后私聊里就不理了（群聊另算）。改完立刻热更新，不用重启桥接。</p>
+    <div class="row wrap">
+      <button id="ctSync" class="ghost">从 QQ 同步好友/群</button>
+      <button id="ctSave" class="primary">保存改动</button>
+      <span class="msg" id="ctMsg"></span>
+      <span class="muted" id="ctScope"></span>
+    </div>
+    <div id="ctPeople" class="contact-list"><span class="muted">读取中…</span></div>
+    <details class="fold">
+      <summary>群档案 <span id="ctGroupCount" class="hint"></span></summary>
+      <div id="ctGroups" class="contact-list"></div>
+    </details>
+  </section>
+  <section class="card" id="profileCard" data-tab="people">
+    <h2>人物侧写 <span class="hint">一句话记住一个人 · 最多 50 字</span></h2>
+    <p class="muted small">她的唤醒提示里只会放这些短句。自动生成的那份可以手改，改完就按你写的来。</p>
+    <div class="row wrap">
+      <button id="pfGenerate" class="ghost small" title="让后台把最近聊过的事压成一句话">生成侧写</button>
+      <span class="msg" id="pfMsg"></span>
+    </div>
+    <div id="pfList" class="memdb-list"><span class="muted">读取中…</span></div>
+    <p class="muted small" id="pfNote">每天 07:00 自动更新一次；改了手写的那句就不会再被自动覆盖。</p>
+  </section>
+
+  <section class="card" id="outboxCard" data-tab="people">
+    <h2>她发出去的话 <span class="hint">发件箱 · 只读</span></h2>
+    <p class="muted">她发给主人以外的人（和群）的消息会记在这里，图片消息只记路径。按 QQ 号/群号筛选，方便查岗。</p>
+    <div class="row wrap">
+      <input id="obTarget" class="grow" list="obTargets" placeholder="按 QQ 号 / 群号筛选（留空看全部）">
+      <datalist id="obTargets"></datalist>
+      <button id="obRefresh" class="ghost">刷新</button>
+      <span class="msg" id="obMsg"></span>
+    </div>
+    <div id="obList" class="outbox-list"><span class="muted">读取中…</span></div>
+    <div class="row pager">
+      <button id="obPrev" class="ghost">上一页</button>
+      <span id="obPage" class="muted">-</span>
+      <button id="obNext" class="ghost">下一页</button>
+      <select id="obLimit" class="pager-size"><option value="20">20 条/页</option><option value="50">50 条/页</option><option value="100">100 条/页</option></select>
+    </div>
+    <details class="fold">
+      <summary>查岗审计 <span class="hint">谁在什么时候查了谁</span></summary>
+      <div id="obAudit" class="outbox-list"></div>
+    </details>
+  </section>
+
+  <section class="card" id="accessCard" data-tab="settings">
+    <h2>手机访问 <span class="hint">同一 WiFi 直接开</span></h2>
+    <div id="accessUrls" class="access-urls"></div>
+    <div class="access-token"><span class="muted">访问口令</span><code id="accessToken">----</code><span class="msg" id="accessMsg"></span></div>
+    <div class="row wrap">
+      <button id="tokenRotate" class="ghost">换一个口令</button>
+      <span class="msg" id="tokenMsg"></span>
+      <span class="muted" id="sessionCount"></span>
+    </div>
+    <details class="fold">
+      <summary>设一个自己记得住的口令</summary>
+      <div class="row wrap">
+        <input id="passInput" class="grow" maxlength="64" autocomplete="off" placeholder="8–64 位，小写字母/数字/._-">
+        <button id="passSave" class="primary">保存口令</button>
+        <span class="msg" id="passMsg"></span>
+      </div>
+      <p class="muted">登录一次，这台设备一年内都免输。改完其他设备要重输一次。</p>
+    </details>
+    <div class="remote-block">
+      <div class="remote-head"><b>出门在外也能连</b><span class="muted">Cloudflare 临时隧道 · 手机用流量也能开</span></div>
+      <div id="tunnelUrl" class="access-urls"></div>
+      <p class="muted">地址每次重启都变，等于门钥匙，别外传（照样要输口令）。隧道由面板守着，断了会自己重连。</p>
+      <div id="tailnetBox" class="hide">
+        <p class="muted" id="tailnetUrls"></p>
+        <p class="muted">这是 Tailscale 内网地址：设备之间直连、不走公网，也不会被搜索引擎扫到。外面要装同样的 Tailscale 并登录同一个账号。</p>
+      </div>
+      <div id="tailnetSetup">
+        <p class="muted">还没装 Tailscale 就这样做：电脑上装一次、登录；手机上装 App、登同一个账号；回来刷新这张卡，上面会多出 tailnet 地址（形如 100.x.y.z），在公司/4G 下直接点它就行，不用开隧道。装好之后这段说明会自动消失。</p>
+      </div>
+      <div id="v6Box" class="hide">
+        <div id="v6Urls"></div>
+        <p class="muted" id="v6OffNote">公网 IPv6 直连已经关了：面板现在只听本机（127.0.0.1），对外只走下面那条 Cloudflare 隧道。想让手机在同一个 WiFi 里直连，得先把面板启动参数改成 <code>STELLAR_PANEL_HOST=0.0.0.0</code> 再开。</p>
+        <p class="muted">手机别手打地址：IPv6 的方括号 <code>[ ]</code> 用中文输入法会变成全角，浏览器会当成搜索词。点「复制」或直接点开链接。</p>
+        <div id="v6AllowBox">
+          <p class="muted" id="v6AllowState"></p>
+          <details class="fold">
+            <summary>允许哪些来源可以改东西（不然只能看）</summary>
+            <p class="muted">从公网 IPv6 进来默认<b>只读</b>：能看状态、点审批，但改不了通讯录/记忆/配置。把你常用的网段加进来才可写。名单只能在这台电脑上改。</p>
+            <div class="row wrap">
+              <input id="v6Cidr" class="grow" placeholder="2409:8d30:d001:4194::/64">
+              <input id="v6Label" maxlength="20" placeholder="备注（家里 / 手机）">
+              <button id="v6Add" class="primary">加进白名单</button>
+            </div>
+            <div id="v6List" class="muted"></div>
+            <div class="row wrap">
+              <button id="v6Clear" class="ghost">全部清空</button>
+              <span class="msg" id="v6Msg"></span>
+            </div>
+          </details>
+        </div>
+      </div>
+      <details class="fold">
+        <summary>开启 / 关闭远程隧道</summary>
+        <div class="row wrap">
+          <button id="tunnelStart" class="primary">开启远程访问</button>
+          <button id="tunnelStop" class="ghost">关闭</button>
+          <span class="msg" id="tunnelMsg"></span>
+        </div>
+      </details>
+      <details class="fold">
+        <summary>用固定的域名（命名隧道，地址不再每次变）</summary>
+        <div class="tunnel-form">
+          <label>隧道 token（Cloudflare Zero Trust → Networks → Tunnels → 你的隧道 → 安装 connector 那串）</label>
+          <input id="tnToken" type="password" autocomplete="off" placeholder="只在本机填，存到 state/cloudflare-tunnel-token.txt" />
+          <label>对外域名</label>
+          <input id="tnHost" type="text" autocomplete="off" placeholder="panel.example.com" />
+          <div class="row wrap">
+            <button id="tnSave" class="primary">保存并切到固定域名</button>
+            <button id="tnQuick" class="ghost">切回快速隧道</button>
+            <span class="msg" id="tnMsg"></span>
+          </div>
+          <p class="muted" id="tnState"></p>
+        </div>
+      </details>
+    </div>
+    <p class="muted" id="accessHint">第一次打开会要口令；电脑本机打开不需要。页面可「添加到主屏幕」，像 App 一样用。</p>
+  </section>
+  <section class="card" id="styleCard" data-tab="settings">
+    <h2>参考库 <span class="hint">角色设定参考 · 情境注入</span></h2>
+    <p class="muted small">这些是「演得像个人」的参考片段。开着的才会按情境注入，最多两片、不到 900 字。</p>
+    <div id="srList" class="memdb-list"><span class="muted">读取中…</span></div>
+  </section>
+</main>
+
+<div class="modal-mask" id="topicModal" hidden>
+  <div class="modal modal-wide">
+    <h3 id="tpModalTitle">话题</h3>
+    <p class="muted" id="tpModalMeta"></p>
+    <div id="tpModalBody" class="memdb-thread"><span class="muted">读取中…</span></div>
+    <div class="row wrap">
+      <button id="tpPromote" class="ghost small">标为重要</button>
+      <button id="tpForget" class="ghost small danger">忘记（先备份再删）</button>
+      <button id="tpClose" class="ghost small">关闭</button>
+      <span class="msg" id="tpModalMsg"></span>
+    </div>
+  </div>
+</div>
+
+
+
+<script src="/js/core.js"></script>
+<script src="/js/status.js"></script>
+<script src="/js/report.js"></script>
+<script src="/js/todos.js"></script>
+<script src="/js/dynamics.js"></script>
+<script src="/js/daily-tasks.js"></script>
+<script src="/js/daily-plan.js"></script>
+  <script src="/js/qzone-public.js"></script>
+<script src="/js/bili-videos.js"></script>
+<script src="/js/cost.js"></script>
+<script src="/js/her-state.js"></script>
+  <script src="/js/memory-db.js"></script>
+<script src="/js/access.js"></script>
+<script src="/js/people.js"></script>
+<script src="/js/contacts.js"></script>
+<script src="/js/outbox.js"></script>
+<script src="/js/web-images.js"></script>
+<script src="/js/run-mode.js"></script>
+<script src="/js/task.js"></script>
+<script src="/js/approvals.js"></script>
+<script src="/js/capabilities.js"></script>
+<script src="/js/layout.js"></script>
+<script src="/js/clock.js"></script>
+<script src="/js/log.js"></script>
+<script src="/js/ops.js"></script>
+<script src="/js/boot.js"></script>
+</body>
+</html>

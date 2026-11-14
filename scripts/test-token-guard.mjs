@@ -1,0 +1,211 @@
+/**
+ * 这一条依赖 stellar-manager（控制台，端口 3300）的源码做源码级断言。
+ * 公开仓库**不发布**控制台目录，所以这里先探测：缺了就跳过（打印原因并以 0 退出），
+ * 有就照常跑。真实仓库里 stellar-manager 与 stellar 同级，6 条断言全部生效。
+ */
+import fsProbe from 'node:fs';
+import pathProbe from 'node:path';
+import { fileURLToPath as urlProbe } from 'node:url';
+const scriptsDir = pathProbe.dirname(urlProbe(import.meta.url));
+// 控制台源码的两个候选位置：仓库自己那份（发布仓库里是最小控制台，没有 lib/auth.js），
+// 以及「stellar 与 stellar-manager 同级」的完整部署布局。先看前者，避免发布仓库里
+// 因为机器上碰巧存在 ../stellar-manager 就把断言跑到别人家的目录上。
+const repoRoot = pathProbe.resolve(scriptsDir, '..');
+// 先认**本仓库自己的** stellar-manager（存在就用它，不管里面是完整面板还是最小控制台），
+// 只有本仓库里根本没有这个目录时，才回退到「stellar 与 stellar-manager 同级」的完整部署布局。
+// 这样发布仓库不会因为开发机上碰巧有 ../stellar-manager 就把断言跑到别人的目录里。
+const ownManager = pathProbe.join(repoRoot, 'stellar-manager');
+const siblingManager = pathProbe.resolve(repoRoot, '..', 'stellar-manager');
+const panelRoot = (() => {
+  try { if (fsProbe.statSync(ownManager).isDirectory()) return ownManager; } catch {}
+  return siblingManager;
+})();
+// 公开仓库里 stellar-manager 只是一个空占位（仅 README.md），所以判定的是「有没有控制台源码」：
+// server.mjs 与 lib/auth.js 是这批断言真正要读的两个文件，缺一个就跳过。
+const panelSrc = (() => {
+  try {
+    return fsProbe.existsSync(pathProbe.join(panelRoot, 'server.mjs'))
+      && fsProbe.existsSync(pathProbe.join(panelRoot, 'lib', 'auth.js'));
+  } catch { return false; }
+})();
+if (!panelSrc) {
+  console.log('SKIP token 防爆破 + 面板成本卡：仓库自带的 stellar-manager 是最小控制台（只有 server.mjs，没有 lib/auth.js）；这条断言的是完整面板，只在完整部署里跑');
+  process.exit(0);
+}
+// Token 防爆破纯逻辑回归（不启桥接、不发 QQ）。
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  DEFAULT_TOKEN_GUARD, localDayStart, evaluateWakeBudget, evaluateOutbound, isFreeWakeReason,
+} from '../src/token-guard.js';
+
+const now = new Date('2026-10-23T15:00:00+08:00').getTime();
+const todayStart = localDayStart(now);
+assert.equal(todayStart, new Date('2026-10-23T00:00:00+08:00').getTime());
+
+// 每天唤醒上限：群 20 / 私聊 10
+const group20 = Array.from({ length: 20 }, (_, i) => now - 60_000 * (20 - i));
+const groupBlocked = evaluateWakeBudget({ key: 'group:402', wakeTimes: group20, now, guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0 } });
+assert.equal(groupBlocked.blocked, true);
+assert.equal(groupBlocked.reason, 'day');
+assert.equal(groupBlocked.dayCount, 20);
+const group19 = evaluateWakeBudget({ key: 'group:402', wakeTimes: group20.slice(1), now, guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0 } });
+assert.equal(group19.blocked, false);
+const private10 = Array.from({ length: 10 }, (_, i) => now - 60_000 * (10 - i));
+const privateBlocked = evaluateWakeBudget({ key: 'private:123', wakeTimes: private10, now, guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0 } });
+assert.equal(privateBlocked.blocked, true);
+assert.equal(privateBlocked.reason, 'day');
+assert.ok(privateBlocked.retryAfterMs > 0, 'day 拦截必须带 retryAfterMs（否则桥接不会排重试，积压永远不补）');
+
+// 两次苏醒最小间隔：30 秒前刚醒，要求 120 秒 → 还差 90 秒
+const gap = evaluateWakeBudget({
+  key: 'private:123', wakeTimes: [now - 30_000], now,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 120_000, privateMaxWakesPerDay: 10 },
+});
+assert.equal(gap.blocked, true);
+assert.equal(gap.reason, 'gap');
+assert.equal(gap.retryAfterMs, 90_000);
+// 被直接 @ / 叫到：可越过 2 分钟间隔、也可越过每日次数（directBypassDay 默认开）
+const direct = evaluateWakeBudget({
+  key: 'group:402', wakeTimes: [now - 30_000], now, direct: true,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 120_000, maxDailyCostCNY: 0 },
+});
+assert.equal(direct.blocked, false);
+// 每日次数用尽时，direct 仍要能醒（2026-10-31：跨天前主人 @ 也不理）
+const directDay = evaluateWakeBudget({
+  key: 'private:123', wakeTimes: private10, now, direct: true,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0 },
+});
+assert.equal(directDay.blocked, false, 'direct 应豁免每日次数');
+const directDayOff = evaluateWakeBudget({
+  key: 'private:123', wakeTimes: private10, now, direct: true,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0, directBypassDay: false },
+});
+assert.equal(directDayOff.blocked, true, 'directBypassDay=false 时仍按每日次数拦');
+assert.equal(directDayOff.reason, 'day');
+const directOff = evaluateWakeBudget({
+  key: 'group:402', wakeTimes: [now - 30_000], now, direct: true,
+  guard: { ...DEFAULT_TOKEN_GUARD, directBypassGap: false, minWakeGapMs: 120_000, maxDailyCostCNY: 0 },
+});
+assert.equal(directOff.blocked, true);
+assert.equal(directOff.reason, 'gap');
+
+// 回复后回访（replyCheck）不占每日次数（2026-11-03）：
+// 一次真实对话以前要花 2 次额度（回复 + 回访），私聊 10 次/天实际只能聊 5 轮。
+const filled = Array.from({ length: 10 }, (_, i) => now - 60_000 * (10 - i));
+const replyCheckFree = evaluateWakeBudget({
+  key: 'private:123', wakeTimes: filled, budgetTimes: filled, reason: 'replyCheck', now,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0 },
+});
+assert.equal(replyCheckFree.blocked, false, 'replyCheck 不该占每日次数');
+assert.equal(replyCheckFree.free, true);
+assert.equal(replyCheckFree.dayCount, 10);
+const realMessageBlocked = evaluateWakeBudget({
+  key: 'private:123', wakeTimes: filled, budgetTimes: filled, reason: 'private', now,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0 },
+});
+assert.equal(realMessageBlocked.blocked, true, '真实消息仍然要吃每日次数');
+assert.equal(realMessageBlocked.reason, 'day');
+assert.equal(realMessageBlocked.free, false);
+const freeOff = evaluateWakeBudget({
+  key: 'private:123', wakeTimes: filled, budgetTimes: filled, reason: 'replyCheck', now,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0, replyCheckFree: false },
+});
+assert.equal(freeOff.blocked, true, '关掉 replyCheckFree 后退回旧语义');
+// 全量时间线（间隔）与计费时间线分开：间隔内醒过仍要拦，与日额度无关。
+const gapWins = evaluateWakeBudget({
+  key: 'private:123',
+  wakeTimes: [now - 60_000, ...filled],
+  budgetTimes: filled.slice(0, 9),
+  reason: 'private', now,
+  guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 120_000 },
+});
+assert.equal(gapWins.blocked, true);
+assert.equal(gapWins.reason, 'gap');
+assert.equal(isFreeWakeReason('replyCheck'), true);
+assert.equal(isFreeWakeReason('replyCheck:extra'), true);
+assert.equal(isFreeWakeReason('private'), false);
+
+// 近 24h 花费上限
+const costBlocked = evaluateWakeBudget({ key: 'group:402', wakeTimes: [now - 10 * 60_000], now, guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0, maxDailyCostCNY: 6 }, cost: 6.01 });
+assert.equal(costBlocked.blocked, true);
+assert.equal(costBlocked.reason, 'cost');
+const costOk = evaluateWakeBudget({ key: 'group:402', wakeTimes: [now - 10 * 60_000], now, guard: { ...DEFAULT_TOKEN_GUARD, minWakeGapMs: 0, maxDailyCostCNY: 6 }, cost: 5.99 });
+assert.equal(costOk.blocked, false);
+
+// 单次醒来发 10 条 → 硬拦；8 条刚好；第 9 条拦
+const ten = evaluateOutbound({ used: 0, count: 10, guard: DEFAULT_TOKEN_GUARD });
+assert.equal(ten.blocked, true);
+assert.equal(ten.max, 8);
+assert.match(ten.error, /总结/, '10 条被拦时要明确让模型先总结，而不是只报数字');
+assert.match(ten.error, /10 条/, '拦截文案要点出「拆 10 条」这个具体场景');
+const eight = evaluateOutbound({ used: 0, count: 8, guard: DEFAULT_TOKEN_GUARD });
+assert.equal(eight.blocked, false);
+assert.equal(eight.next, 8);
+const ninth = evaluateOutbound({ used: 8, count: 1, guard: DEFAULT_TOKEN_GUARD });
+assert.equal(ninth.blocked, true);
+assert.equal(ninth.next, 9);
+
+// 关闭后全放行
+assert.equal(evaluateWakeBudget({ key: 'group:402', wakeTimes: group20, now, guard: { ...DEFAULT_TOKEN_GUARD, enabled: false } }).blocked, false);
+assert.equal(evaluateOutbound({ used: 99, count: 99, guard: { ...DEFAULT_TOKEN_GUARD, enabled: false } }).blocked, false);
+
+// 桥接接线：鱼群守则在 token 守则之前，且发送/唤醒两处都接
+const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+assert.ok(bridge.includes('evaluateWakeBudget'));
+assert.ok(bridge.includes('evaluateOutbound'));
+assert.ok(bridge.includes('directBypassGap'), '桥接没有接 directBypassGap');
+assert.ok(bridge.includes('directWake'), '桥接没有识别直呼唤醒');
+const guardSource = fs.readFileSync(new URL('../src/token-guard.js', import.meta.url), 'utf8');
+assert.ok(guardSource.includes('directBypassDay'), '守卫没有 directBypassDay 开关');
+const wakeFish = bridge.indexOf('const fishWake = evaluateConversationFishGuard');
+const wakeToken = bridge.indexOf('const tokenWake = tokenGuardWakeBlock');
+assert.ok(wakeFish >= 0 && wakeToken > wakeFish, '唤醒顺序必须是鱼群守则 → Token 防爆破');
+assert.ok((bridge.match(/fishGuardSendBlock\(key, st\)/g) || []).length >= 4, '发送前的鱼群守则接线不足');
+assert.ok((bridge.match(/tokenGuardSendBlock\(key, st/g) || []).length >= 4, '发送前的 Token 防爆破接线不足');
+
+// 每日额度（2026-10-23）：桥接不再只看自己的近 24h 账本，要读插件写的
+// 三类当日快照（QQ + B站 + 其他），否则「总额度」在 QQ 侧永远看不到 B站 的花费。
+assert.ok(bridge.includes('readDailyUsage'), '桥接没有读插件当日用量快照');
+assert.ok(bridge.includes('evaluateBudget'), '桥接没有接 100% 额度闸');
+assert.ok(bridge.includes('bridgeDailyUsage'), '桥接没有当日用量合并函数');
+assert.ok(bridge.includes('learnerBudgetBlock'), '黑话学习没有接「其他/总额」额度闸');
+assert.ok(bridge.includes('当日 token 额度'), '唤醒提示词没有把「近 24h 花费」改成当日额度');
+assert.ok(bridge.includes('5000 字'), '唤醒提示词没有覆盖「5000 字长文」场景');
+assert.ok(bridge.includes('拆成 10 条'), '唤醒提示词没有明确拒绝「拆成 10 条」');
+const mcp = fs.readFileSync(new URL('../src/mcp-snowluma-safe.js', import.meta.url), 'utf8');
+assert.ok(mcp.includes('一次最多 8 条'), 'MCP 发送工具描述没有写一次最多 8 条');
+assert.ok(mcp.includes('不要拆成 10 条'), 'MCP 发送工具描述没有覆盖长文拆 10 条');
+const preset = fs.readFileSync(new URL('../dsh/agent-presets/qq-chat-v2/agent.cordis.yml', import.meta.url), 'utf8');
+assert.ok(preset.includes('5000 字长文不要逐条搬运'), 'reserved2 preset 没有覆盖长文/拆 10 条');
+const scheduler = fs.readFileSync(new URL('../plugins/stellar/lib/scheduler.js', import.meta.url), 'utf8');
+assert.ok(scheduler.includes("tokenBudget.block('bili')"), 'B站 调度器没有接额度闸');
+assert.ok(scheduler.includes('promptBili('), 'B站 调度器 prompt 没有统一走额度检查');
+assert.ok(scheduler.includes('budgetBlockedNow'), 'B站 调度器没有在 tick 前检查额度');
+// 额度 UI 现在分两处，断言跟着真实实现走：
+//   · 插件设置页（plugins/stellar/lib/client.js）：不再有独立的 TokenTab —— 额度参数并进了
+//     「QQ ▸ 高级 ▸ Token 防爆破 / 全部参数 token 分组」，花费概览并进了概览页的 CostCard。
+//     所以旧的 `function TokenTab` 与「80% 一次性弹窗」两条断言作废（不是回归，是 2026-11 改版）。
+//   · 独立面板（stellar-manager，端口 3300）：成本卡「今日预算 X · 已用 Y% · 还剩 Z」+ 超 80% 变色 + 预算闸文案。
+const client = fs.readFileSync(new URL('../plugins/stellar/lib/client.js', import.meta.url), 'utf8');
+assert.ok(client.includes('Token 防爆破'), '设置页缺少「Token 防爆破」分组');
+assert.ok(client.includes('今日 ¥'), '设置页概览缺少今日花费');
+const panelCost = fs.readFileSync(new URL('../../stellar-manager/public/js/cost.js', import.meta.url), 'utf8');
+assert.ok(panelCost.includes('今日预算'), '面板成本卡缺少「今日预算」');
+assert.ok(panelCost.includes('已用 '), '面板成本卡缺少「已用百分比」');
+assert.ok(/\(budget\.share \|\| 0\) > 0\.8/.test(panelCost), '面板成本卡缺少 80% 预警');
+assert.ok(panelCost.includes('已触发预算闸'), '面板成本卡缺少「预算闸已触发」文案');
+
+// 2026-11-03：回复后回访不再吃每日额度 + 额度用尽必须看得见。
+assert.ok(bridge.includes('wakeBudgetTimes'), '桥接没有拆分「计费唤醒」时间线');
+assert.ok(bridge.includes('isFreeWakeReason'), '桥接没有接「回复后回访不占次数」');
+assert.ok(bridge.includes('lastWakeBlock'), '桥接没有记录最近一次被拦（界面看不到额度用完）');
+assert.ok(bridge.includes('wakeGuardSnapshot'), '桥接状态没有暴露今日唤醒额度');
+const pluginBridge = fs.readFileSync(new URL('../plugins/stellar/lib/bridge.js', import.meta.url), 'utf8');
+assert.ok(pluginBridge.includes('wakeGuard: payload.wakeGuard'), '设置页拿不到桥接的今日唤醒额度');
+assert.ok(client.includes('今天叫不醒它'), '概览没有显示「唤醒额度已用完」');
+assert.ok(client.includes('replyCheckFree'), '设置页没有「回复后回访不占次数」开关');
+
+console.log('token guard tests OK');
