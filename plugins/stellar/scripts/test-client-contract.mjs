@@ -115,9 +115,11 @@ assert.ok(!qqPaths.includes('allow.groups') && !qqPaths.includes('allow.private'
 // 2026-11-11 Stellar：载体只保留 QQ 私聊（桌宠已剔除），不再有载体系 / 桌宠对话测试卡。
 assert.ok(source.includes('function PurposeCard'), '缺少「主动找主人 · 目的机制」卡片');
 assert.ok(source.includes('主动找主人 · 目的机制'), '目的机制卡片标题必须写人话');
-assert.ok(source.includes('function PurposeTab'), '缺少独立的「目的」页组件');
-assert.ok(source.includes('["purpose", "目的"]'), '设置页缺少「目的」标签');
-assert.ok(source.includes('h(PurposeCard, { cfg: qq'), '「目的」页没有渲染目的卡片');
+// 2026-11-14 侧边栏重构：目的不再是独立一级标签，PurposeCard 折进「她」页的折叠段。
+// 断言改成「她」页存在、目的卡片挂在「她」页里、且不再有独立的 purpose 标签。
+assert.ok(source.includes('function HerTab'), '缺少「她」页组件');
+assert.ok(!source.includes('["purpose", "目的"]'), '设置页不应再有独立的「目的」标签（已并进「她」页）');
+assert.ok(source.includes('h(PurposeCard, { cfg: qq'), '「她」页没有渲染目的卡片');
 assert.ok(!source.includes('h(PurposeCard, { cfg, set, busy, setBusy, toast })'), 'QQ 页不应再重复渲染目的机制卡片（同一份设置只留一处）');
 assert.ok(!source.includes('function PurposeCarrierCard'), '桌宠载体卡片必须删除（Stellar 只保留 QQ 私聊）');
 assert.ok(!source.includes('"purpose", "carrier"') && !source.includes('"purpose", "petModality"') && !source.includes('"purpose", "petFallbackToQQ"'), '目的页不应再写载体字段');
@@ -202,7 +204,9 @@ assert.ok(source.includes('act("create"'), '角色页缺少创建动作');
 
 // 观看历史 + 鱼群运行状态：用户明确要求「设置里能看到她看过什么 / 到底点没点赞」。
 assert.ok(source.includes('function WatchTab'), '设置页缺少观看历史页');
-assert.ok(source.includes('["watch", "观看历史"]'), '缺少「观看历史」标签');
+// 2026-11-14 重构：观看历史并进 B站 页的折叠段，不再单占一级标签。
+assert.ok(/h\(WatchTab, \{[^}]*goTab/.test(source), '观看历史没有并进 B站 页');
+assert.ok(!source.includes('["watch", "观看历史"]'), '不应再有独立的「观看历史」标签');
 assert.ok(source.includes('"/watch-history'), '观看历史页没有调用 /watch-history');
 assert.ok(source.includes('"操作"'), '观看历史缺少「操作」列');
 assert.ok(source.includes('仅看了'), '观看历史缺少「仅看了」状态');
@@ -357,12 +361,13 @@ assert.ok(source.includes('onChange: (list) => setQqToBili("includeGroups", list
 assert.ok(source.includes('const [toastText, setToastText]'), '浮层文案状态应叫 toastText（避免与 notify 混淆）');
 assert.ok(!source.includes('VoiceTab'), '语音页已删除，不应再有 VoiceTab');
 
-// ── 网盘离线包入口（2026-11-11：语音下线后只保留向量记忆模型）──
-assert.ok(source.includes('获取网盘资源（向量记忆模型）'), '必须有统一的网盘资源按钮（向量记忆模型）');
-assert.ok(!source.includes('语音包'), '语音已删除，资源弹窗不应再提语音包');
-assert.ok(source.includes('https://pan.quark.cn/s/2f49b5496874?pwd=jXqr'), '必须包含夸克网盘链接');
-assert.ok(source.includes('https://pan.xunlei.com/s/VP5iWnY5xJ1D8KpL-gFpAsj9A1?pwd=tqi7'), '必须包含迅雷网盘链接');
-assert.ok(source.includes('（待补链）'), '百度/UC 必须标待补链');
+// ── 网盘离线包入口已下线（2026-11-14 侧边栏重构）──
+// 两个失效链接 + 一个「待补链」的弹窗属于过期入口，整段删掉。
+// 向量记忆模型的使用说明还留在「记忆」页，不再从这里走。
+assert.ok(!source.includes('获取网盘资源（向量记忆模型）'), '网盘资源按钮应已删除');
+assert.ok(!source.includes('RESOURCE_LINKS'), 'RESOURCE_LINKS 应已删除');
+assert.ok(!source.includes('语音包'), '语音已删除，不应再提语音包');
+assert.ok(!source.includes('（待补链）'), '不应再有「待补链」的假入口');
 assert.ok(!source.includes('打开网盘下载（提取码 sxUZ）'), '旧的「打开网盘下载」按钮应移除');
 
 // ── 桌宠已下线（2026-11-11）：相关接口与表单必须全部消失 ──
@@ -451,14 +456,8 @@ assert.ok(source.includes("dshModelSelect"), "模型必须是目录驱动的下�
 assert.ok(source.includes("dshEffortSelect"), "思考强度必须是下拉框");
 assert.ok(!source.includes("low / medium / high / max"), "不能再提示后端不支持的 medium");
 assert.ok(source.includes("会同时修改 DSH 全局默认模型"), "模型切换必须提示全局副作用");
-// ── 网盘资源入口（2026-11-06）──
-assert.ok(source.includes("获取网盘资源（向量记忆模型）"), "记忆页顶部要有网盘资源入口");
-for (const label of ["夸克网盘", "UC网盘", "迅雷网盘", "百度网盘"]) {
-  assert.ok(source.includes(label), `网盘弹窗要有 ${label}`);
-}
-assert.ok(source.includes('window.open(url, "_blank", "noopener")'), "网盘按钮必须用默认浏览器打开");
+// ── 向量记忆（2026-11-06；2026-11-14 去掉网盘入口，只留使用说明）──
 assert.ok(source.includes("向量记忆使用说明（人话版）"), "向量记忆 tab 顶部要有使用说明弹窗");
 assert.ok(source.includes("为多个模型重建索引"), "使用说明必须讲清多模型重建入口");
 assert.ok(source.includes("（已有索引）"), "多模型选择必须标注已有索引");
-assert.ok(source.includes("（待补链）"), "百度/UC 必须标待补链");
 console.log('client contract tests OK');

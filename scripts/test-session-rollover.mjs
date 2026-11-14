@@ -143,8 +143,9 @@ console.log('## 6. 接线钉子（防"写了模块但没接上"）')
   ok(ui.includes('旧会话停止并归档') && ui.includes('确定开启'), '开启会话滚动前必须解释后果并确认')
   ok(ui.includes('必看！否则安装会出问题') && ui.includes('【必看安装顺序】'), '向量记忆说明按钮和安装顺序必须有红色必看警告')
   ok(ui.includes('让模型跑起来的发动机'), '红色安装顺序下面要用大白话解释 runtime 是什么')
-  ok(ui.includes('onClick: () => openResource(key)') && ui.includes('onClick: () => copyResourceLink(key)'), '四个网盘各有打开与复制链接按钮')
-  ok(ui.includes('/resources/open') && ui.includes('copyResourceLink'), '网盘打开走宿主默认浏览器，复制链接作兜底')
+  // 2026-11-15：网盘资源弹窗整块删除（见 docs/cases/2026-11-15-sidebar-rebuild.md）。
+  // 宿主侧的 /resources/open 白名单仍留着——那是给扩展用的能力，不是设置页入口。
+  ok(!ui.includes('openResource(') && !ui.includes('copyResourceLink'), '设置页不该再有网盘资源入口')
   const plugin = read('plugins/stellar/lib/index.js')
   ok(plugin.includes('openExternalResourceUrl') && plugin.includes('EXTERNAL_OPEN_HOSTS'), '宿主只允许打开固定网盘域名')
   ok(ui.includes('socialV2.wake.batchWindowPrivateMs'), '设置页有私聊窗口')

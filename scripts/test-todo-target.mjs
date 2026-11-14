@@ -116,3 +116,13 @@ test('面板写入保留它不认识的字段（别把 MCP 写的 requester 洗�
 function PanelListHas(id) {
   return panel.readTodos().items.some((x) => x.id === id);
 }
+
+test('parseDueAt 支持相对时间与直接日期（侧边栏 / 控制台用的是人话写法）', () => {
+  const now = new Date('2026-11-14T12:00:00+08:00').getTime();
+  assert.equal(src.parseDueAt('2 小时后', now) - now, 2 * 3600_000);
+  assert.equal(src.parseDueAt('20分钟后', now) - now, 20 * 60_000);
+  assert.equal(src.parseDueAt('3 天后', now) - now, 3 * 86_400_000);
+  assert.equal(new Date(src.parseDueAt('明天 10:00', now)).getHours(), 10);
+  assert.equal(src.parseDueAt('胡写', now), 0, '读不出来的时间必须回 0，不能瞎猜');
+  assert.equal(src.parseDueAt('', now), 0);
+});

@@ -138,7 +138,16 @@ export function parseDueAt(input, now = Date.now()) {
   const direct = new Date(raw);
   if (Number.isFinite(direct.getTime()) && /\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(raw)) return direct.getTime();
   const rel = raw.match(/(今天|明天|后天|大后天)?\s*(?:(上午|下午|晚上|中午|凌晨)\s*)?(\d{1,2})[:：点](\d{1,2})?/);
-  if (!rel) return 0;
+  if (!rel) {
+    // 相对时间：「20 分钟后」「2 小时后」「3 天后」——控制台与侧边栏都用这种人话写法。
+    const after = raw.match(/^(\d{1,4})\s*(分钟|分|小时|钟头|天)\s*(?:后|以后|之后)$/);
+    if (!after) return 0;
+    const n = Number(after[1]);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    const unit = after[2];
+    const unitMs = unit === '天' ? 86_400_000 : (unit === '小时' || unit === '钟头') ? 3_600_000 : 60_000;
+    return now + n * unitMs;
+  }
   const dayOffset = rel[1] === '明天' ? 1 : rel[1] === '后天' ? 2 : rel[1] === '大后天' ? 3 : 0;
   let hour = Number(rel[3]);
   const minute = Number(rel[4] || 0);

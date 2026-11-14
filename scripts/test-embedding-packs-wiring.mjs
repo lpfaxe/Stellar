@@ -29,9 +29,11 @@ test('插件/API/UI：安装包路由、启动停止、云端配置、未安装�
   const client = read('plugins/stellar/lib/client.js');
   assert.match(client, /function EmbeddingPackPanel/);
   assert.match(client, /Embedding 功能（可选安装）/);
-  // 2026-11-13：语音子系统（qq_list_voices / voice-tool-locator.mjs）已随迁 stellar 剥离，
-  // 网盘资源弹窗现在只挂向量记忆模型，所以菜单文案同步收窄。不是回归。
-  assert.match(client, /获取网盘资源（向量记忆模型）/);
+  // 2026-11-15：网盘资源弹窗（夸克/迅雷/百度/UC 链接）整块删除——它挂的是「向量记忆模型」
+  // 的旧下载入口，和现在的 Embedding 安装流程重复，还带「待补链」的半成品文案。
+  // 这里改成钉住它确实没了，避免有人再把它加回来。
+  assert.ok(!client.includes('获取网盘资源'), '网盘资源入口应该已经删掉');
+  assert.ok(!client.includes('RESOURCE_LINKS'), '四个网盘的链接表应该已经删掉');
   assert.match(client, /向量记忆使用说明（人话版）/);
   assert.match(client, /导入文件：/);
   assert.match(client, /下载并安装/);

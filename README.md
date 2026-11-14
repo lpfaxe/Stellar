@@ -234,20 +234,17 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 
 ### 3.1 设置页（DSH → 设置 → Stellar）
 
-**10 个标签**：概览 / 角色 / 目的 / QQ / B站 / 观看历史 / 记忆 / 扩展 / 全部参数 / 诊断。
+**7 个标签**：概览 / 她 / QQ / B站 / 记忆 / 角色 / 高级。
 
 | 标签 | 你在这能干什么 |
 | --- | --- |
 | 概览 | 三个状态点（QQ / B站 / 生物钟）、一键启动或停止各平台、组件更新、诊断入口 |
-| 角色 | 人格卡与记忆库整包切换、新建 / 复制 / 存档 / 回档 |
-| 目的 | 主动搭话的节奏、安静时段、预览与「试一次」 |
+| 她 | 三档运行模式（正常 / 摸鱼 / 最低限度）点一下立即生效、待办事项（列出来 / 加一条 / 完成 / 取消，可指定提醒谁）、主动搭话的节奏与「试一次」 |
 | QQ | SnowLuma 地址与 token、白名单、管理员、二代仿真各项开关、工具开关 |
-| B站 | 扫码登录、作息窗口、偏好、每日额度、评论与动态开关 |
-| 观看历史 | 她看过的视频、打分、评论、收藏（可搜索、可展开） |
-| 记忆 | 叙事/向量两种记忆方式的切换、向量索引与语义搜索、Embedding 包安装、双向脱敏同步 |
-| 扩展 | 第三方扩展的启用 / 停用 / 参数 / 重载 |
-| 全部参数 | 三份配置（`config.json` / `config.json` 合体层 / `bili.config.json`）的全部键，可搜索可改 |
-| 诊断 | 新手体检、一键安装、自检、备份与恢复 |
+| B站 | 扫码登录、作息窗口、偏好、每日额度、评论与动态开关；下部折叠着「观看历史」（她看过的视频、打分、收藏） |
+| 记忆 | 新记忆库的只读概览（话题 / 重要事实 / 见闻区 / 侧写 / 后台作业）；下面才是叙事/向量两种方式的切换、向量索引与语义搜索、Embedding 包安装、双向脱敏同步；**写操作在浏览器面板或 `stellar_memory_*` 工具** |
+| 角色 | 人格卡与记忆库整包切换、新建 / 复制 / 存档 / 回档 |
+| 高级 | 三个子页签：**扩展**（第三方扩展的启用 / 停用 / 参数 / 重载）、**全部参数**（三份配置的全部键，可搜索可改）、**诊断**（新手体检、一键安装、自检、备份与恢复） |
 
 ### 3.2 四种桥接模式
 
@@ -350,7 +347,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | **图片** | 网图池（每天清空、最多 30 张、可单删全删）、B站 封面池、每日截图留存 | 面板「她今天」 |
 | **额度** | 每日 token 额度（QQ / B站 / 其他 / 总额，80% 提醒、100% 停）、消费看板、按价目折算成本 | [TOKEN_USAGE_CONSOLE.md](docs/guides/operations/TOKEN_USAGE_CONSOLE.md) |
 | **工具面** | **67 个 MCP 工具**（36 个 `qq_*` + 31 个 `stellar_*`）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
-| **界面** | 设置页 10 个标签、完整面板 6 个页面 / 31 张卡、桥接自带单页控制台 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
+| **界面** | 设置页 7 个标签、完整面板 6 个页面 / 31 张卡、桥接自带单页控制台 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
 
 ---
 
@@ -398,7 +395,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 111 | 三份配置的每个键、状态文件全表、备份与回滚 |
 | 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
 | 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 154 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
-| 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 10 页签与面板 6 页签 / 31 张卡 |
+| 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 7 页签与面板 6 页签 / 31 张卡 |
 | 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 240 | B站 58 条命令、空间功能、鱼群与弹幕 |
 | 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 67 个工具、守卫、两代 preset |
 | 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 137 | 角色包怎么放、人格卡怎么起作用 |

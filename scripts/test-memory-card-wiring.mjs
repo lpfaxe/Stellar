@@ -41,9 +41,10 @@ assert.match(index, /memoryCardTimer\?\.stop/, '插件销毁时没有停记忆�
 
 // 4) 控制台：容量条 / 弹窗 / 规则面板。
 assert.match(client, /function MemoryCardPanel/, '控制台缺少记忆卡面板');
-assert.match(client, /qbw-modal-backdrop/, '控制台缺少容量弹窗');
-assert.match(client, /记忆卡快满了/, '弹窗文案缺失');
-assert.match(client, /压缩到 80%/, '控制台缺少压缩按钮');
+// 2026-11-15：记忆改走 memory.db（事实 / 见闻区 / 话题），容量告警弹窗已删除——
+// 旧告警盯的是 memory-card.json 的字符数，新体系没有「卡满」这一说。这里改成钉住它确实没了。
+assert.ok(!client.includes('记忆卡快满了'), '容量告警弹窗应该已经删掉（旧记忆卡体系）');
+// 压缩按钮留在 MemoryCardPanel 里（engine=card 时仍可用），这里只钉住「卡满」弹窗没了。
 
 // 4b) 主人私聊读白名单群：核心过滤、运行时白名单、设置页开关必须同源。
 assert.match(memoryCore, /privateReadsGroups/, '核心模块缺少主人私聊读群记忆开关');

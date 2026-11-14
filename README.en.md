@@ -102,7 +102,8 @@ Details: [`INSTALL.md`](docs/guides/getting-started/INSTALL.md) and [`DSH_SETUP.
 
 ## Day-to-day
 
-- **Settings page** (DSH → Settings → Stellar): 10 tabs — Overview / Characters / Purpose / QQ / Bilibili / Watch history / Memory / Extensions / Advanced / Diagnostics.
+- **Settings page** (DSH → Settings → Stellar): 7 tabs — Overview / Her / QQ / Bilibili / Memory / Characters / Advanced (Extensions · All parameters · Diagnostics).
+  "Her" holds the three run modes (normal / slack-off / minimal), the reminder list, and the proactive-talk settings; watch history is folded into the Bilibili tab.
 - **Bridge modes** — `chat` (plain group member), `closed-agent` (admin only), `reserved` (v1 simulation), `reserved2` (v2 simulation, default: everything is a tool — read, send, wait, sleep, close).
 - **Run modes** — a second, independent layer: `normal` (full daily tasks), `idle` (logs only, more browsing and chatting; the default on weekends), `minimal` (replies only, then sleeps).
 - **Dashboards** — the full panel on `http://127.0.0.1:3300/` (6 pages, 31 cards) and the bridge’s own single-page console on `http://127.0.0.1:3100/?token=<consoleToken>` (17 sections).
@@ -123,7 +124,7 @@ Contacts appear after the first message, memory after a few rounds, Bilibili/QZo
 | **Daily** | run modes, biological clock, daily task list, to-do reminders, quiet hours |
 | **Budget** | daily token limits (QQ / Bilibili / other / total), cost dashboard, price-table conversion |
 | **Tool surface** | **67 MCP tools** (36 `qq_*` + 31 `stellar_*`), three MCP servers, two preset generations, fail-closed guards |
-| **UI** | settings page (10 tabs), full panel (6 pages / 31 cards), bridge console (single page) |
+| **UI** | settings page (7 tabs), full panel (6 pages / 31 cards), bridge console (single page) |
 
 ## Security notes
 

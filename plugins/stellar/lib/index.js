@@ -62,6 +62,8 @@ import { createTokenBudgetService } from './token-budget-service.js';
 import { startScheduler } from './scheduler.js';
 import { scanPluginCompatibility } from './compat.js';
 import { createGateEventStore } from '../../../src/gate-events.js';
+import { currentRunMode, modeLimits, MODE_LABELS, RUN_MODES, setRunMode, clearManualMode } from './run-mode.js';
+import { addTodo, listTodos, parseDueAt, todoTarget, updateTodo } from '../../../src/todos.js';
 import { normalizeAllowlist } from '../../../src/allowlist.js';
 import { createUpdatesService, resumePendingApply } from './updates.js';
 import { BILI_WORKSPACE_TITLE, biliWorkspacePath } from './bili-workspace.js';
@@ -1628,6 +1630,81 @@ ${body}`;
     json(res, 200, { ok: true, mode: mode ?? current.mode ?? null, ownerQQ: ownerQQ ?? null, note: '若桥接未运行，下次启动时生效。' });
   }
 
+  // ── 运行模式（正常 / 摸鱼 / 最低限度）──────────────────────────────────────
+  // 侧边栏与桥接、面板读的是同一份 state/run-mode.json：run-mode.js 是唯一真相。
+  async function handleRunMode(req, res, url) {
+    try {
+      if (req.method === 'GET') {
+        const now = Date.now();
+        const cur = currentRunMode({ now });
+        json(res, 200, {
+          ok: true,
+          modes: RUN_MODES.map((id) => ({ id, label: MODE_LABELS[id], limits: modeLimits(id) })),
+          current: cur,
+        });
+        return;
+      }
+      const body = JSON.parse(await readBody(req) || '{}');
+      const action = String(body.action ?? '');
+      if (action === 'clear') {
+        clearManualMode({});
+        json(res, 200, { ok: true, current: currentRunMode({}) });
+        return;
+      }
+      const mode = String(body.mode ?? '');
+      try { setRunMode(mode, { by: 'sidebar' }); }
+      catch (error) { json(res, 400, { ok: false, error: String(error?.message ?? error) }); return; }
+      json(res, 200, { ok: true, current: currentRunMode({}) });
+    } catch (error) {
+      json(res, 500, { ok: false, error: String(error?.message ?? error) });
+    }
+  }
+
+  // ── 待办事项（她到点会主动提醒的那个人）──────────────────────────────────
+  // 写操作和 side panel 走同一份 state/todos.json；跨进程共享，调度器读的就是它。
+  async function handleTodos(req, res) {
+    try {
+      if (req.method === 'GET') {
+        json(res, 200, { ok: true, items: listTodos({ includeDone: true, limit: 200 }).map((it) => ({
+          ...it, target: todoTarget(it),
+        })) });
+        return;
+      }
+      const body = JSON.parse(await readBody(req) || '{}');
+      const action = String(body.action ?? '');
+      if (action === 'add') {
+        const text = String(body.text ?? '').trim();
+        if (!text) { json(res, 400, { ok: false, error: '要写清楚提醒什么事' }); return; }
+        const dueAt = parseDueAt(String(body.when ?? ''));
+        if (!dueAt) { json(res, 400, { ok: false, error: '这个时间读不出来，写成「明天 10:00」或「2 小时后」' }); return; }
+        const targetKey = String(body.targetKey ?? '').trim();
+        const targetName = String(body.targetName ?? '').trim();
+        if (targetKey && !/^(private|group):[0-9]{5,20}$/.test(targetKey)) {
+          json(res, 400, { ok: false, error: '提醒对象要写成 private:<QQ 号> 或 group:<群号>' });
+          return;
+        }
+        let row = null;
+        try { row = addTodo({ text, dueAt, createdBy: 'sidebar', targetKey, targetName }); }
+        catch (error) { json(res, 400, { ok: false, error: String(error?.message ?? error) }); return; }
+        json(res, 200, { ok: true, item: { ...row, target: todoTarget(row) } });
+        return;
+      }
+      if (action === 'done' || action === 'cancel' || action === 'remove') {
+        const id = String(body.id ?? '');
+        if (!id) { json(res, 400, { ok: false, error: '缺 id' }); return; }
+        const status = action === 'done' ? 'done' : 'cancelled';
+        let row = null;
+        try { row = updateTodo(id, { status }); }
+        catch { json(res, 404, { ok: false, error: '没找到这条待办' }); return; }
+        if (!row) { json(res, 404, { ok: false, error: '没找到这条待办' }); return; }
+        json(res, 200, { ok: true, item: { ...row, target: todoTarget(row) } });
+        return;
+      }
+      json(res, 400, { ok: false, error: 'action 只支持 add / done / cancel / remove' });
+    } catch (error) {
+      json(res, 500, { ok: false, error: String(error?.message ?? error) });
+    }
+  }
   // ── 扩展 ────────────────────────────────────────────────────────────────
   async function handleExtensions(req, res) {
     if (req.method === 'GET') {
@@ -3696,6 +3773,8 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
     if (pathname === `${API_PREFIX}/embedding-packs`) { await handleEmbeddingPacks(req, res, url); return; }
     if (pathname === `${API_PREFIX}/memory-card`) { await handleMemoryCard(req, res); return; }
     if (pathname === `${API_PREFIX}/mode`) { await handleMode(req, res); return; }
+    if (pathname === `${API_PREFIX}/run-mode`) { await handleRunMode(req, res, url); return; }
+    if (pathname === `${API_PREFIX}/todos`) { await handleTodos(req, res); return; }
     if (pathname === `${API_PREFIX}/extensions`) { await handleExtensions(req, res); return; }
     if (pathname === `${API_PREFIX}/platforms`) { await handlePlatforms(req, res); return; }
     if (pathname === `${API_PREFIX}/compat/scan`) {

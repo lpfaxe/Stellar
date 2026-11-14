@@ -2,7 +2,7 @@
 Stellar —— 客户端半边：DSH 设置里的「Stellar」窗口。
  *
  * 这是合体后唯一的设置入口。它按标签页装下：
- *   概览 / 角色 / 目的 / QQ / B站 / 观看历史 / 记忆 / 扩展 / 全部参数 / 诊断
+ *   概览 / 她 / QQ / B站 / 记忆 / 角色 / 高级（扩展 · 全部参数 · 诊断）
  *
  * 数据流：本组件 ⇄ /dsh-stellar/api/*（同源 fetch）⇄ 原生配置文件。
  * 不制造第二份配置：QQ 仍写 <stellar>/config.json，B站仍写
@@ -2574,7 +2574,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
               h("h4", null, "扩展与平台"),
               h("div", { className: "qbw-kv" }, h("span", null, "已启用扩展"), h("span", null, `${(overview?.extensions ?? []).filter((x) => x.enabled).length} / ${(overview?.extensions ?? []).length}`)),
               h("div", { className: "qbw-kv" }, h("span", null, "平台"), h("span", null, (overview?.platforms ?? []).map((x) => `${x.name}${x.status === "planned" ? "(预留)" : ""}`).join(" · "))),
-              h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, "贴吧已预留接口：接适配器即可，不改主流程。")))),
+              h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, "平台适配器是可扩展的：写一个适配器就能接新平台，不用改主流程。")))),
         h("div", { className: "qbw-actions" },
           h(Btn, { kind: "qbw-btn2", onClick: reload, disabled: !!busy }, "刷新状态"),
           h(Btn, { kind: "qbw-btn3", onClick: async () => {
@@ -2895,15 +2895,6 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           "节奏参数要重启桥接才生效（桥接只在启动时读 config.json）。",
           "目的状态跟着当前角色走：换人格卡/记忆卡后按新角色重新生成动机，不会继承上一个角色。",
           "硬闸门：安静时段 / 每天上限 / 你正在聊天 / 好友关系，任一不过都不会发。"));
-    }
-
-    function PurposeTab({ qq, setQq, unified, setUnified, overview, busy, setBusy, toast, reload, goTab }) {
-      return h("div", null,
-        h("div", { className: "qbw-infobox" },
-          "「目的」是独立栏目：管她什么时候主动找你、想说什么、从哪个渠道发。"),
-        h(PurposeCard, { cfg: qq, set: setQq, busy, setBusy, toast }),
-        h("div", { className: "qbw-hint", style: { marginTop: "6px" } },
-          "人设与记忆在「角色 / 记忆」页。"));
     }
 
     // ── 对话收尾判断：每段对话有自然终点；收尾不是潜水 ──────────────────
@@ -3608,7 +3599,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           h("p", null, "已独立成「目的」栏目：主动搭话的节奏、素材、预览与试一次。",
             "目的状态和 QQ / B站 / 记忆共用当前角色。"),
           h("div", { className: "qbw-actions", style: { borderTop: "none", marginTop: "6px", paddingTop: "0" } },
-            h(Btn, { kind: "qbw-btn2", onClick: () => goTab?.("purpose") }, "去「目的」页设置"))),
+            h(Btn, { kind: "qbw-btn2", onClick: () => goTab?.("her") }, "去「她」页设置"))),
         h(AdvancedSettings, { note: "工具开关 / 早安问候 / 全部 QQ 参数：展开后同样可改" },
           h("div", { className: "qbw-actions" }, restartBridgeButton),
           h(FieldGroups, {
@@ -4383,6 +4374,8 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
             h("input", { className: "qbw-input", placeholder: "搜索 B站 参数", value: query, onChange: (e) => setQuery(e.target.value) }),
             h(Btn, { kind: "qbw-btn2", onClick: runDeps, disabled: !!busy }, busy === "deps" ? "体检中…" : "依赖体检"),
             h(Btn, { kind: "qbw-btn2", onClick: testNotify, disabled: !!busy }, "发条通知测试")),
+          h(Section, { title: "观看历史", note: "她刷过什么、看过什么" },
+            h(WatchTab, { busy, setBusy, toast: (message) => toast(message), goTab })),
           h("div", { className: "qbw-infobox" },
             "B站参数写入 ", h("code", { className: "qbw-code" }, overview?.paths?.biliConfig || "当前实际配置文件（见概览→路径）"), "；",
             "cookie 单独写入 ", h("code", { className: "qbw-code" }, "~/.dsh/stellar/bili/credentials.json"), "，永不回显。",
@@ -5598,7 +5591,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           : h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, "这个区还没有记录。她刷完一轮之后会自己写进来。"),
         h("div", { className: "qbw-hint", style: { marginTop: "8px" } }, "要改、要删、要手动补一条：去 3300 面板「记忆」页，或直接让她调自己的记忆工具。"));
     }
-    function MemoryTab({ qq, unified, setUnified, overview, busy, setBusy, toast, reload, onResource }) {
+    function MemoryTab({ qq, unified, setUnified, overview, busy, setBusy, toast, reload }) {
       const [data, setData] = useState(null);
       const [card, setCard] = useState(null);
       const [vectorData, setVectorData] = useState(null);
@@ -5783,12 +5776,10 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           }, label))),
         pane === "vector"
           ? h("div", null,
-        h("div", { className: "qbw-actions", style: { marginBottom: "8px" } },
           h(Btn, { kind: "qbw-btn2", onClick: () => setUsageOpen(true) },
             "使用说明",
             h("span", { style: { color: "var(--qbw-err-text)", fontWeight: 700 } }, "（必看！否则安装会出问题）")),
-          h(Btn, { kind: "qbw-btn2", onClick: onResource }, "获取网盘资源（向量记忆模型）")),
-        h(Section, { title: "向量记忆", note: "状态 / 存储 / 维护" },
+          h(Section, { title: "向量记忆", note: "状态 / 存储 / 维护" },
           h(Row, { label: "启用向量存储", hint: "关掉 = 不再摄取/编码；两套存储独立，不影响叙事记忆" },
             h("input", {
               className: "qbw-switch", type: "checkbox",
@@ -6047,10 +6038,10 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       const platforms = data?.platforms ?? [];
       return h("div", null,
         h("div", { className: "qbw-infobox" },
-          "后续功能从这里接：杀戮尖塔启动器、B站自主直播、贴吧，都不需要改主流程。",
+          "扩展是给插件作者留的接口：自己写一个扩展放进 extensions 目录就会出现，不需要改主流程。",
           "扩展默认关闭；开启等于允许它在本机执行代码，请只打开你信得过的。"),
         h(AdvancedSettings, { note: "平台接入 / 扩展目录：内置平台和文档入口，平时不用改" },
-          h("div", { className: "qbw-group" }, "平台接入 ", h("small", null, "QQ/B站内置，贴吧预留")),
+          h("div", { className: "qbw-group" }, "平台接入 ", h("small", null, "QQ / B站 内置")),
           h("div", { className: "qbw-grid" }, platforms.map((p) => h("div", { className: "qbw-card", key: p.id },
             h("h4", null, p.name, h("span", { className: "qbw-badge " + (p.status === "active" ? "ok" : "warn") }, p.status === "active" ? "已接入" : "预留")),
             h("p", null, `${p.capabilities?.join(" · ") || "—"}`),
@@ -6447,19 +6438,156 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           h("div", { className: "qbw-hint" }, "自动存档：180 / 90 / 60 / 30 / 15 / 10 / 7 / 5 / 3 / 2 / 1 天 + 每次切换前；全量记忆是 append-only，回档不会删掉后来真正发生过的记忆。")));
     }
 
+    // ── 「她」：三档运行模式 + 待办 + 主动找你 ──────────────────────────────
+    // 这一页回答的是「她现在会做什么、什么时候做、什么时候不做」。
+    // 三档模式读的是 state/run-mode.json（与调度器、桥接同一份），不是配置里的死值。
+    function HerTab({ qq, setQq, busy, setBusy, toast, overview, reload, goTab }) {
+      const [mode, setMode] = useState(null);
+      const [modeErr, setModeErr] = useState("");
+      const [todos, setTodos] = useState([]);
+      const [todoErr, setTodoErr] = useState("");
+      const [text, setText] = useState("");
+      const [when, setWhen] = useState("");
+      const [target, setTarget] = useState("");
+      const [saving, setSaving] = useState("");
+
+      const loadMode = useCallback(async () => {
+        try { setMode(await api("/run-mode")); setModeErr(""); }
+        catch (e) { setModeErr(String(e?.message || e)); }
+      }, []);
+      const loadTodos = useCallback(async () => {
+        try {
+          const data = await api("/todos");
+          setTodos(Array.isArray(data?.items) ? data.items : []);
+          setTodoErr("");
+        } catch (e) { setTodoErr(String(e?.message || e)); }
+      }, []);
+
+      useEffect(() => { void loadMode(); void loadTodos(); }, [loadMode, loadTodos]);
+
+      const pick = async (id) => {
+        setSaving(id);
+        try {
+          await api("/run-mode", { method: "POST", body: id === "auto" ? { action: "clear" } : { mode: id } });
+          await loadMode();
+          toast?.(id === "auto" ? "已跟随默认" : "已切到该模式，下一轮生效");
+        } catch (e) { toast?.("切换失败：" + String(e?.message || e)); }
+        finally { setSaving(""); }
+      };
+
+      const addOne = async () => {
+        const body = { action: "add", text: text.trim(), when: when.trim() || "1 小时后", targetKey: target.trim(), targetName: "" };
+        if (!body.text) { toast?.("先写清楚提醒什么事"); return; }
+        setSaving("add");
+        try {
+          await api("/todos", { method: "POST", body });
+          setText(""); setWhen("");
+          await loadTodos();
+          toast?.("记下了，到点她会来提醒");
+        } catch (e) { toast?.("没记上：" + String(e?.message || e)); }
+        finally { setSaving(""); }
+      };
+
+      const closeTodo = async (id, action) => {
+        setSaving(id);
+        try { await api("/todos", { method: "POST", body: { action, id } }); await loadTodos(); }
+        catch (e) { toast?.("没改成：" + String(e?.message || e)); }
+        finally { setSaving(""); }
+      };
+
+      const cur = mode?.current ?? null;
+      const label = (id) => (mode?.modes || []).find((m) => m.id === id)?.label || id;
+      const sourceText = { manual: "手动指定（只在今天有效，跨天回默认）", config: "配置文件里指定的", weekend: "周末默认摸鱼", "default": "默认" };
+      const fmtWhen = (ms) => (ms ? new Date(ms).toLocaleString("zh-CN", { hour12: false }) : "不定时");
+      const limitText = (m) => {
+        const lim = m?.limits || {};
+        if (m?.id === "minimal") return "只有 QQ 收到消息才醒，醒后 2 分钟没新消息就回去睡。";
+        if (m?.id === "idle") return "只写日志 + 更主动找人聊；B站每天 " + (lim.videoTargetPerDay ?? 60) + " 个，好友爱看 " + (lim.qzonePublicSeen ?? 20) + " 条。";
+        return "每日任务全跑：生物钟、B站、空间、好友爱看。";
+      };
+
+      return h("div", null,
+        h("div", { className: "qbw-infobox" },
+          "这一页管她「会做什么、什么时候做」。改运行模式立刻生效，不用重启；改完下一轮醒来按新模式走。"),
+        h("div", { className: "qbw-card", style: { marginBottom: "10px" } },
+          h("h4", null, "运行模式 ",
+            cur ? h("span", { className: "qbw-badge" }, label(cur.mode)) : null,
+            cur ? h("span", { className: "qbw-hint", style: { marginLeft: "8px" } }, sourceText[cur.source] || "") : null),
+          modeErr ? h("div", { className: "qbw-err" }, "读取运行模式失败：" + modeErr) : null,
+          h("div", { className: "qbw-cols", style: { marginTop: "8px" } },
+            (mode?.modes || []).map((m) => h("div", {
+              key: m.id,
+              className: "qbw-item" + (cur?.mode === m.id && cur?.source === "manual" ? " on" : ""),
+              style: { cursor: "pointer", borderColor: cur?.mode === m.id ? "var(--qbw-brand)" : undefined },
+              onClick: () => { if (!saving) void pick(m.id); },
+            },
+              h("div", { style: { display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "baseline" } },
+                h("b", null, m.label),
+                cur?.mode === m.id ? h("span", { className: "qbw-badge ok" }, "现在") : null),
+              h("div", { className: "qbw-hint", style: { marginTop: "4px" } }, limitText(m)))),
+            h("div", {
+              className: "qbw-item",
+              style: { cursor: "pointer" },
+              onClick: () => { if (!saving) void pick("auto"); },
+            },
+              h("b", null, "跟随默认"),
+              h("div", { className: "qbw-hint", style: { marginTop: "4px" } },
+                "不手动指定：周六日默认摸鱼，其余按正常模式。点这里会清掉今天的手动设置。"))),
+          h("div", { className: "qbw-actions" },
+            h(Btn, { kind: "qbw-btn2", onClick: () => void loadMode(), disabled: !!saving }, "刷新"),
+            h("span", { className: "qbw-hint" }, "最低限度 = 停止一切自主活动；摸鱼 = 只写日志 + 多聊多刷；正常 = 每日任务全跑。"))),
+
+        h("div", { className: "qbw-card", style: { marginBottom: "10px" } },
+          h("h4", null, "她的待办 ", h("span", { className: "qbw-badge" }, `${todos.filter((t) => t.status === "pending").length} 条待办`)),
+          todoErr ? h("div", { className: "qbw-err" }, "读取待办失败：" + todoErr) : null,
+          h("div", { style: { display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "8px", marginTop: "8px" } },
+            h("input", { className: "qbw-input", placeholder: "提醒什么事（比如：把门票链接发给他）", value: text, maxLength: 300, onChange: (e) => setText(e.target.value) }),
+            h("input", { className: "qbw-input", placeholder: "明天 10:00 / 2 小时后", value: when, onChange: (e) => setWhen(e.target.value) }),
+            h("input", { className: "qbw-input", placeholder: "提醒谁（可空）private:QQ", value: target, onChange: (e) => setTarget(e.target.value) }),
+            h(Btn, { onClick: () => void addOne(), disabled: !!saving }, saving === "add" ? "记着…" : "加一条")),
+          h("div", { className: "qbw-hint" }, "「提醒谁」留空 = 提醒让她记这件事的人。写成 private:<QQ 号> 或 group:<群号> 就投递到那里。"),
+          todos.length ? h("div", { className: "qbw-rows", style: { marginTop: "8px" } },
+            todos.map((t) => h("div", { key: t.id, className: "qbw-row" },
+              h("div", { style: { flex: 1 } },
+                h("div", null, t.text, t.status !== "pending" ? h("span", { className: "qbw-badge" }, t.status === "done" ? "已完成" : "已取消") : null),
+                h("div", { className: "qbw-hint" },
+                  fmtWhen(t.dueAt), " · ", (t.target?.name || t.target?.key || "提醒让她记的人"))),
+              t.status === "pending" ? h(Btn, { kind: "qbw-btn2", onClick: () => void closeTodo(t.id, "done"), disabled: !!saving }, "完成") : null,
+              t.status === "pending" ? h(Btn, { kind: "qbw-btn2", onClick: () => void closeTodo(t.id, "cancel"), disabled: !!saving }, "取消") : null))) :
+            h("div", { className: "qbw-hint", style: { marginTop: "8px" } }, "还没有待办。加了之后到点她会主动提醒那个人。"),
+          h("div", { className: "qbw-actions" },
+            h(Btn, { kind: "qbw-btn2", onClick: () => void loadTodos(), disabled: !!saving }, "刷新"))),
+
+        h(Section, { title: "主动找你（目的）", note: "她什么时候会先开口" },
+          h("div", { className: "qbw-hint" }, "管她主动找你的时机、想说什么、从哪个渠道发；跟「QQ」页的对话参数不是一回事。"),
+          h(PurposeCard, { cfg: qq, set: setQq, busy, setBusy, toast })));
+    }
+    // ── 高级：扩展 / 全部参数 / 诊断 三合一 ────────────────────────────────
+    // 这三个以前各占一个一级标签，日常都用不到；合成一页用子标签切换。
+    function AdvancedHub({ qq, bili, unified, setQqPath, setBiliPath, setUnifiedPath, busy, setBusy, toast, reload }) {
+      const [pane, setPane] = useState("params");
+      const panes = [["params", "全部参数"], ["ext", "扩展"], ["diag", "诊断"]];
+      return h("div", null,
+        h("div", { className: "qbw-tabs", style: { marginTop: "4px" } },
+          panes.map(([id, label]) => h("button", {
+            key: id,
+            className: "qbw-tab" + (pane === id ? " on" : ""),
+            onClick: () => setPane(id),
+          }, label))),
+        pane === "params" ? h(AdvancedTab, { qq, bili, unified, setQqPath, setBiliPath, setUnifiedPath, busy }) : null,
+        pane === "ext" ? h(ExtensionsTab, { busy, setBusy, toast: (message) => toast(message), reload }) : null,
+        pane === "diag" ? h(DiagnosticsTab, { busy, setBusy, toast: (message) => toast(message), reload }) : null);
+    }
     // ── 主组件 ──────────────────────────────────────────────────────────────
     // ── 主组件 ──────────────────────────────────────────────────────────────
     const TABS = [
       ["overview", "概览"],
-      ["characters", "角色"],
-      ["purpose", "目的"],
+      ["her", "她"],
       ["qq", "QQ"],
       ["bili", "B站"],
-      ["watch", "观看历史"],
       ["memory", "记忆"],
-      ["extensions", "扩展"],
-      ["advanced", "全部参数"],
-      ["diag", "诊断"],
+      ["characters", "角色"],
+      ["advanced", "高级"],
     ];
     const NAMES = { nav: "Stellar" };
 
@@ -6479,12 +6607,8 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       // 浮层文案（字符串）。真正的通知函数叫 notify —— 两者别同名，否则会被误当函数传（2026-10-30）。
       const [toastText, setToastText] = useState("");
       const [err, setErr] = useState("");
-      const [resourceOpen, setResourceOpen] = useState(false);
       const [warnings, setWarnings] = useState([]);
       const [notes, setNotes] = useState([]);
-      // 记忆卡容量弹窗：80/90/100% 三档；页面开着时每分钟查一次（用户不一定停在「记忆」页）。
-      const [memoryAlert, setMemoryAlert] = useState(null);
-      const memorySnoozeRef = useRef(0);
 
       const notify = (message) => {
         setToastText(message);
@@ -6492,54 +6616,6 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       };
       // 让深层组件（如泛用 Field 的「浏览…」）也能弹提示，而不是静默失败。
       useEffect(() => { window.__stellarToast = notify; return () => { delete window.__stellarToast; }; }, []);
-      // 网盘资源入口：向量记忆模型。百度和 UC 待补链。
-      const RESOURCE_LINKS = {
-        quark: "https://pan.quark.cn/s/2f49b5496874?pwd=jXqr",
-        uc: "",
-        xunlei: "https://pan.xunlei.com/s/VP5iWnY5xJ1D8KpL-gFpAsj9A1?pwd=tqi7",
-        baidu: "",
-      };
-      const RESOURCE_NAMES = { quark: "夸克网盘", uc: "UC网盘", xunlei: "迅雷网盘", baidu: "百度网盘" };
-      const openResource = async (kind) => {
-        const url = RESOURCE_LINKS[kind];
-        if (!url) { notify("这个网盘的链接还没配置，等管理员补上"); return; }
-        // 先用宿主 cmd start 调系统默认浏览器；Electron/新窗口策略拦住 window.open 时也能开。
-        try {
-          const r = await api("/resources/open", { method: "POST", body: { url } });
-          if (r.ok) { notify(`✓ 已用默认浏览器打开${RESOURCE_NAMES[kind]}`); return; }
-        } catch {}
-        try {
-          const opened = window.open(url, "_blank", "noopener");
-          if (!opened) notify(`⚠️ 浏览器拦截了新窗口；请点右侧「复制链接」，粘贴到浏览器打开${RESOURCE_NAMES[kind]}`);
-        } catch (e) {
-          notify(`✗ 打不开浏览器：${e.message}；请点右侧「复制链接」手动打开`);
-        }
-      };
-      const copyResourceLink = async (kind) => {
-        const url = RESOURCE_LINKS[kind];
-        if (!url) { notify("这个网盘的链接还没配置，等管理员补上"); return; }
-        try {
-          if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
-          else throw new Error("clipboard unavailable");
-          notify(`✓ 已复制${RESOURCE_NAMES[kind]}链接`);
-        } catch {
-          // 某些 Electron/受限页面不给 clipboard 权限，用隐藏 textarea 兜底。
-          try {
-            const ta = document.createElement("textarea");
-            ta.value = url;
-            ta.style.position = "fixed";
-            ta.style.left = "-9999px";
-            document.body.appendChild(ta);
-            ta.select();
-            const ok = document.execCommand("copy");
-            ta.remove();
-            if (!ok) throw new Error("execCommand copy failed");
-            notify(`✓ 已复制${RESOURCE_NAMES[kind]}链接`);
-          } catch (e) {
-            notify(`✗ 复制失败：${e.message}；请手动选中链接复制`);
-          }
-        }
-      };
       const loadOverview = useCallback(async () => {
         try { const r = await api("/overview"); setOverview(r); } catch (e) { setErr(`读取概览失败：${e.message}`); }
       }, []);
@@ -6555,29 +6631,6 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           setNotes([]);
           setSaved(JSON.stringify({ qq: r.qq ?? {}, bili: r.bili ?? {}, unified: r.unified ?? {} }));
         } catch (e) { setErr(`读取配置失败：${e.message}`); }
-      }, []);
-      useEffect(() => { loadOverview(); loadConfig(); }, [loadOverview, loadConfig]);
-
-      useEffect(() => {
-        let stop = false;
-        const check = async () => {
-          try {
-            const r = await api("/memory-card");
-            if (stop) return;
-            if (r.enabled === false) { setMemoryAlert(null); return; }
-            const s = r.status ?? {};
-            const level = Math.max(Number(s.level) || 0, Number(s.alertLevel) || 0);
-            const acknowledged = Number(s.acknowledgedLevel) || 0;
-            if (level > acknowledged && Date.now() > memorySnoozeRef.current) {
-              setMemoryAlert({ ...s, level });
-            } else {
-              setMemoryAlert(null);
-            }
-          } catch {}
-        };
-        check();
-        const timer = setInterval(check, 60_000);
-        return () => { stop = true; clearInterval(timer); };
       }, []);
 
       const setQqPath = (path, value) => setQq((c) => { const next = clone(c ?? {}); setPath(next, path, value); return next; });
@@ -6669,27 +6722,6 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
         notify("已撤销未保存的改动");
       };
 
-      // 容量弹窗的三个出口：立即压缩 / 2 小时后再提醒 / 本次不再提醒（确认到当前档位）。
-      const compressMemoryCardNow = async () => {
-        setBusy("mc-alert");
-        try {
-          const r = await api("/memory-card", { method: "POST", body: { action: "compact", targetRatio: 0.8 } });
-          notify(`✓ 记忆卡已压缩（降级 ${r.steps ?? 0} 档）`);
-          setMemoryAlert(null);
-          setTab("memory");
-          await loadOverview();
-        } catch (e) { notify(`✗ ${e.message}`); } finally { setBusy(""); }
-      };
-      const dismissMemoryAlert = async (acknowledge) => {
-        const level = Number(memoryAlert?.level) || 0;
-        setMemoryAlert(null);
-        if (!acknowledge) {
-          memorySnoozeRef.current = Date.now() + 2 * 60 * 60 * 1000;
-          return;
-        }
-        try { await api("/memory-card", { method: "POST", body: { action: "ack", level } }); } catch {}
-      };
-
       if (!qq || !bili || !unified) {
         return h("div", { className: "qbw-app" },
           h("div", { className: "qbw-head" }, h("p", { className: "qbw-kicker" }, "DeepSeek Harness · Stellar"), h("h3", { className: "qbw-title" }, "Stellar"), h("p", { className: "qbw-sub" }, "正在读取配置…")),
@@ -6706,14 +6738,11 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       const renderTab = () => {
         if (tab === "overview") return h(OverviewTab, { overview, reload, busy, setBusy, toast: notify, unified, setUnified: setUnifiedPath, goTab: setTab });
         if (tab === "characters") return h(CharactersTab, { overview, busy, setBusy, toast: notify, reload, goTab: setTab, unified, setUnified: setUnifiedPath });
-        if (tab === "purpose") return h(PurposeTab, { qq, setQq: setQqPath, unified, setUnified: setUnifiedPath, overview, busy, setBusy, toast: notify, reload, goTab: setTab });
+        if (tab === "her") return h(HerTab, { qq: normalizedQq, setQq: setQqPath, busy, setBusy, toast: notify, overview, reload, goTab: setTab });
         if (tab === "qq") return h(QQTab, { cfg: qq, qq: normalizedQq, set: setQqPath, admin: unified?.admin ?? {}, setAdmin, unified, setUnified: setUnifiedPath, overview, busy, setBusy, toast: notify, reload, goTab: setTab, onSave: save, onAdminDiscardContext: setAdminDiscardContext, dirty });
         if (tab === "bili") return h(BiliTab, { cfg: bili, set: setBiliPath, qq: normalizedQq, setQqPath, admin: unified?.admin ?? {}, setAdmin, unified, setUnified: setUnifiedPath, qqPrivate: normalizedQq?.allow?.private ?? [], qqAllowAll: normalizedQq?.allowAllWhenEmpty === true, overview, busy, setBusy, toast: notify, reload, onSave: save, onAdminDiscardContext: setAdminDiscardContext, dirty });
-        if (tab === "watch") return h(WatchTab, { busy, setBusy, toast: notify, goTab: setTab });
-        if (tab === "memory") return h(MemoryTab, { qq: normalizedQq, unified, setUnified: setUnifiedPath, overview, busy, setBusy, toast: notify, reload, onResource: () => setResourceOpen(true) });
-        if (tab === "extensions") return h(ExtensionsTab, { busy, setBusy, toast: notify, reload });
-        if (tab === "advanced") return h(AdvancedTab, { qq: normalizedQq, bili, unified: normalizedUnified, setQqPath, setBiliPath, setUnifiedPath, busy });
-        if (tab === "diag") return h(DiagnosticsTab, { busy, setBusy, toast: notify, reload });
+        if (tab === "memory") return h(MemoryTab, { qq: normalizedQq, unified, setUnified: setUnifiedPath, overview, busy, setBusy, toast: notify, reload });
+        if (tab === "advanced") return h(AdvancedHub, { qq: normalizedQq, bili, unified: normalizedUnified, setQqPath, setBiliPath, setUnifiedPath, busy, setBusy, toast: notify, reload });
         return null;
       };
 
@@ -6726,9 +6755,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
               h(StatusDot, { ok: qqStart && bridge.running && bridge.ok, warn: qqStart && bridge.running && !bridge.ok }, qqStart ? "QQ" : "QQ 关"),
               h(StatusDot, { ok: biliStart && Boolean(biliStatus.available), warn: biliStart && Boolean(biliStatus.enabled) }, biliStart ? "B站" : "B站 关"),
               h(StatusDot, { ok: biliStart && overview?.scheduler?.running }, biliStart ? "生物钟" : "生物钟关"))),
-          h("p", { className: "qbw-sub" }, "Stellar 一个窗口管两边：QQ 的桥接与参数、B站养鱼参数、记忆卡、双向脱敏记忆，以及后续扩展接口。"),
-          h("div", { className: "qbw-actions", style: { marginTop: "10px" } },
-            h(Btn, { kind: "qbw-btn2", onClick: () => setResourceOpen(true) }, "获取网盘资源（向量记忆模型）"))),
+          h("p", { className: "qbw-sub" }, "她的运行模式、待办与主动找你的时机；QQ、B站与记忆各在自己的标签页。")),
         h("div", { className: "qbw-tabs" }, TABS.map(([id, label]) => h("button", {
           key: id, className: "qbw-tab" + (active(id) ? " on" : ""), onClick: () => setTab(id),
         }, label))),
@@ -6748,57 +6775,6 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           h("span", { className: "spacer" }),
           dirty ? h("span", { className: "qbw-dirty" }, "● 有改动还没保存（改了不点保存 = 没生效）") : h("span", { className: "qbw-ok" }, "已保存")),
         toastText ? h("div", { className: "qbw-toast", role: "status" }, toastText) : null,
-        resourceOpen ? h("div", { className: "qbw-modal-backdrop", onClick: (e) => { if (e.target === e.currentTarget) setResourceOpen(false); } },
-          h("div", { className: "qbw-modal", style: { maxWidth: "560px" } },
-            h("h3", null, "获取网盘资源"),
-            h("p", { className: "qbw-hint" }, "向量记忆模型（runtime + 三个模型）在网盘；选择你常用的网盘打开。"),
-            h("div", { style: { display: "grid", gridTemplateColumns: "1fr", gap: "10px", marginTop: "10px" } },
-              [["quark", "夸克网盘"], ["uc", "UC网盘"], ["xunlei", "迅雷网盘"], ["baidu", "百度网盘"]]
-                .map(([key, label]) => {
-                  const url = RESOURCE_LINKS[key];
-                  return h("div", {
-                    key,
-                    style: {
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      padding: "9px 10px",
-                      border: "1px solid rgba(127,127,127,.22)",
-                      borderRadius: "8px",
-                      minWidth: 0,
-                    },
-                  },
-                    h("div", { style: { flex: "1 1 auto", minWidth: 0 } },
-                      h("div", { style: { fontWeight: 600 } }, url ? label : `${label}（待补链）`),
-                      h("div", { className: "qbw-hint", style: { marginTop: "2px", wordBreak: "break-all" } }, url || "链接待补")),
-                    h(Btn, {
-                      kind: "qbw-btn2",
-                      disabled: !url,
-                      title: url ? `用默认浏览器打开${label}` : "链接待补",
-                      onClick: () => openResource(key),
-                    }, "打开"),
-                    h(Btn, {
-                      kind: "qbw-btn3",
-                      disabled: !url,
-                      title: url ? `复制${label}链接` : "链接待补",
-                      onClick: () => copyResourceLink(key),
-                    }, "复制链接"));
-                })),
-            h("p", { className: "qbw-hint", style: { marginTop: "8px" } }, "夸克 / 迅雷已可用；百度 / UC 待补链。打不开浏览器就点「复制链接」，粘贴到浏览器地址栏。"),
-            h("div", { className: "qbw-actions" },
-              h(Btn, { onClick: () => setResourceOpen(false) }, "关闭")))) : null,
-        memoryAlert ? h("div", { className: "qbw-modal-backdrop", onClick: (e) => { if (e.target === e.currentTarget) dismissMemoryAlert(false); } },
-          h("div", { className: "qbw-modal" },
-            h("h3", null, "🧠 记忆卡快满了"),
-            h("p", null, `记忆卡已经用到 ${memoryAlert.percent ?? 0}%（${memoryAlert.chars ?? 0}/${memoryAlert.maxChars ?? 0} 字）。`),
-            h("div", { className: "qbw-meter " + ((memoryAlert.level ?? 0) >= 2 ? "bad" : "warn") },
-              h("i", { style: { width: `${Math.min(100, Number(memoryAlert.percent) || 0)}%` } })),
-            h("p", null, "继续增长会挤掉提示词预算。压缩只会把最不重要的旧记忆先变模糊，置顶的、和主人相关的重要记忆不会动。"),
-            h("div", { className: "qbw-actions" },
-              h(Btn, { onClick: compressMemoryCardNow, disabled: !!busy }, busy === "mc-alert" ? "压缩中…" : "立即压缩到 80%"),
-              h(Btn, { kind: "qbw-btn2", onClick: () => { setTab("memory"); setMemoryAlert(null); } }, "去记忆页看看"),
-              h(Btn, { kind: "qbw-btn2", onClick: () => dismissMemoryAlert(false) }, "2 小时后再提醒"),
-              h(Btn, { kind: "qbw-btn2", onClick: () => dismissMemoryAlert(true) }, "本次不再提醒")))) : null,
       );
     }
 
