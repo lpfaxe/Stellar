@@ -36,7 +36,7 @@
 | 全部参数 | 三份配置的完整扁平树 |
 | 诊断 | 体检、路径、日志 |
 
-> 记忆不是「记忆卡」那套旧东西了。现在是一个 SQLite 库（`characters/<角色>/memory/memory.db`），按人归属、重要事实单独存、B站/空间有见闻区。细节见仓库 [`docs/guides/features/MEMORY.md`](../../docs/guides/features/MEMORY.md)。
+> 记忆是一个 SQLite 库（`characters/<角色>/memory/memory.db`）：按人归属、重要事实单独存、B站与空间各有见闻区。细节见仓库 [`docs/guides/features/MEMORY.md`](../../docs/guides/features/MEMORY.md)。
 
 ## 三份配置
 
@@ -99,4 +99,4 @@ node scripts/test-audit.mjs
 - 改 QQ 配置后桥接要重启（它只在启动时读 `config.json`）；B站 配置下一轮生效。
 - 扩展默认关闭；开启等于允许执行本地代码，只开信得过的。
 - 贴吧只是接口预留，没接真实平台。
-- 只有文字与图片：没有语音发送、没有桌面宠物，也没有对应开关。
+- 只发文字和图片：不合成语音，也不发图片以外的富媒体。

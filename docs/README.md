@@ -35,10 +35,9 @@
 
 ## 三条先说清楚的事实
 
-1. **记忆是 `memory.db`（SQLite），不是记忆卡。** 记忆卡那套（`memory-card.json` / 分层摘要 / 向量块）
-   只在 `memory.engine` 被显式写成 `card` 时才会走；全新安装默认就是 `db`。
+1. **记忆存在 `memory.db`（SQLite）。** 聊天进缓冲表 → 后台切成话题、抽出事实 → 唤醒只喂目录与事实。
    详见 [features/MEMORY.md](guides/features/MEMORY.md)。
-2. **只有文字与图片。** 没有语音发送、没有桌面宠物，设置页与面板里也没有这些开关；仓库只做 QQ × B站 × QQ空间。
+2. **只发文字和图片。** 不合成语音，也不发图片以外的富媒体；设置页与面板里没有这类开关。
 3. **形象图要自己放。** 仓库不带任何默认头像/立绘；把图片放 `assets/self-image.png`，
    或在 `config.json` 里配 `socialV2.selfImage`。没配时「发张自拍」会得到一条「还没有形象图片」的提示。
 

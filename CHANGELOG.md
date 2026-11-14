@@ -38,6 +38,6 @@
 ### 已知限制
 
 - 平台只有 Windows。Node ≥ 22.13，DSH 桌面版，SnowLuma 2（OneBot 部分）。
-- 只有文字与图片：没有语音发送、没有桌面宠物，也没有对应开关。
+- 只发文字和图片：不合成语音，也不发图片以外的富媒体。
 - `config.json` 里还留着 `socialV2.voice` / `tools.sendVoice` 两个死键（两份配置必须字节一致，暂时保留），写不写都不生效。
 - `stellar-manager/panel-token.txt` 与 `audit.jsonl` 不进仓库；面板口令在首次启动时生成。
