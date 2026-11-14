@@ -52,7 +52,15 @@ expose the console to the internet, or delete anything irreversibly.
 
 ## Install
 
-Fastest path: double-click **`首次启动.bat`** (“first start”) in the repo root. It checks the Node version,
+**Windows users who prefer not to touch a terminal:** download `Stellar.exe` from
+[Releases](https://github.com/lpfaxe/Stellar/releases), double-click it, pick a folder (default
+`%USERPROFILE%\Stellar`), and let it extract. It then offers to run the first-start check for you.
+The exe is **only a bootstrapper** — it ships a snapshot of this repo (no `config.json`, no `state/`, no
+`node_modules`), installs nothing else, writes no registry keys, and uninstalling means deleting the folder.
+It is unsigned, so Windows SmartScreen shows “Unknown publisher” the first time (“More info” → “Run anyway”).
+Build it yourself with `node scripts/build-windows-exe.mjs` (output goes to `dist/`, which is git-ignored).
+
+**Command-line path:** double-click **`首次启动.bat`** (“first start”) in the repo root. It checks the Node version,
 installs dependencies, copies `config.example.json` → `config.json` (never overwrites an existing one),
 creates `state/` and tightens its ACL, registers plugin / presets / MCP servers into DSH, and re-aligns
 `dsh.baseUrl` with the running DSH port. Re-running only skips finished steps; it ends with a table of the

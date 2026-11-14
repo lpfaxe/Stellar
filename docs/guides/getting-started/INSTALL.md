@@ -7,7 +7,29 @@
 
 ---
 
-## 0. 最省事：双击 `首次启动.bat`
+## 0. 更省事：`Stellar.exe`（一个文件，双击就装）
+
+不想碰命令行、也不想装 git 的话，用发布页那个 exe：
+
+1. 打开 [Releases](https://github.com/lpfaxe/Stellar/releases)，下载 `Stellar.exe`；
+2. 双击（可以放在任意空文件夹里，它自己会问装到哪）；
+3. 输入目标目录，回车（默认 `%USERPROFILE%\Stellar`）；
+4. 它解压完会问「现在做首次启动检查吗」→ 回车，等于替你双击 [§0.1 的 `首次启动.bat`](#01-命令行路线双击-首次启动bat)；
+5. 之后回到本文 [§1 装 SnowLuma](#1-装-snowluma收-qq-必需) 继续。
+
+这个 exe 里带的就是整个仓库快照（不含 `config.json`、`state/`、`node_modules`），所以：
+
+- **它只是引导器**：不装 DSH、不装 Node、不装 SnowLuma，也不写注册表；
+- **卸载 = 删文件夹**；
+- **升级**：下新 exe，选同一个目录解压 —— 已有的 `config.json` 与 `state/` 不会被覆盖；
+- **没签名**：首次运行会弹「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」；
+- **想自己构建**：`node scripts/build-windows-exe.mjs`（Windows 自带的 csc.exe 编译，产物在 `dist/`，不进仓库）。
+
+> 用 git clone 装的人不需要 exe，直接看下一节。两条路线装出来的目录完全一样。
+
+---
+
+## 0.1 命令行路线：双击 `首次启动.bat`
 
 解压/克隆之后，根目录有一个 **`首次启动.bat`**。双击它，剩下的环境检查与基础配置它自己做：
 
@@ -50,7 +72,7 @@ node scripts/bootstrap.mjs --json                   # 机器可读（适合 CI�
 
 ---
 
-## 0.1 手动走一遍：开始前，先确认这四样
+## 0.2 手动走一遍：开始前，先确认这四样
 
 打开 PowerShell（开始菜单搜 `pwsh` 或 `powershell`），逐条粘贴：
 

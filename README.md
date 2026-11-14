@@ -7,7 +7,7 @@
 
 | | |
 | --- | --- |
-| 版本 | `1.0.1` |
+| 版本 | `1.0.2` |
 | 目标 DSH | `0.2.1-rc.2 或更新`（本机长期跑在 `0.2.2-rc.1`；`node scripts/verify-dsh-020-adaptation.mjs` 可逐项复核） |
 | 平台 | Windows 10/11（沙箱 ACL、SnowLuma 接入与启动脚本都与它绑定） |
 | 许可 | MIT（SnowLuma 是第三方专有运行时，**不随本仓库分发**） |
@@ -128,7 +128,25 @@ node scripts/bootstrap.mjs --dry-run   # 只看计划，什么都不改
 > ⚠️ **Stellar 不下载、不安装、不打包 SnowLuma**（EULA §5.4）。它只做“检测已安装 + 一键打开窗口 + 连接状态”，
 > 登录与扫码始终由你自己完成。
 
-### 2.2 五步装好
+### 2.2 两条安装路线：exe（最省事）或命令行
+
+**A. Windows exe（推荐给不想碰命令行的人）**
+
+1. 去 [Releases](https://github.com/lpfaxe/Stellar/releases) 下载 `Stellar.exe`；
+2. 把它放进一个空文件夹（或者随便哪里都行），双击；
+3. 它会问解压到哪个目录（默认 `%USERPROFILE%\Stellar`），回车确认；
+4. 解压完问「现在做首次启动检查吗」，回车 → 它会调 `首次启动.bat`（装依赖、生成配置、对齐 DSH 端口）；
+5. 打开 DSH → 设置 → Stellar → 诊断 → 一键配置，填主人 QQ 与白名单，再点「启动QQ」。
+
+以后要启动：还是双击同一个 `Stellar.exe`（放在程序目录里时它是菜单：首次检查 / 启动桥接 / 打开控制台）。
+
+> 这个 exe **只是引导器**：自带一份程序压缩包，解压 + 调现有的 `.bat`。它不装 DSH、不装 SnowLuma、不写注册表；
+> 卸载 = 删掉那个文件夹。没签名，首次运行 Windows 会提示「未知发布者」，点「更多信息 → 仍要运行」。
+> 想自己构建：`node scripts/build-windows-exe.mjs`（产物在 `dist/`，不进仓库）。
+
+**B. 命令行**（开发者、或想跟着 git 更新的人）
+
+### 2.3 五步装好（命令行路线）
 
 > 第一次装、或卡在某一步：看 [INSTALL.md](docs/guides/getting-started/INSTALL.md)（手把手，含 SnowLuma 配置、白名单、排错表）。
 
@@ -159,7 +177,7 @@ node scripts/setup-dsh.mjs
 
 > 需要装到别的 profile：`node scripts/setup-dsh.mjs <profile名>`（默认自动探测，兜底 `web`）。
 
-### 2.3 最小配置（只填这 4 处）
+### 2.4 最小配置（只填这 4 处）
 
 打开仓库根目录的 `config.json`：
 
@@ -184,7 +202,7 @@ node scripts/setup-dsh.mjs
 > 其余 20 多个顶层键都有默认值，全部含义见 [DATA-AND-CONFIG.md §1](docs/guides/operations/DATA-AND-CONFIG.md)。
 > 装好之后**建议一切都在设置页里改**（保存即生效，且会自动备份）。
 
-### 2.4 首次验证
+### 2.5 首次验证
 
 ```bash
 node scripts/test-audit.mjs                     # 离线回归（不联网、不发消息；等价 npm run test:audit）
@@ -196,7 +214,7 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 
 想先看一眼它现在的状态，双击 **`启动控制台.bat`**（见 [3.7](#37-两个控制台)）：桥接 / DSH / SnowLuma 三个灯、今天花了多少、在聊几个会话、她手上有哪些待办、最近日志。
 
-### 2.5 安装常见失败
+### 2.6 安装常见失败
 
 | 症状 | 原因 | 处理 |
 | --- | --- | --- |

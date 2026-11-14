@@ -76,6 +76,9 @@ const tests = [
   // 公网 IPv6 白名单（2026-11-13）：面板监听 :: 之后，公网来源默认必须只读；
   // 只有登记过的前缀才可写，防爆破还要按 /64 归并（否则换地址就绕过阶梯锁）。
   'test-panel-remote-allow.mjs',
+  // Windows 启动器（Stellar.exe）：解压必须拒绝 ../、不能覆盖已有 config.json、
+  // 构建产物必须留在仓库外。这几条藏在 C# 源码里，JS 测试不碰就永远没人看。
+  'test-windows-exe.mjs',
   'test-style-refs.mjs',
   // 记忆查询三工具（catalog / topic / search）：身份闸（无令牌+外来会话必须拒）、
   // ownerId 白名单、search 至少 2 字，以及「真的读得到库里的话题与双方原话」。

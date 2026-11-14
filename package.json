@@ -1,6 +1,6 @@
 {
   "name": "stellar",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "license": "MIT",
   "description": "Stellar — QQ ↔ DeepSeek Harness bridge + QQ/B站 merged plugin: one repo, one settings window, QQ + Bilibili + QQ presets.",
