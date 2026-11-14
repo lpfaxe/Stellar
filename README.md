@@ -227,7 +227,7 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 | QQ | SnowLuma 地址与 token、白名单、管理员、二代仿真各项开关、工具开关 |
 | B站 | 扫码登录、作息窗口、偏好、每日额度、评论与动态开关 |
 | 观看历史 | 她看过的视频、打分、评论、收藏（可搜索、可展开） |
-| 记忆 | 记忆库状态、分层清理、向量记忆、双向记忆、风格参考库 |
+| 记忆 | 叙事/向量两种记忆方式的切换、向量索引与语义搜索、Embedding 包安装、双向脱敏同步 |
 | 扩展 | 第三方扩展的启用 / 停用 / 参数 / 重载 |
 | 全部参数 | 三份配置（`config.json` / `config.json` 合体层 / `bili.config.json`）的全部键，可搜索可改 |
 | 诊断 | 新手体检、一键安装、自检、备份与恢复 |
@@ -382,7 +382,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
 | 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 151 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
 | 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 10 页签与面板 6 页签 / 31 张卡 |
-| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 982 | B站 58 条命令、空间功能、鱼群与弹幕 |
+| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 240 | B站 58 条命令、空间功能、鱼群与弹幕 |
 | 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 67 个工具、守卫、两代 preset |
 | 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 152 | 角色包怎么放、人格卡怎么起作用 |
 | 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 556 | 她为什么会主动找人说话 |

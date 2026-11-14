@@ -42,7 +42,7 @@ node scripts/privacy-scan.mjs --json         # 机读输出（给 CI 用）
 
 ### `scripts/privacy-rules.json`（可选的本地规则文件）
 
-- **它含你机器上的真实标识，必须加进 `.gitignore`**（模板见 `privacy-rules.example.json`）。
+- **它含你机器上的真实标识，必须加进 `.gitignore`**（模板见 `scripts/privacy-rules.example.json`）。
 - 结构：
 
 ```jsonc
@@ -90,7 +90,7 @@ CI 上只扫**已跟踪**文件（未跟踪文件在干净 checkout 里不存在
 
 | 位置 | 命中 | 为什么不是泄露 |
 | --- | --- | --- |
-| `plugins/stellar/package-lock.json`、`plugins/stellar/tools/vendor/package-lock.json` | `sha512-…` 高熵串 | npm 完整性哈希，不是密钥；已在 `allowPaths` 里按前缀放行 |
+| `package-lock.json`（根、`plugins/stellar/`、`plugins/stellar/tools/` 三处） | `sha512-…` 高熵串 | npm 完整性哈希，不是密钥；已在 `allowPaths` 里按前缀放行 |
 | `src/bridge.js` 等处的 `apiKey: someVar` / `password = defaultValue` | 「疑似凭据赋值」 | 右侧是变量或形参默认值，没有字面量秘密；规则已要求值必须带引号 |
 
 **结论**：真实值只存在于 `config.json`、`state/` 与 `~/.dsh`（都在 `.gitignore` 里），

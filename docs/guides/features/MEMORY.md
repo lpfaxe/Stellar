@@ -106,9 +106,12 @@
 | `stellar_memory_topic` | 按 `topicId` 读一个话题的正文 | 同上（并校验归属） |
 | `stellar_memory_fact` | 事实的增删改查 | **读**按 `audience` 裁隐私；**写/改/删仅主人** |
 | `stellar_memory_zone` | 见闻区的写/列/搜/删/清 | 会话本人或内部调度会话 |
+| `stellar_memory_read` | 按 `mem_xxx` id 读一条**旧记忆卡**原文（遗留工具，默认引擎下查不到东西） | 仅主人 |
 
 「本人可查自己」靠**会话令牌**认（`resolveAgentIdentity`），不是靠参数里自己报的 `key`。
 没有令牌又没有可靠身份时一律拒绝 —— 这条规则的来由见 `docs/guides/operations/SECURITY_BASELINE.md`。
+
+最后一行是 0.8 时代的遗留工具：它读的是 `memory-card*.json` / `memory-card-full.jsonl`，而默认引擎是 `memory.db`（见第 1 节），所以新装环境里它只会回「没找到」。留着是因为 `memory.engine=card` 时还有用。
 
 ## 9 面板上能做什么
 

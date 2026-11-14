@@ -15,31 +15,16 @@
     ├── character.json           # 清单（名字、personaMeta、创建/更新时间）
     ├── persona.md               # 人格卡
     ├── memory/
-    │   ├── memory/memory.db     # 记忆库（SQLite）
-    │   ├── memory-card.md
-    │   ├── memory-card-prompt-qq.md
-    │   ├── memory-card-prompt-bili.md
-    │   ├── memory-inbox.jsonl
-    │   ├── memory-card-full.jsonl      # 全量记忆（append-only，不生成 prompt）
-    │   ├── memory-card-full-stats.json
-    │   ├── memory-card-full.md
-    │   ├── qq-for-bili.md       # QQ→B站 脱敏记忆（按角色）
-    │   └── sync-state.json
-    ├── bili/                    # B站 行为账本（按角色）
-    │   ├── quota.json / scores.json / favorites.json / feedback.json
-    │   ├── daily-dynamic.json / dyn-kinds.json / dynamic-pins.json / game-rotation.json
-    │   ├── whale-diary.md / whale-diary-private.md / whale-log.jsonl / whale-night.json
-    │   ├── attacks.json / dm-quota.json / dm-await-state.json / pending-replies.json
-    │   ├── fish-guard.json / silence-seen.json
-    │   └── bili-memory.json / .md / -brief.md / bili-video-titles.json
+    │   ├── memory.db            # 记忆库（SQLite，12 张表：缓存/话题/零碎/侧写/事实/见闻区…）
+    │   ├── memory-trash/        # 删记忆前先导一份到这里
+    │   └── style-slices/        # 参考风格切片索引（只在本机生成）
     └── snapshots/
         ├── before-switch/       # 每次切换前，覆盖旧角色
         ├── auto-YYYY-MM-DD/     # 每日自动
         └── manual-*/            # 手动（保留最近 20 份）
 ```
 
-**为什么不把全部内容塞进一个字面意义的单文件**：全量记忆默认上限 10GB，且是 append-only JSONL；
-单 JSON 每次保存都要整份重写，迟早写坏。需要单文件时请用目录包导出（以后加 zip 导出）。
+**为什么记忆是一个 SQLite 库而不是一叠文件**：会话在往里追加（缓存表只增不删），话题与事实会被反复更新，侧写每天重算——这些都需要事务与索引。单个 JSON 每次保存都要整份重写，迟早写坏。
 
 账号级东西**不进角色包**：B站 cookie（`bili/credentials.json`）、表情包（`bili/memes/`）、ffmpeg（`bili/bin/`）、
 身份对齐表（`alignments.json`）、配置（`config.json` / `bili.config.json`）。
@@ -71,7 +56,7 @@
 | 数据 | 隔离 | 说明 |
 | --- | --- | --- |
 | 人格卡 | ✅ 按角色 | `persona.md`；QQ/B站 每次注入都读当前角色 |
-| 衰减/全量记忆 | ✅ 按角色 | `memory/`；QQ 注入块、B站 记忆都由当前角色生成 |
+| 记忆库 | ✅ 按角色 | `memory/memory.db`；QQ 与 B站 两侧的注入都由当前角色生成 |
 | QQ 记忆 inbox | ✅ 按角色 | 桥接启动时解析当前角色路径 |
 | B站 额度/评论/动态/评分/收藏/日记 | ✅ 按角色 | `tools/lib/state-paths.mjs` 每次进程启动解析当前角色 |
 | 分享排期/已用素材 | ✅ 按角色 | 迁移时从 `repo/state` 拷进角色包，避免当天重发 |
@@ -90,10 +75,10 @@
 - **自动存档**：启动 10 秒后 + 每 6 小时检查一次；每天最多一份 `auto-YYYY-MM-DD`。
 - **12 个自动槽**：`before-switch` + 180 / 90 / 60 / 30 / 15 / 10 / 7 / 5 / 3 / 2 / 1 天。
   每次自动检查时，按快照时间就近保留这 11 个年龄档 + 切换前槽；多余自动档删除。
-- **回档**：先给当前状态拍 `pre-restore-*`，再覆盖 `persona.md`、衰减卡与两份 prompt、B站 行为账本；
-  全量记忆 JSONL **不截断**（append-only，回档不删后来真正发生过的记忆）。回档后 `epoch +1` 并重启平台。
+- **回档**：先给当前状态拍 `pre-restore-*`，再覆盖 `persona.md`、记忆库与 B站 行为账本，回档后 `epoch +1` 并重启平台。
+  回档换的是「人格与账本」，不是「撤销发生过的事」——记忆库里后来的真实对话不会被抹掉。
 
-快照里的大文件优先**硬链接**（同一卷），不复制 10GB；删除快照只删链接。
+快照里的大文件优先**硬链接**（同一卷），不复制几 GB 的模型与记忆库；删除快照只删链接。
 
 ---
 
@@ -103,7 +88,7 @@
 
 1. 找到旧人格卡（`persona.file` / `roles/角色卡.md` / `roles/*.md`）；
 2. 建一个角色（名字取人格卡标题，例如「小咪」）；
-3. 复制 `~/.dsh/stellar/memory/*`（全量 JSONL 硬链接）；
+3. 把旧的 `~/.dsh/stellar/memory/` 原样搬到 `characters/<id>/memory/legacy/`（只归档，新记忆库不读它；`memory.db` 从空开始）；
 4. 复制 `~/.dsh/stellar/bili/*` 里的**行为文件**（不含 cookie/表情包/bin）；
 5. 复制 `repo/state` 里的 `bili-share-state.json` / `bili-share-history.json`（避免当天重发）；
 6. 写 `backups/character-migration-*` 清单 + 小文件备份；
@@ -125,11 +110,11 @@
 | POST | 同上 `{action:'update', id, name?, personaText?}` | 改名字/人格卡 |
 | POST | 同上 `{action:'snapshot', id, label?}` | 手动存档 |
 | POST | 同上 `{action:'auto-snapshot', id}` | 立即跑一次自动存档轮换 |
-| POST | 同上 `{action:'restore', id, slot}` | 回档当前角色 |
+| POST | 同上 `{action:'restore', id, slot}` | 回档当前角色（人格与账本；记忆库整体替换为快照那份） |
 | POST | 同上 `{action:'delete', id}` | 归档删除（当前角色拒绝；目录移进 backups） |
 | POST | 同上 `{action:'migrate'}` | 手动触发旧数据迁移 |
 
-请求体上限 16MB（导入全量记忆时注意）。
+请求体上限 16MB。
 
 ---
 
@@ -145,7 +130,7 @@
 ## 8. 已知边界（v1）
 
 - 角色包不包含 B站 偏好（`preferences`）与额度规则（`limits`），这些仍全局；
-- 不迁移/回档全量记忆（append-only，避免删除真实记忆）；
+- 不迁移记忆库（新角色从空库开始，避免把上一个人的对话带过去）；
 - 切换会短暂停 QQ 桥接（几秒），期间消息由 SnowLuma/QQ 侧排队；
 - 角色 id 是 ASCII slug 或 `char-<时间>`，中文名只做显示；
 - 还没有单文件导出/导入（zip），目录包可直接拷走。

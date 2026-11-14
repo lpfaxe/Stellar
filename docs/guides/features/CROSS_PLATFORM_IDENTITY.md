@@ -123,7 +123,7 @@
 | `plugins/stellar/lib/scheduler.js` | `selfIdentityBlockForBili()` → `identityContextLines()`（B站 每轮唤醒第一条上下文） |
 | `src/identity-guard.js` | 出站身份闸纯函数：已知 ID 精确命中 + 「QQ/群号+数字」形态；不拦普通数字与昵称 |
 | `plugins/stellar/tools/lib/outbound-guard.mjs` | 读主人/对齐表 → 受保护 ID → 接到评论/私信/动态/分享发送前（命中即不发） |
-| `plugins/stellar/lib/bili-memory.js` | `briefBlock()`（QQ 侧 B站 锚点）与 `selfInfo()`（B站 昵称/mid） |
+| `src/bili-memory.js` | `briefBlock()`（QQ 侧 B站 锚点）与 `selfInfo()`（B站 昵称/mid） |
 | `state/self-identity.json` | 桥接落的 QQ 侧自我身份（`{nickname,userId,updatedAt}`，不含任何聊天内容） |
 
 ---
