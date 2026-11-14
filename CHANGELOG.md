@@ -29,6 +29,7 @@
 - 新增 `.gitattributes`：`*.bat` / `*.cmd` / `*.ps1` 标记 `-text`，保证 CRLF 原样入库——`install-manifest.json` 对字节算 sha256，行尾被转换会让每个用户的 `verify-dir` 全不符。
 - 文档里的命令改为 `node` 优先（`node scripts/bootstrap.mjs` / `node scripts/test-audit.mjs` / `node src/bridge.js`），`npm run ...` 保留为等价写法：只有 DSH 的机器上 `npm` 本身不存在。
 - 仓库根目录加 `stellar-manager/` **空占位**（只有一个 README）：说明完整部署里的浏览器面板（端口 3300）不随本仓库发布；6 条控制台回归改为「有 `server.mjs` + `lib/auth.js` 才真跑」，否则 SKIP，`test:audit` 在公开仓库里跑 159 条（153 实跑 + 6 SKIP）；`test-qzone-person-scope.mjs` 改用 `DSH_HOME` fixture，不再读本机真实通讯录。
+- 版权署名改为 `lpfaxe and Stellar contributors`；`docs/guides/operations/SECURITY_BASELINE.md` 里两处指向已不存在的 `QSH-plan/` 的引用已改写。
 
 ### 修复
 - 修复控制台 `/api/status` 首次加载 30 秒：计划任务探测去掉了 `powershell -ExecutionPolicy Bypass`（本机实测带它会挂到超时），改 `-NonInteractive` 且超时 8 秒，首屏 3 秒、缓存命中个位数毫秒。
