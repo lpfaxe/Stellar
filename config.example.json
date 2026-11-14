@@ -368,7 +368,8 @@
       "maxBytes": 8388608,
       "maxPixels": 64000000,
       "maxCount": 5
-    }
+    },
+    "selfImage": ""
   },
   "memory": {
     "engine": "db",

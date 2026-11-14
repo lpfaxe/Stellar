@@ -24,6 +24,7 @@
 | `deny` | 黑名单 | 优先于白名单 |
 | `snowluma.wsUrl` / `accessToken` | QQ 网关地址与令牌 | 默认 `ws://127.0.0.1:3001` |
 | `consolePort` / `consoleToken` | 桥接自带控制台 | 默认 3100；令牌为空时自动生成到 `state/console-token` |
+| `socialV2.selfImage` | 她自己的形象图（`qq_get_self_image` 用） | 留空则找 `assets/self-image.png` / `.jpg` / `.webp`；都没有就回「还没有形象图片」 |
 | `socialV2.*` | 回复策略、唤醒条件、表情、收尾、图片额度 | 见各功能篇 |
 | `memory.*` | 记忆引擎与四个子块 | 见 [../features/MEMORY.md](../features/MEMORY.md) |
 | `dsh.*` | DSH 地址、模型、思考强度、认证头 | 端口会被 `dsh-port.js` 自动纠正 |
