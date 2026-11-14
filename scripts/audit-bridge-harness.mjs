@@ -361,6 +361,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     cacheInbound: () => {},
     cacheOutbound: () => {},
     catalogSnapshot: () => null,
+    // factSnapshot 也必须桩：ROOT/config.json 带 memory 段（1.0.0 起默认有）时
+    // memoryDbEngine() 返回 true，桥接会去取事实快照；vm 里没有这个导出就会 ReferenceError。
+    factSnapshot: () => null,
+    warmFacts: async () => null,
     personaSnapshot: () => null,
     styleSliceSnapshot: () => null,
     styleRefBlockFor: () => '',

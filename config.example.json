@@ -370,6 +370,35 @@
       "maxCount": 5
     }
   },
+  "memory": {
+    "engine": "db",
+    "cache": true,
+    "worker": true,
+    "model": true,
+    "catalog": {
+      "titles": 8,
+      "maxChars": 600
+    },
+    "window": {
+      "hour": 6,
+      "minute": 30,
+      "days": 2,
+      "trashDir": ""
+    },
+    "profile": {
+      "enabled": true,
+      "minMsgs": 6,
+      "maxChars": 50,
+      "hour": 7,
+      "minute": 0
+    },
+    "styleRef": {
+      "enabled": true,
+      "maxChars": 900,
+      "slices": 2,
+      "triggerOnly": true
+    }
+  },
   "webSearch": {
     "provider": "auto",
     "apiKey": "",

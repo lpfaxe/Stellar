@@ -1,6 +1,6 @@
 # 角色人格（Character Persona）
 
-> 一个角色 = 人格卡 + 衰减记忆卡 + 全量记忆卡 + B站 行为账本。
+> 一个角色 = 人格卡 + 记忆库（`memory/memory.db`）+ B站 行为账本。
 > 切换角色时，整套东西一起换，不允许「人格换了、记忆/账本还是上一个人的」。
 
 ---
@@ -15,7 +15,7 @@
     ├── character.json           # 清单（名字、personaMeta、创建/更新时间）
     ├── persona.md               # 人格卡
     ├── memory/
-    │   ├── memory-card.json     # 衰减记忆卡
+    │   ├── memory/memory.db     # 记忆库（SQLite）
     │   ├── memory-card.md
     │   ├── memory-card-prompt-qq.md
     │   ├── memory-card-prompt-bili.md
@@ -50,13 +50,13 @@
 
 加载角色（`POST /dsh-stellar/api/characters {action:'load', id}`）按固定顺序：
 
-1. `memoryCardIdle()`：等记忆卡维护/压缩的异步链清空，避免半截写盘；
+1. 等记忆库后台作业（切分 / 复核 / 侧写）跑完当前一拍，避免半截写盘；
 2. **停 B站 生物钟**：`scheduler.retire()` 清定时器、杀直播间进程，并 `sessionController.cancel` 旧 DSH 会话；
 3. **停 QQ 桥接**：先 `stopAllBridgeSessions()` 逐个 reset 会话 + `/api/socialV2/reset`，再停进程；
 4. 给旧角色拍 `before-switch` 快照；
 5. 原子写 `current.json`（`epoch + 1`），更新 `current-role.json`；
 6. 把桥接的 `sessions.json` / `social-v2.json` 移到 `backups/character-switch-*`；
-7. 用新角色的记忆卡生成 prompt；
+7. 用新角色的记忆库重新生成唤醒注入（事实 + 目录 + 侧写）；
 8. 重启 QQ 桥接（读新角色）与 B站 生物钟（会话 id = `bili-whale-<角色 id>`）。
 
 任何一步在写指针前失败 → 不切换，恢复旧调度器；写指针后失败 → 角色已切换但平台保持停止，日志里有原因。

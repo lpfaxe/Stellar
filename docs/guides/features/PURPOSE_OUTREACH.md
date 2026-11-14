@@ -11,39 +11,25 @@
 | --- | --- | --- |
 | 纯逻辑 | [`src/purpose-engine.js`](../../../src/purpose-engine.js) | 配置、排程、素材、目的候选、提示词、回执解析、状态迁移 |
 | 接线（QQ） | [`src/bridge.js`](../../../src/bridge.js) | 60 秒 tick、读记忆、投递 DSH、收回合回执、HTTP 接口 |
-| 接线（桌宠） | `plugins/stellar/lib/pet-purpose.js` | 同一个纯逻辑 + 同一份状态；生成一句话推到桌宠气泡（可选 TTS） |
 
 ---
 
-## 0. 载体：QQ / 桌宠（2026-10-25）
+## 0. 载体：只有 QQ
 
-目的机制在设置页是**独立栏目「目的」**，不再放在 QQ 页里。区别只在最后一步由谁发：
+目的机制在设置页是**独立栏目「目的」**。最后一步永远是：在她的 QQ 会话里跑一个 agent 回合，调 `qq_send_private_message` 发给主人。
 
-| | 载体 = QQ（`carrier: 'qq'`，默认） | 载体 = 桌宠（`carrier: 'pet'`） |
-| --- | --- | --- |
-| 执行者 | 桥接每 60 秒 tick | Stellar 插件每 60 秒 tick（`pet-purpose.js`） |
-| 闸门 | 需要 `reserved2` + ownerQQ 好友 + 白名单 | 只需要桌宠在线；不需要 QQ 模式/好友 |
-| 生成 | 在她的 QQ 会话里跑 agent 回合，调 `qq_send_private_message` | 直接调 DSH `llm` 服务生成一句话（人设卡 + 记忆卡 + 目的素材） |
-| 发送 | QQ 私聊 | 桌宠气泡（`purpose.petModality = text`）或气泡 + TTS 语音（`voice`） |
-| 回执 | `turn/end` + 发送记录 | 生成成功即记 sent（气泡必弹文字；语音失败只降级文字） |
+| 项 | 值 |
+| --- | --- |
+| 执行者 | 桥接每 60 秒 tick |
+| 闸门 | 需要 `reserved2` 模式 + 主人是好友 + 命中白名单 |
+| 回执 | `turn/end` + 发送记录 |
 
-**互斥**：`purpose.carrier` 只允许一个执行者。
+> 曾经有过「桌宠载体」（把一句话推到桌面气泡，可选 TTS）。桌宠子系统已从本仓库剥离，`purpose.carrier` 只剩 `qq`,
+> 配置里若还写着 `pet` 会被当成 `qq` 处理。
 
-- 载体 = 桌宠：桥接的 `purposeTick()` / `warmPurposeState()` 每次先读 `config.json` 的 `purpose.carrier`
-  （30 秒缓存），是 `pet` 就直接返回；插件的 `pet-purpose` 接手。切换载体 30 秒内生效，**不用重启桥接**。
-- 载体 = QQ：插件的 `pet-purpose.tick()` 直接返回，桥接照旧。
-- **桌宠离线回落**：`purpose.petFallbackToQQ`（默认 `true`）。桌宠没在线时，插件用
-  `POST /api/purpose/run {force:false}` 交给桥接按它自己的闸门和排程发 QQ；关掉则这轮不发。
-  回落永远不会导致两边同时收到。
+**状态**：`characters/<id>/purpose-outreach.json`（今日次数 / 下次时间 / 惦记的事 / 目标假设 / 历史），同一时刻只有一个写入者（桥接）。
 
-**状态共用**：同一个 `characters/<id>/purpose-outreach.json`（今日次数 / 下次时间 / 惦记的事 /
-目标假设 / 历史）。插件每次 tick 重读文件，桥接回落时用自己的内存状态写回；同一时刻只有一个写入者。
-
-**专注模式**：`~/.dsh/stellar/pet/focus.json` 里 `enabled=true` 时，两边的**自动** tick 都不出发
-（插件 tick 直接返回，桥接 tick 读到就跳过）；手动「立即试一次」（force）不受影响。
-文件由桌宠菜单或设置页写，桥接每 10 秒读一次，所以桌宠没开也能受控。
-
-> 设置页位置：`设置 → Stellar → 目的`。桌宠的对话参数在 `桌宠` 页；安装/启动也在那里。
+> 设置页位置：`设置 → Stellar → 目的`。
 
 ---
 
@@ -53,7 +39,7 @@
 每 60 秒 tick
   ├─ 硬闸门：开关 / 模式 / DSH / 暂停 / 安静时段 / 每日上限 / 主人是否在聊 / token 额度 / 好友
   ├─ 到点了吗（nextFireAt）
-  ├─ 收集素材：主人私聊 + 最近 3 个群 + B站 视频/动态/想法 + 记忆卡 + 她的 activeTopics/pendingThoughts
+  ├─ 收集素材：主人私聊 + 最近 3 个群 + B站 视频/动态/想法 + 记忆库（事实 + 话题目录）+ 她的 activeTopics/pendingThoughts
   ├─ 事件理解：谁在说 / 想要什么 / 对象 / 认真还是随口 / 一次还是反复
   ├─ 评价 + 驱动：需求亲和 / 自我相关 / 情绪 / 重复度 / 主人多久没说话
   ├─ 目标假设：归属（我/主人/群友/视频）+ 置信度 + 价值 + 紧迫度 + 风险 + 下一步
@@ -298,10 +284,10 @@ confidence = 0.15
 
 ---
 
-## 3. 人格卡 / 记忆卡 → 动机（换角色就换一套动机）
+## 3. 人格卡 / 记忆 → 动机（换角色就换一套动机）
 
-> 用户 2026-10-24 要求：以后只要把人格卡和记忆卡载入这套机制，就能生成动机。
-> 所以目的状态不是全局一份，而是**跟着当前角色**走；人格卡提供「先验」，记忆卡提供「骨架 + 证据」。
+> 用户 2026-10-24 要求：以后只要把人格卡和记忆载入这套机制，就能生成动机。
+> 所以目的状态不是全局一份，而是**跟着当前角色**走；人格卡提供「先验」，记忆提供「骨架 + 证据」。
 
 ### 3.1 人格卡：动机先验（bias）
 
@@ -325,11 +311,11 @@ confidence = 0.15
   想折腾点新东西 / 想聊聊我是谁」之类的动机。
 - 人格卡全文也会进提示词的「人格卡（你是这样的人）」，让她写出来的口吻/称呼跟着卡走。
 
-### 3.2 记忆卡：证据 + 骨架
+### 3.2 记忆：证据 + 骨架
 
 - `collectMaterials` 的 memory 素材：近期高重要度/高情绪；**钉住（pinned）/锚点（anchor）/
   初次相遇（initial）** 即使超过 30 天也纳入（最多 8 条）。
-- 记忆卡 prompt block 每轮进提示词；记忆记录同时参与目标假设（`source:'memory'`）。
+- 记忆的事实表与话题目录每轮进提示词（细节要她自己调 `stellar_memory_*` 工具翻）；记忆记录同时参与目标假设（`source:'memory'`）。
 - 这些「骨架记忆」更适合生成「突然想起…想跟主人说」的动机；普通旧记忆不会因为存在过就变成新欲望。
 
 ### 3.3 换角色：目的状态按角色隔离
@@ -348,7 +334,7 @@ confidence = 0.15
 - 副作用都在桥接：60 秒 tick、读 QQ/B站/记忆文件、投递 DSH、收回合回执、HTTP/UI。
 - 以后抽成插件时，只需要 engine + 一个 driver（tick + deliver + receipt）+ 一个状态文件；
   当前按用户要求不拆，先并入 Stellar。
-- 最小只读 driver 示例：`node scripts/purpose-inspect.mjs [--json]`，只读当前人格卡/记忆卡/QQ/B站，
+- 最小只读 driver 示例：`node scripts/purpose-inspect.mjs [--json]`，只读当前人格卡/记忆/QQ/B站，
   打印会生成哪些目标假设、驱动和这次会选哪一个；不写 state、不连 DSH、不发 QQ。
 
 ---
@@ -432,7 +418,7 @@ confidence = 0.15
 - 有角色系统：`~/.dsh/stellar/characters/<角色id>/purpose-outreach.json`
 - 没有角色/旧布局：`<仓库>/state/purpose-outreach.json`
 
-换人格卡/记忆卡（加载另一个角色）时桥接会重启，因此会读到新角色自己的目的状态：
+换人格卡/换角色（加载另一个角色）时桥接会重启，因此会读到新角色自己的目的状态：
 上一个角色的 goals/drives/pending 不会继承到新角色。
 
 `purpose-outreach.json`：

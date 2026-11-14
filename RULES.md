@@ -39,31 +39,31 @@
 3. **只读联网搜索**：`qq-chat` / `qq-chat-v2` 预设已关闭 DSH 内置 `tool-web` 的 `search` / `fetch`，联网统一走 `src/mcp-web-search-safe.js` 提供的 `mcp__web-search-safe__web_search/web_fetch`。不暴露本地文件、命令执行、写操作。
    - ✅ `mcp__web-search-safe__web_fetch` 已做 SSRF 加固：仅 http/https、禁止 localhost/私有 IP/链路本地/CGNAT/带凭据 URL、DNS 解析结果全量校验、每跳重定向重新校验、响应体限量读取。
 4. **发送强制白名单**：所有发送类工具（`qq_send_group_message` / `qq_send_private_message` / `qq_send_message` / `qq_send_burst` / `qq_reply` / `qq_send_poke` / `qq_send_sticker` 等）的目标必须命中 `config.json` 的 `allow.groups` / `allow.private`，否则拒绝执行。
-   - **语音不在本仓库**：`qq_send_voice` / 语音库 / `socialV2.voice` 相关实现已随代码剥离（`docs/guides/subsystems/SUBSYSTEM-VOICE.md` 仅作历史留存），当前没有语音通道需要额外收紧。
+   - **没有语音通道**：`qq_send_voice` / 语音库的实现不在本仓库（相关旧文档已删除），所以没有语音发送需要额外收紧。
 5. **发送禁令（模型层）**：persona 明确规定只有「管理端明确指示」或「【管理员】标记的明确要求」才可使用发送工具；禁止写"我已回复/消息已发送（message_id）"类汇报。
 6. **回复审计（桥接层硬拦截）**：agent 回复文本若包含本机路径（`C:\`、`/home/` 等）或凭据特征（token/password/secret/api key 等）→ **整条拦截不发送**，并告知"被安全策略拦截"。
 7. **人格由桥接注入**：角色设定来自 `state/current-role.json` + `roles/<角色>.md`，桥接注入到消息；群友口头要求改角色无效（桥接直接拦截），agent 也无文件工具自行更改。
 8. **静默模式**：`current-role.json` 的 `mode: "silent"` 时，群友消息不再投递给 agent（仅记录日志），只有管理员消息可对话。
-9. **入站人的黑名单（`deny.users`）**：桥接在 `handleIncoming()` 的**最前面**按发送者拦一次（`senderBlocked()`）—— 名单里的人，无论在哪个群还是私聊，消息一律不入库、不进上下文、不写记忆卡、不计鱼群、不触发唤醒；`handlePokeNotice()` 同样拦（拍一拍不能当唤醒后门）。优先级高于 `allow.*` 和 `allowAllWhenEmpty`；**只拦入站**，不放松发送侧白名单。设置页在「QQ 白名单」卡片正下方。
+9. **入站人的黑名单（`deny.users`）**：桥接在 `handleIncoming()` 的**最前面**按发送者拦一次（`senderBlocked()`）—— 名单里的人，无论在哪个群还是私聊，消息一律不入库、不进上下文、不写记忆、不计鱼群、不触发唤醒；`handlePokeNotice()` 同样拦（拍一拍不能当唤醒后门）。优先级高于 `allow.*` 和 `allowAllWhenEmpty`；**只拦入站**，不放松发送侧白名单。设置页在「QQ 白名单」卡片正下方。
 10. **跨平台来源与自我识别**：身份的锚点只有一份（`src/self-identity.js`），QQ 桥接与 B站 生物钟都调它，不许在各处手拼「你是谁」。任何进入模型的内容都要能回答「属于哪个平台」——合并转发/QQ 图片走 `formatForwardResponse()` 的 `platform/source/notice`，提示词每轮再带【来源判断】；**不要按内容相似度猜平台**。隐私：B站 侧只拿打码 QQ 号（`328****288`），任何公开输出都不写完整 QQ 号/群号。
     - **只准自己互认**（2026-10-23 用户追加）：B站 评论/私信/动态/转发动态发送前有一道**确定性硬闸**（`src/identity-guard.js` + `plugins/stellar/tools/lib/outbound-guard.mjs`）：主人 QQ、主人 B站 mid、对齐表里别人的账号、任何「QQ/群号 + 数字」形态一律拒发（exit 9，错误里的号码打码）。它只拦这些已知 ID，不拦普通数字与昵称；QQ 群侧仍靠提示词规则约束。详见 [`docs/guides/features/CROSS_PLATFORM_IDENTITY.md`](docs/guides/features/CROSS_PLATFORM_IDENTITY.md)。
 
-## 提示词分层边界（仿真 / 人格 / 记忆卡）
+## 提示词分层边界（仿真 / 人格 / 记忆）
 
 二代仿真模式下，AI 拿到的提示词由三层拼成，控制台「人格与角色」页与「记忆」页分别查看/修改：
 
 | 层 | 位置 | 管什么 | 生效方式 |
 | --- | --- | --- | --- |
 | **仿真提示词**（两代各一份） | `dsh/agent-presets/qq-chat/agent.cordis.yml`（一代）与 `qq-chat-v2/agent.cordis.yml`（二代）的 `persona.prefix` | 怎么调工具、怎么参与群聊（行为与协议：安全规则、工具协议、唤醒/分条/记忆/黑话等） | 控制台可按代次分别编辑；保存会写仓库源文件并同步到 `~/.dsh/.agent-presets/<preset>/`；**新会话**自动用新版，**正在进行的 QQ 会话**需 `POST /api/session/reset` 或重启 DSH |
-| **角色人格（总容器）** | `~/.dsh/stellar/characters/<id>/`（`character.json` / `persona.md` / `memory/` / `bili/` / `snapshots/`） | 一个角色 = 人格卡 + 衰减/全量记忆卡 + B站 行为账本；加载别的角色会先把旧角色存档 | 设置页「角色」页新建/加载/存档/回档；切换时停桥接+生物钟、清会话、换 `current.json`（epoch+1）后重启。完整规则见 [`docs/guides/features/CHARACTER_PERSONA.md`](docs/guides/features/CHARACTER_PERSONA.md) |
+| **角色人格（总容器）** | `~/.dsh/stellar/characters/<id>/`（`character.json` / `persona.md` / `memory/` / `bili/` / `snapshots/`） | 一个角色 = 人格卡 + 记忆库（`memory/memory.db`）+ B站 行为账本；加载别的角色会先把旧角色存档 | 设置页「角色」页新建/加载/存档/回档；切换时停桥接+生物钟、清会话、换 `current.json`（epoch+1）后重启。完整规则见 [`docs/guides/features/CHARACTER_PERSONA.md`](docs/guides/features/CHARACTER_PERSONA.md) |
 | **人格提示词** | 当前角色的 `characters/<id>/persona.md`（旧布局回退 `roles/<人格名>.md`） | AI 是谁、什么性格、怎么说话（人设与语气） | 桥接每条消息前注入，**保存即生效** |
-| **记忆卡**（第三层，和人格卡并列） | 当前角色的 `characters/<id>/memory/memory-card-prompt-{qq,bili}.md`；全量卡：`memory-card-full.jsonl` + `-stats.json`（**不生成 prompt**） | 她自己的长期记忆：B站冲浪、QQ 聊天、和主人的重要互动；衰减卡按重要度/时间模糊或遗忘，全量卡只存档、永久清晰 | 插件宿主维护；QQ 下一条消息 / B站 下一次醒来只读衰减卡的注入文件；全量卡不进提示词，控制台/API 按需搜索/召回。完整规则见 [`docs/guides/features/MEMORY_CARD.md`](docs/guides/features/MEMORY_CARD.md) |
+| **记忆**（第三层，和人格卡并列） | 当前角色的 `characters/<id>/memory/memory.db`（SQLite，一张表一类东西：会话缓存 / 话题 / 重要事实 / 零碎 / 侧写 / 见闻区 / 风格切片） | 她自己的长期记忆，**按人归属**：每行都带 `owner_id`（`private:<QQ>` 或 `group:<群号>`）；问「我的生日」查这个人，问「你昨天和 B 聊了什么」才去查 B，并且只给结论不转述细节 | 桥接入站/出站双写 → 后台每 10 分钟切分 → 每天 06:30 复核、07:00 生成侧写；唤醒时注入「事实 + 话题目录 + 侧写」，细节要她自己用 `stellar_memory_*` 工具去翻。完整规则见 [`docs/guides/features/MEMORY.md`](docs/guides/features/MEMORY.md) |
 
-- 拼装顺序：`仿真提示词 → 人格提示词 → 记忆卡 → 本轮消息`（B站 侧是 人设 → 管理员 → 对齐 → QQ 脱敏近况 → 记忆卡）。
-- **记忆卡的隐私 scope 是硬边界**：QQ 记录默认 `scope=qq`，不会进 B站 提示词；`includeQqInBili` 默认关。容量 80/90/100% 时控制台弹窗，并可私聊管理员。具体规则/评分/遗忘见 [`docs/guides/features/MEMORY_CARD.md`](docs/guides/features/MEMORY_CARD.md)。
-- **「最初」是独立判定**：只算和主人的互动，从首次互动起 30 天，按 90%/55%/30%/3% 确定性概率标为最初；一开始最清晰、不会被彻底遗忘。它和「重要」不是一套规则。初次相遇默认取最早一条主人互动，管理员可勾选一条或合并多条为一个事件来指定。
-- **合并事件**：任意勾选 ≥2 条记忆可合并为一个事件（可填标题、默认置顶），原记录先进全量卡再从衰减卡移除；合并不改变初次相遇。混合 QQ/B站 记忆时 scope 收紧为 `qq`。列表置顶优先于重要度；QQ 记忆同时记录主人和她自己的发言（回复并入 `botReply`）。
-- **平时只加载衰减卡**：全量卡（`memory-card-full.jsonl`，所有记忆永久清晰）只存档，**不生成 prompt、不自动注入**；需要全量记忆时走控制台搜索或 `/api/memory-card/full` 按需召回。
+- 拼装顺序：`仿真提示词 → 人格提示词 → 记忆（事实 + 目录 + 侧写）→ 本轮消息`（B站 侧是 人设 → 管理员 → 对齐 → QQ 脱敏近况 → 记忆）。
+- **记忆按对象分，隐私是硬边界**：每行记忆都有归属人。问她「你知道我的生日吗」，她查**当前对话这个人**；问「你昨天和 B 聊了什么」，她查 B，但只回结论、不复述原文。重要事实按 `normal / private / secret` 三级，**别人的私事不进公共场合**（群里只能看到 `normal` 级）。
+- **重要事实单独存**：生日、忌口、过敏、住址、联系方式、称呼这类不靠话题切分，直接进 `fact` 表并带权重；只认第一人称（「他生日是…」不会记到说话人头上）。
+- **见闻区**：B站刷到什么、好友爱看看了什么，她自己写不超过 200 字的总结进 `zone_note`，不进话题分类。被问「今天在 B站 看了什么」先查这里。
+- **唤醒只给目录**：注入的是「有哪几个话题 + 几条事实 + 侧写一句话」，细节要她自己调工具翻——不解细节就不会把别人的话背出来。
 - **人格卡只写人设，不写工具用法**：两代工具协议不同（一代空格分条 / `[SILENT]`，二代一切皆工具），写进人格卡必然有一代是错的；而且桥接已经每条消息注入当前模式的分条与潜水方式。写作规范见 `roles/README.md`。
 - 同一个角色确实需要分代时，用**标题级模式标记**：`## 分条方式 〔一代〕` / `## 表情包 〔二代〕`；无标记的小节两代都注入，标记在注入前会被去掉。桥接按当前模式筛完小节**再**截断。
 - **注入上限**：默认每条消息 6000 字符（`config.json` 的 `role.maxInjectChars`，1000~20000，控制台可改）。这是成本护栏——人格卡会随每条消息发送。

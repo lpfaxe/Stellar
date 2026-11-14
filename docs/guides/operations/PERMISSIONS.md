@@ -24,9 +24,8 @@
 | 2 | 回答 AI 提问 | 普通提问任何人；`[仅主人]` 提问仅主人（标记只收窄） | `question-answers.js` + 消费点 | `question.answer` | `test-question-answers` |
 | 3 | 聊天 `/role` 切换角色 | 仅 `isOwner`（桥接直接执行，不过模型） | 入站管理命令分支 | `role.switch` | 待补程序断言 |
 | 4 | 封闭模式（closed-agent） | 仅 owner 私聊 | `modeAllowed` | `closed-agent.access` | 待补程序断言 |
-| 5 | 语音触发 | owner（或配置的成员名单） | `voiceTriggerBlock` | `voice.trigger` | 待补程序断言 |
 | 6 | 鱼群保护 bypass | 仅 `isOwner` | `evaluateConversationFishGuard` | `fish.bypass` | 待补程序断言 |
-| 7 | 记忆卡容量告警 | 只私聊 `ownerQQ` | `/api/memory-card/notify` | `memory.alert` | 待补程序断言 |
+| 7 | 记忆库后台作业告警 | 只私聊 `ownerQQ` | 插件日志 / 面板「记忆」 | `memory.profile` | 待补程序断言 |
 | 8 | 控制台/管理 HTTP | console token；agent token 白名单/黑名单 | 请求集中关卡 | — | `test-audit-security*` |
 | 9 | 配置 / 人格卡 / 白名单写入 | 设置页 DSH Cookie / 控制台令牌；**AI 无入口** | 插件 `/config`、`/persona`；桥接管理路由 | — | 现有契约测试 |
 

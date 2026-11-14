@@ -13,13 +13,12 @@
 | License | MIT (SnowLuma2 is a third-party proprietary runtime and is **not** bundled) |
 | Required third party | SnowLuma2 — download and QR-login it yourself |
 
-> 🔒 **No real data ships here**: persona cards are blank templates (`roles/`), memory is an empty shell (`examples/`),
+> 🔒 **No real data ships here**: persona cards are blank templates (`roles/`), memory is an empty SQLite database created on first run (`memory/memory.db`),
 > every group / member / QQ id / Bilibili mid is a placeholder, and the factory persona is empty (yours to fill).
 > Runtime data only ever lives on your own machine.
 
-> **Not included**: desktop pet and voice synthesis / voice messages. Both were stripped together with their code
-> when this repo was open-sourced. Old docs mentioning them and the leftover `socialV2.voice` / `tools.sendVoice`
-> keys are historical — there is no implementation behind them.
+> **No voice, no desktop pet**: this repo only does text and images over QQ / Bilibili / QZone. The `socialV2.voice`
+> and `tools.sendVoice` keys in `config.json` are dead keys kept only so the two configs stay byte-identical.
 
 ---
 

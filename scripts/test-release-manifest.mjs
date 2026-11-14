@@ -58,7 +58,7 @@ if (hasGitRepo) {
 // 2026-10-30 事故：工作区 CRLF / git 提交 LF → 清单与发布包 92 处哈希不符。
 {
   const crypto = await import('node:crypto');
-  const probe = ['.gitignore', 'README.en.md', '../docs/guides/getting-started/VERSIONS.md', '../docs/guides/getting-started/DSH_SETUP.md', 'package.json'];
+  const probe = ['.gitignore', 'README.en.md', 'docs/guides/getting-started/VERSIONS.md', 'docs/guides/getting-started/DSH_SETUP.md', 'package.json'];
   let checked = 0; const bad = [];
   if (!hasGitRepo) {
     console.log('⏭️  SKIP 清单哈希 == git blob：没有 git 仓库可比');

@@ -14,7 +14,7 @@
    ```
 
    > 默认分支 `main` 即当前发布版本，clone 下来无需切换分支。
-   > 与 DSH 的版本对应关系与逐条适配记录见 [DSH_020_ADAPTATION.md](../development/DSH_020_ADAPTATION.md)。
+   > 与 DSH 的版本对应关系见 [VERSIONS.md](VERSIONS.md)；升级 DSH 后跑 `npm run verify:adaptation` 复核。
 
 2. **安装依赖**：
 

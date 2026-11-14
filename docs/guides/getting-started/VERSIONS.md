@@ -48,8 +48,9 @@
 
 | 组合 | 要求 |
 | --- | --- |
-| ~~Stellar ↔ 桌宠~~ | 桌宠已剥离，协议仅历史留存 |
-| ~~Stellar ↔ 语音包~~ | 语音已剥离，契约仅历史留存 |
+| Stellar 本体 ↔ DSH | 桌面版 0.2.x；DSH 升级后跑 `verify:adaptation` |
+| Stellar 本体 ↔ 记忆库 schema | `memory.db` 的 `meta.schema_version` 目前是 3；旧库读到时自动建缺表，不删数据 |
+| Stellar 本体 ↔ 安装清单 | `release/install-manifest.json` 与仓库内文件逐字节一致，`verify` 能查出任何改动 |
 
 
 > 破坏上面任一协议 = **Stellar minor bump**，并在 CHANGELOG 的「破坏性变更」里写明。

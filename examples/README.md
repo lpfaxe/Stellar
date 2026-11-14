@@ -1,23 +1,23 @@
 # 示例角色包（空壳）
 
-这个目录**不是运行时数据**，而是"角色包长什么样"的模板：
+这个目录**不是运行时数据**，而是「角色包长什么样」的模板：
 
 ```
-character.json              角色清单（id/name/版本）
+character.json              角色清单（id / name / 版本）
 persona.md                  人格卡（你自己写）
-memory/memory-card.json     记忆卡空壳（records 为空）
-memory/memory-inbox.jsonl   待摄取事件（空文件）
+memory/                     记忆库目录（首次启动后由桥接创建 memory.db）
 bili/                       B站 行为账本（运行时自动生成，不要提交）
 ```
 
 真正跑起来之后，这些文件在：
 
-| 平台 | 位置 |
+| 位置 | 说明 |
 | --- | --- |
-| Windows | `%USERPROFILE%\.dsh\stellar\characters\<id>\` |
-| 可用环境变量覆盖 | `DSH_HOME` |
+| `%USERPROFILE%\.dsh\stellar\characters\<id>\` | 默认（Windows） |
+| `DSH_HOME` | 设了就按 `<DSH_HOME>/stellar/characters/<id>/` |
 
-> ⚠️ **记忆卡不要手写**：`records` 由插件维护（摄取 → 衰减 → 压缩），手改会被下一次整理覆盖。
-> 想给角色"预置记忆"，写进 `memory-inbox.jsonl`（每行一条事件），让插件自己摄取。
+> ⚠️ **记忆库不要手写**：`memory.db` 由桥接与后台作业维护，手改会和运行中的写入打架；要改记忆请用面板「记忆」页或 `stellar_memory_*` 工具。
+>
+> 想让角色一开始就「记得」几件事，用面板「记忆 → 重要事实」新建一条（生日、忌口、称呼这类），或者直接让它第一次对话就说到——事实抽取会认第一人称。
 >
 > 仓库里**不包含任何真实记忆、群号、群友名单**——这些永远只在你自己的机器上。

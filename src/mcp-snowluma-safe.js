@@ -1222,7 +1222,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectStic
 if (cfg.socialV2?.tools?.getSelfImage !== false) {
   server.tool(
     'qq_get_self_image',
-    '查看你自己的默认 Q 版形象图片（网关给这个号配的默认形象）。当你被问“你长什么样/发张自拍/你是什么形象”时，可以调用这个工具看自己的样子；返回的图片会直接进入你的视觉上下文。',
+    '查看你自己的形象图片（使用者放在 assets/self-image.png 或在 config.json 配 socialV2.selfImage 的那张）。被问“你长什么样/发张自拍/你是什么形象”时可以先看这张；没有配图会返回提示，这时用角色卡里的文字描述自己，别编造画面。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）')
@@ -1237,7 +1237,7 @@ if (cfg.socialV2?.tools?.getSelfImage !== false) {
         }
         return {
           content: [
-            { type: 'text', text: '这是你的默认 Q 版形象：' },
+            { type: 'text', text: '这是你自己的形象：' },
             { type: 'image', mimeType: data.image.mimeType, data: data.image.data }
           ]
         };

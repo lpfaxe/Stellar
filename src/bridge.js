@@ -7879,13 +7879,18 @@ function maybeApproveImageRequest(text, key) {
           if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           if (req.headers['x-agent-token'] && !v2ToolEnabled('getSelfImage')) { sendJson({ ok: false, error: '工具未启用：qq_get_self_image' }, 403); return; }
-          const selfPath = path.join(ROOT, 'assets', 'deepseek娘.png');
+          // 形象图由使用者自己放（不随仓库分发）：config.json 的 socialV2.selfImage 指路径，
+          // 相对路径按仓库根解析；没配就找 assets/self-image.{png,jpg,jpeg,webp}。
+          const selfPath = resolveSelfImagePath();
           try {
             if (imageInputSupport === false) {
               sendJson({ ok: true, key, image: null, text: '当前模型不支持图片输入，无法查看 Q 版形象；可以用角色卡/设定里的文字描述自己。' });
               return;
             }
-            if (!fs.existsSync(selfPath)) { sendJson({ ok: false, error: '未找到 AI 形象图片 assets/deepseek娘.png' }, 404); return; }
+            if (!selfPath || !fs.existsSync(selfPath)) {
+              sendJson({ ok: false, code: 'SELF_IMAGE_MISSING', error: '还没有形象图片', hint: '把自己的形象图放到 assets/self-image.png，或在 config.json 里配 socialV2.selfImage 指向图片路径；也可以用角色卡里的文字描述自己。' }, 404);
+              return;
+            }
             const buf = fs.readFileSync(selfPath);
             const mimeType = mimeFromBuffer(buf) || 'image/png';
             sendJson({ ok: true, key, image: { mimeType, data: buf.toString('base64') } });
@@ -10093,6 +10098,31 @@ function maybeApproveImageRequest(text, key) {
     sendGroupSegments: (id, segments) => onebotSendSegments('group', id, segments),
     log,
   });
+
+  /**
+   * 自己的形象图在哪：优先 config.json 的 socialV2.selfImage（相对路径按 ROOT 解析），
+   * 没配就按约定找 assets/self-image.<ext>。找不到回空串，调用方给可行动的提示。
+   * 刻意**不随仓库分发**任何默认形象图 —— 那是使用者自己的角色，不该由作者代填。
+   */
+  function resolveSelfImagePath() {
+    try {
+      const cfgFile = path.join(ROOT, 'config.json');
+      let cfg = {};
+      try { cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8')) || {}; } catch { cfg = {}; }
+      const custom = String(cfg?.socialV2?.selfImage ?? '').trim();
+      if (custom) {
+        const abs = path.isAbsolute(custom) ? custom : path.resolve(ROOT, custom);
+        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return abs;
+      }
+      for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
+        const candidate = path.join(ROOT, 'assets', 'self-image.' + ext);
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  }
 
   // ── 图片/表情字节解析（供一代自动内联与二代按需工具） ────────────────────
   function mimeFromBuffer(buf) {
@@ -14133,7 +14163,9 @@ function maybeApproveImageRequest(text, key) {
       //   'db'   = 注入新记忆库的目录 + 侧写（旧卡片不再进唤醒）
       //   'card' = 老行为（预渲染记忆卡 / 分层摘要 / 向量块）
       // 库不可读时调用方会退回 card，所以这里不做失败兜底，只做取值规范化。
-      const engine = String(memCfg.engine || '').trim().toLowerCase() === 'db' ? 'db' : 'card';
+      // 缺省走新记忆库（'db'）：全新安装没有 memory 段时也要用新系统，只有显式写 'card' 才回旧卡片。
+      const engineRaw = String(memCfg.engine || '').trim().toLowerCase();
+      const engine = engineRaw === 'card' ? 'card' : 'db';
       const catalogCfg = memCfg.catalog && typeof memCfg.catalog === 'object' ? memCfg.catalog : {};
       const profileCfg = memCfg.profile && typeof memCfg.profile === 'object' ? memCfg.profile : {};
       const styleCfg = memCfg.styleRef && typeof memCfg.styleRef === 'object' ? memCfg.styleRef : {};

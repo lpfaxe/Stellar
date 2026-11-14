@@ -109,9 +109,8 @@ node scripts/bootstrap.mjs --dry-run   # 只看计划，什么都不改
 > 它**不做**：不代你登录/扫码/绕过平台风控，不做多用户，不把控制台暴露到公网，
 > 不删除任何不可恢复的数据。完整边界见 [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md)。
 
-> **本仓库不含**：桌面宠物、语音合成/发语音。这两块在开源整理时已随代码一起剥离；
-> `docs/` 里还留着的相关旧文档、`config.json` 里残留的 `socialV2.voice` / `tools.sendVoice` 键都是历史遗留，
-> **没有对应实现**，照着它们装不会生效。
+> 本仓库**没有语音合成、也没有桌面宠物**：`config.json` 里的 `socialV2.voice` / `tools.sendVoice` 是两个死键（为保持两份配置字节一致而保留），
+> 没有对应实现，改了也不会生效。
 
 ---
 
@@ -223,7 +222,7 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 | 标签 | 你在这能干什么 |
 | --- | --- |
 | 概览 | 三个状态点（QQ / B站 / 生物钟）、一键启动或停止各平台、组件更新、诊断入口 |
-| 角色 | 人格卡与记忆卡整包切换、新建 / 复制 / 存档 / 回档 |
+| 角色 | 人格卡与记忆库整包切换、新建 / 复制 / 存档 / 回档 |
 | 目的 | 主动搭话的节奏、安静时段、预览与「试一次」 |
 | QQ | SnowLuma 地址与 token、白名单、管理员、二代仿真各项开关、工具开关 |
 | B站 | 扫码登录、作息窗口、偏好、每日额度、评论与动态开关 |
@@ -324,10 +323,10 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 
 | 子系统 | 你能看到的能力 | 细节 |
 | --- | --- | --- |
-| **QQ** | 群 / 私聊收发、引用回复、分条、表情包、图片 / 动图、拍一拍、合并转发展开、上线补历史、提问 / 审批回传、四种桥接模式 | [MODULE-BRIDGE.md](docs/guides/architecture/MODULE-BRIDGE.md) |
+| **QQ** | 群 / 私聊收发、引用回复、分条、表情包、图片 / 动图、拍一拍、合并转发展开、上线补历史、提问 / 审批回传、四种桥接模式 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) |
 | **B站** | 扫码登录、看视频 / 打分 / 收藏、评论与回帖、发动态（含图文）、弹幕、私信、三连、直播间监听、每日 vlog、分享到 QQ；**58 条 CLI 命令** | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
 | **QQ空间** | 看自己的 / 好友的 / 通讯录里某个人的说说、点赞、评论与回复、删自己发的评论；「好友爱看」公开流（看 → 打分 → 点赞 → 评论） | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
-| **记忆** | 话题切分、重要事实（生日 / 忌口 / 过敏 / 地址 / 电话）、见闻区（B站 / 好友爱看）、人物侧写、风格参考库、向量检索、三级隐私 | [MEMORY_CARD.md](docs/guides/features/MEMORY_CARD.md) · [VECTOR_MEMORY.md](docs/guides/features/VECTOR_MEMORY.md) |
+| **记忆** | 话题切分、重要事实（生日 / 忌口 / 过敏 / 地址 / 电话）、见闻区（B站 / 好友爱看）、人物侧写、风格参考库、三级隐私、按人查询 | [MEMORY.md](docs/guides/features/MEMORY.md) |
 | **人格** | 多角色整包切换、自动存档 / 回档、管理员双身份、跨平台身份对齐、风格参考片段注入 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) · [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) |
 | **主动** | 目标假设 → 主动搭话 / 分享、对话收尾（带「下次怎么接」）、二代 proactive | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) · [CONVERSATION_CLOSURE.md](docs/guides/features/CONVERSATION_CLOSURE.md) |
 | **日常** | 三档运行模式（正常 / 摸鱼 / 最低限度）、生物钟、每日任务清单、待办提醒、安静时段 | 本文 §3.2 / §3.6 |
@@ -378,24 +377,22 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 
 | # | 文档 | 行数 | 什么时候翻它 |
 | --- | --- | --- | --- |
-| 1 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) | 338 | 总纲 |
-| 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 353 | 三份配置每个键、状态文件 |
-| 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 182 | 做不到什么、坏了怎么恢复 |
-| 4 | [MODULE-BRIDGE.md](docs/guides/architecture/MODULE-BRIDGE.md) | 1,025 | 桥接全文 |
-| 5 | [MODULE-CORE-A.md](docs/guides/architecture/MODULE-CORE-A.md) | 1,002 | 记忆 / 人格 / 目的 / 收尾 / 额度 / 账本 / 计价 / 身份 |
-| 6 | [MODULE-CORE-B.md](docs/guides/architecture/MODULE-CORE-B.md) | 1,099 | B站 / 鱼群 / 表情 / 黑话 / 文本化 / SSRF / DSH 客户端 |
-| 7 | [MODULE-PLUGIN.md](docs/guides/architecture/MODULE-PLUGIN.md) | 1,102 | 插件宿主：装配、配置模型、设置页 API、B站 调度 |
-| 8 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 679 | 设置页与控制台 |
-| 9 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 982 | B站 命令与库、空间功能 |
-| 10 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 234 | 67 个工具、守卫、两代 preset |
-| 11 | [MEMORY_CARD.md](docs/guides/features/MEMORY_CARD.md) | 337 | 记忆怎么切、怎么存、怎么注入 |
-| 12 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 570 | 主动搭话的完整逻辑 |
-
+| 1 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) | 115 | 总纲：进程、分层、一条消息的旅程、改什么要重启什么 |
+| 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 111 | 三份配置的每个键、状态文件全表、备份与回滚 |
+| 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
+| 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 151 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
+| 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 10 页签与面板 6 页签 / 31 张卡 |
+| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 982 | B站 58 条命令、空间功能、鱼群与弹幕 |
+| 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 67 个工具、守卫、两代 preset |
+| 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 152 | 角色包怎么放、人格卡怎么起作用 |
+| 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 556 | 她为什么会主动找人说话 |
+| 10 | [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) | 151 | QQ 号与 B站 号怎么算同一个人 |
+| 11 | [CONVERSATION_CLOSURE.md](docs/guides/features/CONVERSATION_CLOSURE.md) | 136 | 一段对话怎么算结束 |
+| 12 | [FOLDER_MAP.md](docs/FOLDER_MAP.md) | 86 | 目录里都是什么 |
 其它：DSH 装配 [DSH_SETUP.md](docs/guides/getting-started/DSH_SETUP.md) · SnowLuma 排错 [SNOWLUMA_TROUBLESHOOT.md](docs/guides/getting-started/SNOWLUMA_TROUBLESHOOT.md) ·
 安全基线 [SECURITY_BASELINE.md](docs/guides/operations/SECURITY_BASELINE.md) · 全部索引 [docs/README.md](docs/README.md)。
 
-> `docs/guides/subsystems/SUBSYSTEM-PET.md`、`SUBSYSTEM-VOICE.md`、`docs/VOICE-PACKS.md` 描述的是**已剥离**的桌宠与语音子系统，
-> 仅作历史留存，代码里没有对应实现。
+> 没有语音与桌宠子系统：1.0.0 之前的相关文档与截图已全部删除，代码里也没有对应实现。
 
 ---
 
@@ -429,7 +426,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 数据会上传吗？ | 只有拼进提示词的文本会发给模型 API；不想让黑话词条出机就关 `slang.autoResearch`。 |
 | 支持 Linux / macOS 吗？ | 暂不支持（沙箱 ACL 与启动脚本按 Windows 写）。 |
 | 能多用户 / 远程吗？ | 面板默认只听回环；要远程得自己开隧道或改 `STELLAR_PANEL_HOST`，并配上口令。 |
-| 有语音 / 桌宠吗？ | **没有**。这两块在开源整理时随代码一起剥离了，本仓库不含实现。 |
+| 有语音 / 桌宠吗？ | **没有**。本仓库只做 QQ 与 B站/QQ空间 的文字与图片，不含语音合成也不含桌宠。 |
 | 改名 / 换角色会丢记忆吗？ | 不会。角色包整包隔离，切换带快照，可回档；记忆按对象存在 `memory.db` 里。 |
 | 记忆存哪？ | `~/.dsh/stellar/characters/<id>/memory/memory.db`（SQLite）。删它等于让她失忆。 |
 | 花多少钱？ | 只有调模型才花钱；面板「花费」按价目折算，可设每日额度。 |

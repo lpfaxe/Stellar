@@ -28,9 +28,9 @@
 
 1. **目录**：`~/.dsh/stellar/characters/<id>/`，`id` 只能是小写字母/数字/`_`/`-`，最长 40。
 2. **必填**：`persona.md`（本文件）+ `character.json`（见同目录示例）。
-3. **记忆**：`memory/memory-card.json` 一开始可以是空壳（见 `memory/` 里的示例），
-   之后由插件每 10 分钟从 inbox 摄取、衰减、压缩——**不要手写 records**。
+3. **记忆**：`memory/memory.db` 在第一次启动后由桥接自动创建（SQLite），**不要手写**；
+   之后由后台作业每 10 分钟切分话题、每天复核与写侧写。想预置几件事，用面板「记忆 → 重要事实」新建。
 4. **B站 行为账本**：`bili/` 目录由调度器自己写（额度、观看历史、打分…），不提交进仓库。
 
 详见 [../../docs/guides/features/CHARACTER_PERSONA.md](../../docs/guides/features/CHARACTER_PERSONA.md) 与
-[../../docs/guides/features/MEMORY_CARD.md](../../docs/guides/features/MEMORY_CARD.md)。
+[../../docs/guides/features/MEMORY.md](../../docs/guides/features/MEMORY.md)。
