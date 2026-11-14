@@ -53,6 +53,10 @@ const tests = [
   // 注入读侧（唤醒用的同步快照）：第一次读必须为空、预热后能拿到标题不给正文、
   // 侧写单独一行、库坏掉时保留上一份好结果（stale 比空更安全）。
   'test-memory-inject.mjs',
+  // 记忆库视图（设置页「记忆」页签的数据源）：钉住「空库也能出完整结构」与
+  // 「listFacts 是 camelCase，listProfiles/listZoneNotes 是原始列名」这个不一致，
+  // 它曾经让面板整块显示空白（不会抛，只是字段全 undefined）。
+  'test-memory-db-view.mjs',
   // 重要事实（2026-11-13 主人加的）：生日/忌口/联系方式按人对号存，不按话题分类。
   // 这条钉住四件最容易写坏的事：① 第三人称的生日不能记到说话人头上；
   // ② 同人同 kind 同 label 只留一条且权重只升不降；③ private/secret 不许进别人的上下文

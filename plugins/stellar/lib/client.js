@@ -5508,6 +5508,96 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
 
     }
 
+    // ── 记忆库（memory.db）：设置页里「看得见」的那一块 ────────────────────────
+    // 只读。写操作（切分/清空/改事实/删见闻）在 3300 面板与 stellar_memory_* 工具里，
+    // 这里放一份会变成第二个写入口，迟早打架。
+    function MemoryDbPanel({ ownerId = "" }) {
+      const [db, setDb] = useState(null);
+      const [dbErr, setDbErr] = useState("");
+      const [zone, setZone] = useState("bili");
+      const [loading, setLoading] = useState(false);
+      const load = useCallback(async (wantZone) => {
+        setLoading(true);
+        try {
+          const qs = new URLSearchParams();
+          if (ownerId) qs.set("owner", ownerId);
+          qs.set("zone", wantZone || "bili");
+          const r = await api("/memory-db?" + qs.toString());
+          setDb(r); setDbErr("");
+        } catch (e) { setDbErr(e.message); } finally { setLoading(false); }
+      }, [ownerId]);
+      useEffect(() => { load(zone); }, [load, zone]);
+      const zoneLabel = (z) => (z === "qzone" ? "好友爱看" : "B站");
+      const jobLabel = (j) => {
+        const when = j.lastRunAt ? fmtTime(new Date(j.lastRunAt).toISOString()) : "还没跑过";
+        return (j.name === "split" ? "切分" : j.name === "window" ? "窗口清理" : "侧写") + " · " + j.state + " · " + when;
+      };
+      const num = (v) => (Number(v) || 0).toLocaleString("zh-CN");
+      return h("div", { className: "qbw-group" },
+        "记忆库（memory.db）",
+        h("small", null, "聊天进缓冲表 → 后台切成话题、抽出事实 → 唤醒只喂目录与事实。这里只是看一眼，改在 3300 面板或让她用记忆工具。"),
+        dbErr ? h("div", { className: "qbw-warnbox" }, "记忆库读取失败：" + dbErr) : null,
+        h("div", { className: "qbw-grid", style: { marginTop: "8px" } },
+          h("div", { className: "qbw-card" },
+            h("h4", null, "库里现在有什么"),
+            h("div", { className: "qbw-kv" }, h("span", null, "缓冲待切"), h("span", null, num(db?.counts?.cacheNew) + " / " + num(db?.counts?.cache) + " 句")),
+            h("div", { className: "qbw-kv" }, h("span", null, "话题"), h("span", null, num(db?.counts?.topics))),
+            h("div", { className: "qbw-kv" }, h("span", null, "重要话题"), h("span", null, num(db?.counts?.important))),
+            h("div", { className: "qbw-kv" }, h("span", null, "零碎"), h("span", null, num(db?.counts?.fragments))),
+            h("div", { className: "qbw-kv" }, h("span", null, "人物侧写"), h("span", null, num(db?.counts?.profiles))),
+            h("div", { className: "qbw-kv" }, h("span", null, "风格切片"), h("span", null, num(db?.counts?.styleSlices))),
+            db?.counts?.dbBytes ? h("div", { className: "qbw-kv" }, h("span", null, "库文件"), h("span", null, fmtBytes(db.counts.dbBytes))) : null),
+          h("div", { className: "qbw-card" },
+            h("h4", null, "重要事实"),
+            h("div", { className: "qbw-kv" }, h("span", null, "共"), h("span", null, num(db?.facts?.total) + " 条")),
+            h("div", { className: "qbw-kv" }, h("span", null, "公开 / 私密 / 机密"), h("span", null, num(db?.facts?.normal) + " / " + num(db?.facts?.private) + " / " + num(db?.facts?.secret))),
+            h("div", { className: "qbw-kv" }, h("span", null, "见闻区 今天"), h("span", null, "B站 " + num(db?.zones?.bili?.today) + " · 好友爱看 " + num(db?.zones?.qzone?.today))),
+            h("div", { className: "qbw-kv" }, h("span", null, "见闻区 累计"), h("span", null, "B站 " + num(db?.zones?.bili?.total) + " · 好友爱看 " + num(db?.zones?.qzone?.total))),
+            h("div", { className: "qbw-actions", style: { marginTop: "8px" } },
+              h(Btn, { kind: "qbw-btn2", disabled: loading, onClick: () => load(zone) }, loading ? "读取中…" : "刷新")))),
+        db?.jobs?.length ? h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, db.jobs.map(jobLabel).join("　·　")) : null,
+        (db?.topics ?? []).length
+          ? h("div", null,
+              h("div", { className: "qbw-category" }, h("h4", { className: "qbw-category-title" }, "最近的话题")),
+              h("div", { className: "qbw-list" }, db.topics.map((t) => h("div", { key: t.id, className: "qbw-item" },
+                h("div", null,
+                  h("div", null, t.title || "(无标题)", t.tier === "important" ? h("span", { className: "qbw-badge ok" }, "重要") : null),
+                  t.summary ? h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, t.summary) : null,
+                  h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, (t.day || "") + " · " + (t.msgCount || 0) + " 句 · " + (t.ownerId || "") + (t.endedAt ? " · " + fmtTime(new Date(t.endedAt).toISOString()) : "")))))))
+          : h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, "还没有话题。她跟人聊够一段（双方都说过话）之后，后台才会切出来。"),
+        (db?.factRows ?? []).length
+          ? h("div", null,
+              h("div", { className: "qbw-category" }, h("h4", { className: "qbw-category-title" }, "事实条目（生日 / 忌口 / 约定这类）")),
+              h("div", { className: "qbw-list" }, db.factRows.map((f) => h("div", { key: f.id, className: "qbw-item" },
+                h("div", null,
+                  h("div", null, f.text || f.label,
+                    h("span", { className: "qbw-badge" + (f.privacy === "normal" ? "" : f.privacy === "secret" ? " bad" : " warn") }, f.privacy === "secret" ? "机密" : f.privacy === "private" ? "私密" : "公开"),
+                    h("span", { className: "qbw-badge" }, "权重 " + (f.weight || 0))),
+                  h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, (f.ownerId || "") + " · " + (f.label || f.kind) + (f.source ? " · " + f.source : "")))))))
+          : null,
+        (db?.profiles ?? []).length
+          ? h("div", null,
+              h("div", { className: "qbw-category" }, h("h4", { className: "qbw-category-title" }, "人物侧写"), h("small", null, "每人一句，唤醒时注入")),
+              h("div", { className: "qbw-list" }, db.profiles.map((pr) => h("div", { key: pr.ownerId, className: "qbw-item" },
+                h("div", null,
+                  h("div", { className: "qbw-hint" }, pr.ownerId + (pr.msgCount ? " · " + pr.msgCount + " 句" : "") + (pr.updatedAt ? " · " + fmtTime(new Date(pr.updatedAt).toISOString()) : "")),
+                  h("div", { style: { marginTop: "2px" } }, pr.persona || pr.detail || "（还没写）"),
+                  (pr.tags || []).length ? h("div", { className: "qbw-chips" }, pr.tags.map((tg) => h("span", { key: tg, className: "qbw-pill" }, tg))) : null)))))
+          : null,
+        h("div", { className: "qbw-category" },
+          h("h4", { className: "qbw-category-title" }, "见闻区"),
+          h("small", null, "她刷完 B站 / 好友爱看之后自己写的一段总结，不按话题分类")),
+        h("div", { className: "qbw-actions" },
+          ["bili", "qzone"].map((z) => h(Btn, { key: z, kind: zone === z ? "qbw-btn" : "qbw-btn2", onClick: () => setZone(z) }, zoneLabel(z)))),
+        (db?.zoneRows ?? []).length
+          ? h("div", { className: "qbw-list", style: { marginTop: "6px" } }, db.zoneRows.map((r) => h("div", { key: r.id, className: "qbw-item" },
+              h("div", null,
+                h("div", null, r.text),
+                (r.items || []).length ? h("div", { className: "qbw-chips" }, r.items.map((it) => h("span", { key: it, className: "qbw-pill" }, it))) : null,
+                h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, (r.day || "") + (r.at ? " · " + fmtTime(new Date(r.at).toISOString()) : ""))))))
+          : h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, "这个区还没有记录。她刷完一轮之后会自己写进来。"),
+        h("div", { className: "qbw-hint", style: { marginTop: "8px" } }, "要改、要删、要手动补一条：去 3300 面板「记忆」页，或直接让她调自己的记忆工具。"));
+    }
     function MemoryTab({ qq, unified, setUnified, overview, busy, setBusy, toast, reload, onResource }) {
       const [data, setData] = useState(null);
       const [card, setCard] = useState(null);
@@ -5670,6 +5760,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       const memoryPanes = [["narrative", "叙事记忆"], ["vector", "向量记忆"]];
       const usageProvider = CLOUD_PROVIDER_BY_ID[usageCloudProvider] || CLOUD_PROVIDER_BY_ID.siliconflow;
       return h("div", null,
+        h(MemoryDbPanel, {}),
         h(Section, { title: "记忆方式", note: "读取哪一套；两套存储都继续写入" },
           h(Row, { label: "当前使用", hint: "切换只影响读取/注入；不会停止任何一边的存储" },
             h("select", {

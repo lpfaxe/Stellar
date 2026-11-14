@@ -92,6 +92,7 @@ import { fishGuardStateSummary } from '../tools/lib/fish-guard.mjs';
 import { summarizeQqFishGuard } from './qq-fish-guard.js';
 import { applySessionPermission } from './scheduler.js';
 import { startMemoryDbTimer } from './memory-db-timer.js';
+import { memoryDbOverview } from './memory-db-view.js';
 import { createMemoryAsk } from './memory-llm.js';
 import { fileStamp, isStale } from '../../../src/config-stamps.js';
 import { createContextTelemetry } from '../../../src/context-telemetry.js';
@@ -1280,6 +1281,19 @@ ${body}`;
   }
 
   // ── 记忆 ────────────────────────────────────────────────────────────────
+  // ── 记忆库（memory.db）：只读聚合，给设置页「记忆」页签用 ─────────────────
+  // 写操作（切分/清空/改事实/删见闻）一律留给 3300 面板与 stellar_memory_* 工具，
+  // 这里只回答「现在库里有什么」——两个写入口迟早会打架。
+  function handleMemoryDb(req, res, url) {
+    if (req.method !== 'GET') { json(res, 405, { ok: false, error: '只支持 GET' }); return; }
+    const ownerId = String(url.searchParams.get('owner') || '');
+    const zone = String(url.searchParams.get('zone') || 'bili');
+    try {
+      json(res, 200, memoryDbOverview({ ownerId, zone }));
+    } catch (e) {
+      json(res, 500, { ok: false, error: `记忆库读取失败：${e?.message ?? e}`, hint: '库文件可能还没建（跑一次桥接就会有）；也可能是角色目录读不到。' });
+    }
+  }
   async function handleMemory(req, res, url) {
     if (req.method === 'GET') {
       const previewChars = Math.max(200, Math.min(20_000, Number(url.searchParams.get('chars')) || 4000));
@@ -3669,6 +3683,7 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
     if (pathname === `${API_PREFIX}/persona/classify`) { await handlePersonaClassify(req, res); return; }
     if (pathname === `${API_PREFIX}/group-policy`) { await handleGroupPolicy(req, res); return; }
     if (pathname === `${API_PREFIX}/memory`) { await handleMemory(req, res, url); return; }
+    if (pathname === `${API_PREFIX}/memory-db`) { handleMemoryDb(req, res, url); return; }
     if (pathname === `${API_PREFIX}/watch-history`) { handleWatchHistory(res, url); return; }
     if (pathname === `${API_PREFIX}/preferences/scan`) {
       if (req.method !== 'GET') { json(res, 405, { ok: false, error: '只支持 GET' }); return; }
