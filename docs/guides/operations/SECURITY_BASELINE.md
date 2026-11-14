@@ -43,7 +43,7 @@
 | 预设 fail-closed | `resolvePresetName()` + `ensureSession()` | 群聊/仿真会话拿不到受限预设时**拒绝建会话**，绝不回退到含本地工具的 DSH 默认预设；只有 `closed-agent`（管理员私聊）允许回退 |
 | 发送强制白名单 | 所有 `/api/send/*`、`/api/socialV2/send-*` | 目标必须命中 `allow.groups` / `allow.private`（每次都重新校验，不做缓存） |
 | 动态 ACL | `resolveVoicePathForV2()` / `voicePathInsideLibrary()` | 语音只能取语音库目录内的文件；贴纸只能发收藏库内的表情；图片只能读 SnowLuma home 内的本地文件（realpath 复核防符号链接逃逸） |
-| **只探测、不部署**（L6 设计不变量） | `mcp-host-server.js` | 该 MCP server **只提供 `snowluma_status`（只读探活 `get_login_info`）**。⚠️ **v0.1.5 起删除了 `start_snowluma` / `stop_snowluma` 与 `snowluma.allowProcessControl`**：SnowLuma EULA §5.4 规定「将其并入第三方安装包或 Docker 镜像、**通过自动化脚本部署**」须事先书面授权，原生组件属**专有组件**。⇒ 本程序不安装、不复制、不打包、不程序化启停 SnowLuma；用户自行安装与启动。详见 `LICENSE` 与 `QSH-plan/QSH_PLAN.md` §6.0。**唯一例外（用户显式动作）**：Stellar 设置页在 `snowluma.allowLaunch=true` 且用户点击「一键启动/只打开 SnowLuma」时，会打开本机**已安装**的 SnowLuma 窗口（默认关闭、不自动、不代扫码、不安装/不部署） |
+| **只探测、不部署**（L6 设计不变量） | `mcp-host-server.js` | 该 MCP server **只提供 `snowluma_status`（只读探活 `get_login_info`）**。⚠️ **v0.1.5 起删除了 `start_snowluma` / `stop_snowluma` 与 `snowluma.allowProcessControl`**：SnowLuma EULA §5.4 规定「将其并入第三方安装包或 Docker 镜像、**通过自动化脚本部署**」须事先书面授权，原生组件属**专有组件**。⇒ 本程序不安装、不复制、不打包、不程序化启停 SnowLuma；用户自行安装与启动。详见 `LICENSE` 的「SnowLuma 许可」一节。**唯一例外（用户显式动作）**：Stellar 设置页在 `snowluma.allowLaunch=true` 且用户点击「一键启动/只打开 SnowLuma」时，会打开本机**已安装**的 SnowLuma 窗口（默认关闭、不自动、不代扫码、不安装/不部署） |
 
 ### 3. 出站内容（模型能说什么、能发什么）
 
@@ -140,7 +140,7 @@ DSH 的 Windows 文件沙箱按**能力 SID** 授权：SID 由 `sha256(规范化
 | R6 | **预设不变量检查是子串存在性** | 防误删，不防恶意 | 能改这个文件的人本来就是管理员，真正的硬边界在工具守卫与白名单 |
 | R7 | **`self-test.js` 只证明链路通** | 不做断言 | 它是连通性探针，不是回归套件（回归在 `npm run test:audit`） |
 | R8 | **单人维护、无外部安全审计** | 有离线回归 + 本文档 | 计划在正式对外推广前做一次外部/对抗式复审 |
-| R9 | **`state/` 的 ACL 收紧可能失败**（未提权且目录属主权限被策略收走时） | `scripts/harden-state-acl.mjs` 会自动提权重试一次；仍失败则明确告警 + 给出可复制命令 + 控制台告警条 | 改 ACL 属于需要特权的操作；**降级为"明确告警"而不是"阻断启动"**是刻意的取舍（否则用户会为了能启动而关掉整条安全链路）。QSH M2 会用口令派生 + HttpOnly Cookie 把最敏感的控制台凭据从明文落盘里拿掉 |
+| R9 | **`state/` 的 ACL 收紧可能失败**（未提权且目录属主权限被策略收走时） | `scripts/harden-state-acl.mjs` 会自动提权重试一次；仍失败则明确告警 + 给出可复制命令 + 控制台告警条 | 改 ACL 属于需要特权的操作；**降级为"明确告警"而不是"阻断启动"**是刻意的取舍（否则用户会为了能启动而关掉整条安全链路）。后续版本会用口令派生 + HttpOnly Cookie 把最敏感的控制台凭据从明文落盘里拿掉 |
 | R10 | **收紧 `state/` 后，DSH 沙箱会话写不进 `state/`**（见 §2.6） | 有意取舍，非缺陷；诊断见 `npm run diagnose:acl` | 两者不可兼得：能力 SID 只能靠继承下发，而切断继承正是防"本机其他用户读令牌"的唯一手段。**代价已被接受并写进文档**，项目自己的测试夹具/探针据此改用系统临时目录 |
 | R11 | **`plugins/**` 内容被意外切断继承，沙箱里改不动 L7 守卫** | 来源不明（本仓库无此脚本）；`npm run diagnose:acl` 会列出并打印恢复命令 | 该处不含凭据，恢复继承无泄密风险；但若不恢复，被沙箱约束的 DSH agent 就无法维护工具守卫 —— 需要人工在无沙箱终端改 |
 
