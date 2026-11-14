@@ -24,8 +24,7 @@
 | 闸门 | 需要 `reserved2` 模式 + 主人是好友 + 命中白名单 |
 | 回执 | `turn/end` + 发送记录 |
 
-> 曾经有过「桌宠载体」（把一句话推到桌面气泡，可选 TTS）。桌宠子系统已从本仓库剥离，`purpose.carrier` 只剩 `qq`,
-> 配置里若还写着 `pet` 会被当成 `qq` 处理。
+> 载体只有 QQ：`purpose.carrier` 只有 `qq` 一个值，配置里写别的都按 `qq` 处理。
 
 **状态**：`characters/<id>/purpose-outreach.json`（今日次数 / 下次时间 / 惦记的事 / 目标假设 / 历史），同一时刻只有一个写入者（桥接）。
 

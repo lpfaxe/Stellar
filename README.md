@@ -109,8 +109,7 @@ node scripts/bootstrap.mjs --dry-run   # 只看计划，什么都不改
 > 它**不做**：不代你登录/扫码/绕过平台风控，不做多用户，不把控制台暴露到公网，
 > 不删除任何不可恢复的数据。完整边界见 [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md)。
 
-> 本仓库**没有语音合成、也没有桌面宠物**：`config.json` 里的 `socialV2.voice` / `tools.sendVoice` 是两个死键（为保持两份配置字节一致而保留），
-> 没有对应实现，改了也不会生效。
+> 只有文字与图片：`config.json` 里的 `socialV2.voice` / `tools.sendVoice` 是两个死键（为保持两份配置字节一致而保留），改了不会生效。
 
 ---
 
@@ -380,19 +379,17 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 1 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) | 115 | 总纲：进程、分层、一条消息的旅程、改什么要重启什么 |
 | 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 111 | 三份配置的每个键、状态文件全表、备份与回滚 |
 | 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
-| 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 151 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
+| 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 154 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
 | 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 10 页签与面板 6 页签 / 31 张卡 |
 | 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 240 | B站 58 条命令、空间功能、鱼群与弹幕 |
 | 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 67 个工具、守卫、两代 preset |
-| 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 152 | 角色包怎么放、人格卡怎么起作用 |
+| 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 137 | 角色包怎么放、人格卡怎么起作用 |
 | 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 556 | 她为什么会主动找人说话 |
 | 10 | [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) | 151 | QQ 号与 B站 号怎么算同一个人 |
 | 11 | [CONVERSATION_CLOSURE.md](docs/guides/features/CONVERSATION_CLOSURE.md) | 136 | 一段对话怎么算结束 |
 | 12 | [FOLDER_MAP.md](docs/FOLDER_MAP.md) | 86 | 目录里都是什么 |
 其它：DSH 装配 [DSH_SETUP.md](docs/guides/getting-started/DSH_SETUP.md) · SnowLuma 排错 [SNOWLUMA_TROUBLESHOOT.md](docs/guides/getting-started/SNOWLUMA_TROUBLESHOOT.md) ·
 安全基线 [SECURITY_BASELINE.md](docs/guides/operations/SECURITY_BASELINE.md) · 全部索引 [docs/README.md](docs/README.md)。
-
-> 没有语音与桌宠子系统：1.0.0 之前的相关文档与截图已全部删除，代码里也没有对应实现。
 
 ---
 

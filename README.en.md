@@ -17,7 +17,7 @@
 > every group / member / QQ id / Bilibili mid is a placeholder, and the factory persona is empty (yours to fill).
 > Runtime data only ever lives on your own machine.
 
-> **No voice, no desktop pet**: this repo only does text and images over QQ / Bilibili / QZone. The `socialV2.voice`
+> **Text and images only**: no voice, no desktop pet — this repo covers QQ / Bilibili / QZone. The `socialV2.voice`
 > and `tools.sendVoice` keys in `config.json` are dead keys kept only so the two configs stay byte-identical.
 
 ---

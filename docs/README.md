@@ -1,6 +1,6 @@
 # 文档索引（docs/README.md）
 
-> 这份索引只描述**当前代码**。历史分析报告、已剥离功能的文档都在 1.0.0 之前清掉了；
+> 这份索引只描述**当前代码**。看不到的东西就是没有，不要按印象去找；
 > 现在每一篇都能对上仓库里的代码。目录结构见 [FOLDER_MAP.md](FOLDER_MAP.md)，发布流程见 [RELEASE.md](RELEASE.md)。
 
 ## 按你想做的事找
@@ -33,13 +33,12 @@
 | 出问题怎么把日志给我 | [development/ERROR-REPORTING.md](guides/development/ERROR-REPORTING.md) |
 | 想改代码 / 跑回归 | [RELEASE.md](RELEASE.md) |
 
-## 三条容易被旧文档带偏的事实
+## 三条先说清楚的事实
 
 1. **记忆是 `memory.db`（SQLite），不是记忆卡。** 记忆卡那套（`memory-card.json` / 分层摘要 / 向量块）
    只在 `memory.engine` 被显式写成 `card` 时才会走；全新安装默认就是 `db`。
    详见 [features/MEMORY.md](guides/features/MEMORY.md)。
-2. **没有桌宠，也没有语音合成。** 代码里不存在 pet/voice 模块，设置页与面板里也没有这些开关。
-   仓库只做 QQ × B站 × QQ空间。
+2. **只有文字与图片。** 没有语音发送、没有桌面宠物，设置页与面板里也没有这些开关；仓库只做 QQ × B站 × QQ空间。
 3. **形象图要自己放。** 仓库不带任何默认头像/立绘；把图片放 `assets/self-image.png`，
    或在 `config.json` 里配 `socialV2.selfImage`。没配时「发张自拍」会得到一条「还没有形象图片」的提示。
 
