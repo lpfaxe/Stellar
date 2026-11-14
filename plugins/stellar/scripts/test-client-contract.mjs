@@ -461,3 +461,31 @@ assert.ok(source.includes("向量记忆使用说明（人话版）"), "向量记
 assert.ok(source.includes("为多个模型重建索引"), "使用说明必须讲清多模型重建入口");
 assert.ok(source.includes("（已有索引）"), "多模型选择必须标注已有索引");
 console.log('client contract tests OK');
+
+// —— 组件 prop 完整性：形如 function XxxTab({ a, b }) 的组件，函数体里用到的已知 prop 必须在解构里 ——
+// 2026-11-15 真事故：BiliTab 里挂了 h(WatchTab, { ... goTab })，但 BiliTab 自己没解构 goTab，
+// 点到 B站 页当场 ReferenceError → 整个面板白屏。node --check 查不出这种错。
+{
+  const PROP_NAMES = ["goTab", "onSave", "onAdminDiscardContext", "dirty", "reload", "overview", "toast", "busy", "setBusy", "cfg", "qq", "admin", "unified", "setUnified", "qqPrivate", "qqAllowAll", "setQqPath", "setAdmin", "setAdminDiscardContext"];
+  const bodyOf = (src, from) => {
+    const i = src.indexOf("{", from);
+    let depth = 0;
+    for (let j = i; j < src.length; j += 1) {
+      if (src[j] === "{") depth += 1;
+      else if (src[j] === "}") { depth -= 1; if (depth === 0) return src.slice(i + 1, j); }
+    }
+    return "";
+  };
+  const comps = [...source.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(\s*\{([^}]*)\}\s*\)\s*\{/g)];
+  assert.ok(comps.length > 5, "应当扫到多个组件");
+  const bad = [];
+  for (const m of comps) {
+    const params = new Set(m[2].split(",").map((x) => x.trim().split(":")[0].split("=")[0].trim()).filter(Boolean));
+    const body = bodyOf(source, m.index);
+    for (const p of PROP_NAMES) {
+      if (params.has(p)) continue;
+      if (new RegExp("\\b" + p + "\\b").test(body)) bad.push(m[1] + " 用了 " + p + " 但没解构");
+    }
+  }
+  assert.deepEqual(bad, [], "有组件引用了没解构的 prop（点了那一页会白屏）：" + bad.join("；"));
+}

@@ -4248,7 +4248,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
         }) : null);
     }
 
-    function BiliTab({ cfg, set, qq, setQqPath, admin, setAdmin, unified, setUnified, qqPrivate, qqAllowAll, overview, busy, setBusy, toast, reload, onSave, onAdminDiscardContext, dirty }) {
+    function BiliTab({ cfg, set, qq, setQqPath, admin, setAdmin, unified, setUnified, qqPrivate, qqAllowAll, overview, busy, setBusy, toast, reload, goTab, onSave, onAdminDiscardContext, dirty }) {
       const [query, setQuery] = useState("");
       const [cookie, setCookie] = useState({ sessdata: "", bili_jct: "", buvid3: "" });
       const [cookieMsg, setCookieMsg] = useState("");
@@ -6740,7 +6740,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
         if (tab === "characters") return h(CharactersTab, { overview, busy, setBusy, toast: notify, reload, goTab: setTab, unified, setUnified: setUnifiedPath });
         if (tab === "her") return h(HerTab, { qq: normalizedQq, setQq: setQqPath, busy, setBusy, toast: notify, overview, reload, goTab: setTab });
         if (tab === "qq") return h(QQTab, { cfg: qq, qq: normalizedQq, set: setQqPath, admin: unified?.admin ?? {}, setAdmin, unified, setUnified: setUnifiedPath, overview, busy, setBusy, toast: notify, reload, goTab: setTab, onSave: save, onAdminDiscardContext: setAdminDiscardContext, dirty });
-        if (tab === "bili") return h(BiliTab, { cfg: bili, set: setBiliPath, qq: normalizedQq, setQqPath, admin: unified?.admin ?? {}, setAdmin, unified, setUnified: setUnifiedPath, qqPrivate: normalizedQq?.allow?.private ?? [], qqAllowAll: normalizedQq?.allowAllWhenEmpty === true, overview, busy, setBusy, toast: notify, reload, onSave: save, onAdminDiscardContext: setAdminDiscardContext, dirty });
+        if (tab === "bili") return h(BiliTab, { cfg: bili, set: setBiliPath, qq: normalizedQq, setQqPath, admin: unified?.admin ?? {}, setAdmin, unified, setUnified: setUnifiedPath, qqPrivate: normalizedQq?.allow?.private ?? [], qqAllowAll: normalizedQq?.allowAllWhenEmpty === true, overview, busy, setBusy, toast: notify, reload, goTab: setTab, onSave: save, onAdminDiscardContext: setAdminDiscardContext, dirty });
         if (tab === "memory") return h(MemoryTab, { qq: normalizedQq, unified, setUnified: setUnifiedPath, overview, busy, setBusy, toast: notify, reload });
         if (tab === "advanced") return h(AdvancedHub, { qq: normalizedQq, bili, unified: normalizedUnified, setQqPath, setBiliPath, setUnifiedPath, busy, setBusy, toast: notify, reload });
         return null;
