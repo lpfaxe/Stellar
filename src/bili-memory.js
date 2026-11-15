@@ -552,6 +552,11 @@ export function createBiliMemory({ stateDir, home = os.homedir(), biliDir = null
     return doc.length > 28000 ? `${doc.slice(0, 28000)}\n\n（后略：记忆过长，完整内容见 state/bili-memory.json）` : doc;
   }
 
+  // 唤醒提示里只留最近几条当锚点：完整列表在记忆库里，被问到再用
+  // stellar_bili_my / stellar_bili_history / recallBlock() 现查。
+  // 实测 10 条占 989 字符（整个 bili 层 1473），而绝大多数唤醒与 B 站无关。
+  const BRIEF_PICKS = 3;
+
   function buildBrief(entries) {
     const config = cfg();
     const self = config?.self ?? {};
@@ -570,7 +575,7 @@ export function createBiliMemory({ stateDir, home = os.homedir(), biliDir = null
     lines.push(`我自己的 B 站主页：「${selfName}」${selfSpace ? `（${selfSpace}；截图里可能只显示昵称和头像）` : ''}。别人发来的截图/图片里只要出现这个昵称、我的头像或 B 站个人主页/资料卡，那就是**我自己**——先认出「这是 wo」，再聊内容；不要用「那张主页」这种口吻把我说成别人。`);
     lines.push(`我的口味：${(prefs.like ?? []).slice(0, 8).join('、') || 'AI 工具、鲸鱼娘、可爱+荒诞的短整活'}；不喜欢 ${(prefs.dislike ?? []).slice(0, 6).join('、') || '带货、擦边、标题党'}。`);
     lines.push('');
-    lines.push('最近在 B 站（真实看过/发过，细节以这里为准，不要编）：');
+    lines.push('最近在 B 站（只列最近几条做锚点；要更多细节用 stellar_bili_my / stellar_bili_history 现查，别编）：');
     const seen = new Set();
     const picks = [];
     const sorted = entries
@@ -583,7 +588,7 @@ export function createBiliMemory({ stateDir, home = os.homedir(), biliDir = null
       if (key && seen.has(key)) continue;
       if (key) seen.add(key);
       picks.push(e);
-      if (picks.length >= 10) break;
+      if (picks.length >= BRIEF_PICKS) break;
     }
     for (const e of picks) {
       const label = e.type === 'dynamic' ? '动态' : e.score ? `${e.score}分` : e.favorite ? '收藏' : '看过';
@@ -593,6 +598,7 @@ export function createBiliMemory({ stateDir, home = os.homedir(), biliDir = null
       lines.push(`- ${e.date}【${label}】${short(e.title, 46)}${body ? `：${body}` : ''}`);
     }
     lines.push('');
+    lines.push('以上只是最近的几条。被问到「最近在看什么」「那个视频讲了啥」这类问题时，先用 stellar_bili_my / stellar_bili_history 查真实记录再答，不要拿上面几条凑答案。');
     lines.push('我的习惯：看到认真做但没人看的小 UP 会去留一句；评论常用「mer」收尾；喜欢短、可爱、荒诞、有梗的东西，不爱长篇干货和带货。');
     lines.push('边界：B 站私信里的内容不在我的记忆里，我也不会编；群友问起就按记得的公开经历回答。');
     let brief = lines.join('\n');
@@ -743,7 +749,7 @@ export function createBiliMemory({ stateDir, home = os.homedir(), biliDir = null
     const lower = q.toLowerCase();
     const bv = extractBv(q);
     const tokens = tokenize(q);
-    const trigger = /B站|b站|bilibili|视频|养鱼|动态|评论|弹幕|up主|BV|投稿|收藏|刷到|看过|记得|日记|账号/.test(q)
+    const trigger = /B站|b站|bilibili|视频|肥鱼|鲸鱼|养鱼|动态|评论|弹幕|up主|BV|投稿|收藏|刷到|看过|记得|日记|账号/.test(q)
       || tokens.length > 0;
     if (!trigger) return '';
     const scored = [];

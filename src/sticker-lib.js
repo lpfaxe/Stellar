@@ -273,7 +273,7 @@ export function formatStickerList(entries, query = '', limit = 48) {
 // ⚠️ 安全框定：表情库是**整个 QQ 账号共享**的一份，备注可能在别的会话里写下
 // （甚至被那个会话里的群友间接影响）。所以这一段必须被明确标成「资料」而不是「指令」，
 // 否则就成了跨会话的提示词注入通道。字段本身已在 normalizeStickerEntry 里单行化。
-export function buildStickerContext(entries, max = 8) {
+export function buildStickerContext(entries, max = 4) {
   const list = (Array.isArray(entries) ? entries : []).map(normalizeStickerEntry).filter(Boolean);
   if (!list.length) return '';
   const top = [...list]
@@ -294,12 +294,11 @@ export function buildStickerContext(entries, max = 8) {
 // 这是软策略：AI 仍自主判断是否使用，桥接不强制。
 export function buildStickerStrategyHint() {
   return [
-    '【表情包策略：像真人一样用，不刷屏】',
-    '- 时机：接梗、怼人、赞同、自嘲、无语、告别、别人发了表情时用；普通闲聊每 2~3 轮一张（主人 2026-11-10 要求提高主动发表情包的概率），玩梗可密一点，但别连刷超过两张。',
-    '- 选择：按情绪再按画面挑编号；【表情匹配】≥0.62 的那张通常比重复一句话更自然，拿不准先 qq_get_sticker_image 看。',
-    '- 触发：唤醒提示里带【表情匹配】，等消息 / 看未读的返回里也可能带同一个推荐（stickerMatch）；出现了就优先用那张，别自己硬挑。',
+    '【表情包：像真人一样用，不刷屏】',
+    '- 接梗、怼人、赞同、自嘲、无语、告别、别人发图时用；普通闲聊每 2~3 轮一张，玩梗可密一点，别连刷。',
+    '- 【表情匹配】≥0.62 或返回里带 stickerMatch 的那张优先用，别自己硬挑；拿不准先 qq_get_sticker_image 看一眼。',
     '- 发送：qq_send_sticker stickerId="#03"（编号或数字都行），一条一张、不能带文字；要说话另发一条。',
-    '- 不要：严肃/敏感话题硬塞、总用同一张、把表情当唯一回复；收藏/标注用 qq_collect_sticker、qq_sticker_note。'
+    '- 别在严肃话题硬塞、别总用同一张、别把表情当唯一回复；收藏用 qq_collect_sticker，补标用 qq_sticker_note。'
   ].join('\n');
 }
 
