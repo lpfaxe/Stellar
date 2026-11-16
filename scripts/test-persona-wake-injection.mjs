@@ -43,6 +43,18 @@ assert.ok(injectionPoints >= 2, `人格卡注入点数量异常：${injectionPoi
 // ② personaOnly 短路：只出人格卡正文，避免管理员规则/B站简报/记忆卡在一张纸上出现两次。
 assert.match(bridge, /if \(opts\.personaOnly\) return base;/, 'roleHintForMode 缺少 personaOnly 短路');
 
+// ④ 唤醒提示不再注入 B站记忆简报（2026-11-16 用户要求「一条都别给她，需要自己去查」）。
+// 简报块实测 979 字符，与绝大多数唤醒无关；但身份锚点必须留 ——
+// 少了它她会把 B站 那个号当成别人（PITFALLS #40）。
+{
+  const start = bridge.indexOf('function buildWakePromptV2(key, reason');
+  const end = bridge.indexOf('\n  function ', start + 10);
+  assert.ok(start > 0 && end > start, '没能截出 buildWakePromptV2 的函数体');
+  const body = bridge.slice(start, end);
+  assert.ok(!/biliMemory\.briefBlock\(\)/.test(body), '唤醒提示又把 B站简报块整块拼回来了');
+  assert.ok(!/biliMemory\.recallBlock\(/.test(body), '唤醒提示又按关键词回灌 B站记忆了');
+  assert.match(body, /【B站身份】/, '唤醒提示丢了 B站身份锚点（她会把自己当成另一个人）');
+}
 // ③ 引擎契约。fixture 不用 # 标题，避免被 role-card 的小节解析改变形状。
 const identity = buildPersonaIdentity({ name: '小测', owner: '主人' });
 assert.match(identity, /你是小测/, '身份底座没有角色名');
