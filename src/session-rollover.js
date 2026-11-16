@@ -98,33 +98,19 @@ export function buildHandoffBlock({
   config = DEFAULT_ROLLOVER
 } = {}) {
   const cfg = { ...DEFAULT_ROLLOVER, ...(config || {}) };
-  const list = Array.isArray(recent) ? recent.slice(-cfg.keepRecent) : [];
-  const lines = [];
-  for (const msg of list) {
-    if (!msg || msg.isSelf === true) continue;
-    const line = oneLine(msg.who ?? msg.name ?? msg.sender ?? '', msg.plain ?? msg.text ?? '');
-    if (line) lines.push(line);
-  }
+  // 2026-11-16 用户要求：交接块里的「最近几句」与唤醒提示末尾的【本次消息快照】是同一批消息
+  // （快照取 st.recentMessages 尾部，这里也取它），同一条对话在首屏出现两遍。
+  // 快照每轮都在、而且带 seq/时间/发送者，信息更全 —— 所以交接块只留「收在哪」，
+  // 对话内容交给快照。recent 参数保留（调用方与配置项先不动），但不再消费。
+  void recent;
   const said = String(closure ?? '').replace(/\s+/g, ' ').trim();
+  if (!said) return '';
 
   const head = '【会话交接】上一段聊太长了，已经换了一段新的接上。';
-  const tail = '接着聊就行；不要提"换过会话"这件事，也不用重新自我介绍。';
-  const body = [];
-  if (said) body.push(`刚才收在：${said.slice(0, Math.max(60, Math.floor(cfg.summaryMaxChars / 3)))}`);
-  if (lines.length) body.push('最近几句：', ...lines);
-
-  // 超字数时从最旧的对话行开始丢（"收在"那句永远保留）。
-  let block = [head, ...body, tail].join('\n');
-  while (block.length > cfg.summaryMaxChars && lines.length > 1) {
-    lines.shift();
-    const nextBody = [];
-    if (said) nextBody.push(`刚才收在：${said.slice(0, Math.max(60, Math.floor(cfg.summaryMaxChars / 3)))}`);
-    if (lines.length) nextBody.push('最近几句：', ...lines);
-    block = [head, ...nextBody, tail].join('\n');
-  }
-  if (block.length > cfg.summaryMaxChars) {
-    block = block.slice(0, Math.max(80, cfg.summaryMaxChars - 1)) + '…';
-  }
+  const tail = '接着聊就行；上文已经在这条消息里；不要提"换过会话"这件事，也不用重新自我介绍。';
+  const limit = Math.max(120, cfg.summaryMaxChars - head.length - tail.length - 8);
+  const clipped = said.length > limit ? `${said.slice(0, limit)}…` : said;
+  const block = [head, `刚才收在：${clipped}`, tail].join('\n');
   return block;
 }
 

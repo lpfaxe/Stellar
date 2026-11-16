@@ -61,13 +61,17 @@ console.log('## 3. 交接块')
   ]
   const block = buildHandoffBlock({ key: 'group:1', recent, closure: '聊到他加班', config: DEFAULT_ROLLOVER })
   ok(block.includes('【会话交接】'), '带标题，下一段会话知道这是交接')
-  ok(block.includes('小明：今天加班到十点'), '带最近对话')
   ok(block.includes('聊到他加班'), '带上次收尾摘要')
-  ok(!block.includes('我：那你早点睡'), '她自己的话不进交接（isSelf 跳过）')
+  // 2026-11-16：「最近几句」与唤醒提示里的【本次消息快照】是同一条对话的第二份拷贝，
+  // 已从交接块移除，对话内容统一由快照承载。
+  ok(!block.includes('最近几句'), '不再重复「最近几句」（交给消息快照）')
+  ok(!block.includes('小明：今天加班到十点'), '对话原文不再进交接块')
   ok(block.includes('不要提') && block.includes('换过会话'), '明确要求别提前进换过会话')
   ok(handoffIsUseful(block) === true, '有内容的交接判定为有用')
 
-  const empty = buildHandoffBlock({ recent: [], closure: '', config: DEFAULT_ROLLOVER })
+  // 没有收尾摘要时就没有可交接的东西：不再为了「有内容」硬塞对话行。
+  const empty = buildHandoffBlock({ recent, closure: '', config: DEFAULT_ROLLOVER })
+  ok(empty === '', '只有对话、没有收尾摘要时交接块为空串')
   ok(handoffIsUseful(empty) === false, '空交接判定为无用（不注入）')
 
   const long = Array.from({ length: 60 }, (_, i) => ({ sender: `人${i}`, plain: `第 ${i} 句很长的话，用来把交接撑爆`.repeat(2) }))

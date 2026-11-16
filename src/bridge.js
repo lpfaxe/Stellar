@@ -12280,16 +12280,32 @@ function maybeApproveImageRequest(text, key) {
     return defaultMs;
   }
 
+  // 「进行中的话题」过期门槛（2026-11-16）：以前只标「（已搁置）」，于是 20 小时、4 天前的
+  // 话题照样占首屏、还带一句「1203 分钟前」——那是纯噪声，也容易让她把隔夜旧事当成刚说的。
+  // 现在：超过 24 小时直接不列；2~24 小时标「（有点久）」但不再报分钟数。
+  const TOPIC_STALE_MS = 2 * 60 * 60 * 1000;
+  const TOPIC_DROP_MS = 24 * 60 * 60 * 1000;
+
   function formatMemoryV2(st) {
     if (!st) return '';
     const lines = [];
-    const topics = Array.isArray(st.activeTopics) ? st.activeTopics.filter((t) => t && t.text) : [];
+    const now = Date.now();
+    const topics = Array.isArray(st.activeTopics)
+      ? st.activeTopics.filter((t) => {
+        if (!t || !t.text) return false;
+        const at = Number(t.lastMentionAt);
+        // 没时间戳的放过（老数据），有时间戳的按门槛丢
+        return !(at > 0 && now - at > TOPIC_DROP_MS);
+      })
+      : [];
     if (topics.length) {
       lines.push('【进行中的话题】');
       for (const t of topics.slice(-10)) {
-        const ago = t.lastMentionAt ? Math.round((Date.now() - t.lastMentionAt) / 60000) : 0;
-        const stale = t.lastMentionAt && Date.now() - Number(t.lastMentionAt) > 2 * 60 * 60 * 1000 ? '（已搁置）' : '';
-        lines.push(`- ${t.text}${stale}（${ago > 0 ? ago + '分钟前' : '刚刚'}）${t.pendingQuestion ? `；待追问：${t.pendingQuestion}` : ''}`);
+        const at = Number(t.lastMentionAt);
+        const ago = at > 0 ? Math.round((now - at) / 60000) : 0;
+        const stale = at > 0 && now - at > TOPIC_STALE_MS ? '（有点久）' : '';
+        const when = ago > 0 && ago <= 240 ? `（${ago}分钟前）` : '';
+        lines.push(`- ${t.text}${stale}${when}${t.pendingQuestion ? `；待追问：${t.pendingQuestion}` : ''}`);
       }
     }
     const thoughts = Array.isArray(st.pendingThoughts) ? st.pendingThoughts.filter((t) => t && t.text && (!t.expiresAt || Date.now() < t.expiresAt)) : [];
@@ -12305,7 +12321,9 @@ function maybeApproveImageRequest(text, key) {
       lines.push('【对群友的印象】');
       for (const name of names.slice(-10)) {
         const im = impressions[name] || {};
-        const traits = Array.isArray(im.traits) ? im.traits : [];
+        const traits = Array.isArray(im.traits) ? im.traits.filter(Boolean) : [];
+        // 既没印象又没互动过的名字不该占一行（以前会写「暂无记录（互动 0 次）」）。
+        if (!traits.length && !(Number(im.interactionCount) > 0)) continue;
         lines.push(`- ${name}：${traits.length ? traits.join('、') : '暂无记录'}（互动 ${Number(im.interactionCount) || 0} 次）`);
       }
     }
@@ -15794,16 +15812,15 @@ function maybeApproveImageRequest(text, key) {
     // 后续唤醒不再带它 —— 那时它已经在这条 DSH 会话的上下文里了。
     const initialPromptText = reason === 'bootstrap' ? formatInitialPromptV2(key) : '';
     const initialPromptLine = initialPromptText ? `${initialPromptText}\n\n` : '';
-    // 人格卡正文由 personaWakeBlockV2 在最前统一注入（2026-11-01 改：以前只给指针，
-    // 模型基本不调 qq_get_prompt，等于不知道自己是谁）；这里仍保证 B 站记忆每轮都在：
-    // 否则群友问起「B站那个号」时，它会把自己当成另一个人。
-    const biliBrief = cfg.biliBridge?.enabled && cfg.biliBridge?.memory?.enabled !== false
-      ? biliMemory.briefBlock()
+    // B 站记忆不再逐条注入（2026-11-16 用户要求：「b站记忆麻烦一条都别给她，让她需要就自己去查」）。
+    // 简报块实测 979 字符、且绝大多数唤醒与 B 站无关；但身份锚点必须留 ——
+    // 少了它她会把 B 站那个号当成别人、或说「我认识她」（PITFALLS #40）。
+    const biliSelf = biliMemoryOn ? biliMemory.selfInfo?.() : null;
+    const biliSelfName = String(biliSelf?.name || '').trim();
+    const biliSelfMid = String(biliSelf?.mid ?? '').trim();
+    const biliLine = biliMemoryOn
+      ? `【B站身份】B 站那个号就是你本人${biliSelfName ? `：「${biliSelfName}」` : ''}${biliSelfMid ? `（mid ${biliSelfMid}，space.bilibili.com/${biliSelfMid}）` : ''}。QQ 和 B 站是同一个人，别人发来的截图里出现这个号也是你自己。要看你最近看过/发过什么，用 stellar_bili_my / stellar_bili_history 现查，别凭印象编。\n\n`
       : '';
-    const biliRecall = lastMsg && cfg.biliBridge?.enabled && cfg.biliBridge?.memory?.enabled !== false
-      ? biliMemory.recallBlock(String(lastMsg.text || lastMsg.plain || ''))
-      : '';
-    const biliLine = biliBrief || biliRecall ? `${biliBrief}${biliRecall ? `${biliRecall}\n` : ''}\n` : '';
     // 记忆方式二选一：narrative 注入预渲染记忆卡；vector 注入按当前消息检索到的旧事。
     // 两套存储都在后台继续写，这里只决定读哪一份（2026-11-02 用户要求）。
     // 叙事侧必须带 key：dev 的按会话记忆隔离靠 memoryCardPromptBlock(key)。
