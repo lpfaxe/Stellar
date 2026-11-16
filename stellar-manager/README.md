@@ -13,7 +13,7 @@ node stellar-manager\server.mjs
 
 默认 `http://127.0.0.1:3300`。换端口：`set STELLAR_PANEL_PORT=3301`。
 
-第一次直接打开 `http://127.0.0.1:3300/` 会看到一张口令页 —— 这是**故意**的：控制台在本机也不再免口令（2026-11-16 起），否则同一台电脑上别的账户打 `/api/status` 就能读到口令再从公网隧道进来。口令在仓库目录下的 `stellar-manager/panel-token.txt` 里，输一次这台设备记住 30 天。
+第一次直接打开 `http://127.0.0.1:3300/` 会看到一张口令页 —— 这是**故意**的：控制台在本机也不再免口令（2026-11-16 起），否则同一台电脑上别的账户打 `/api/status` 就能读到口令再从公网隧道进来。口令在 `<DSH_HOME>/stellar/panel-token.txt` 里（Windows 默认 `C:\Users\<你>\.dsh\stellar\panel-token.txt`），输一次这台设备记住 30 天。
 
 ## 第一次打开会看到的
 
