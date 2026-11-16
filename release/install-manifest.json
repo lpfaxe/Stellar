@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.5",
   "source": "git:HEAD",
-  "generatedAt": "2026-11-16T04:05:00.822Z",
+  "generatedAt": "2026-11-16T04:27:51.721Z",
   "files": {
     ".gitattributes": "651ca90b38ff7d94fb771f222a3a1c63e1a2ab836dce5fde9229525c2f0abbac",
     ".gitignore": "eb954d00871fc84b5005f84611be0247e6d84e7d52c0dfce97b79c0f64dc15a5",
@@ -411,7 +411,7 @@
     "scripts/test-memory-card-wiring.mjs": "1493455660756ae2fb2dfb0b7d0c1aef5f62b31c2a77284f012430faeba1b947",
     "scripts/test-memory-card.mjs": "7a863fe6f7e2f6704e4c8462c166c2479a2f71f17b5e01a64c49ddc17a993fc1",
     "scripts/test-memory-compact.mjs": "bbb712d8fa26913cd25b6d22a9af282a5cebc005c020292d292a0d1d1bab5679",
-    "scripts/test-memory-db-view.mjs": "232c8ba459f23c3633ab7987a1cb2fcf55d71bd55404e93f6fba3c300f43900c",
+    "scripts/test-memory-db-view.mjs": "c5e0ac62c3bccc3e60ab8e3f3971cd347ad8c6c5a6c45ddde892c001f134e31a",
     "scripts/test-memory-db.mjs": "241daf568157cfd19f39e4632ffe0cf613a76c68d2872d82eec162c65e2e8eeb",
     "scripts/test-memory-facts.mjs": "7897a0ccfdcdd704a0ee4694f6dd6e3ebb9e13ce715d3ba7cea2f219b3b7e431",
     "scripts/test-memory-inject.mjs": "e8abe7d04f1e8a6ab1443816a6c10560cbff7993e2e7aa71f1f09864b3413407",
