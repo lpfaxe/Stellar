@@ -5,7 +5,7 @@
  */
 import fsProbe from 'node:fs';
 import pathProbe from 'node:path';
-import { fileURLToPath as urlProbe } from 'node:url';
+import { fileURLToPath as urlProbe, pathToFileURL } from 'node:url';
 const scriptsDir = pathProbe.dirname(urlProbe(import.meta.url));
 // 控制台源码的两个候选位置：仓库自己那份（发布仓库里是最小控制台，没有 lib/auth.js），
 // 以及「stellar 与 stellar-manager 同级」的完整部署布局。先看前者，避免发布仓库里
@@ -48,7 +48,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stellar-tunnel-'));
 process.env.DSH_HOME = root;
 process.env.STELLAR_DATA_DIR = path.join(root, 'stellar');
 
-const tun = await import('../../stellar-manager/lib/tunnel.js');
+const tun = await import(pathToFileURL(pathProbe.join(panelRoot, 'lib', 'tunnel.js')).href);
 const acl = await import('../src/state-acl.mjs');
 
 test.after(() => {

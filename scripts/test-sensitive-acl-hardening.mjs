@@ -123,8 +123,8 @@ test('两处 atomicWrite 都真的接了收紧（源码级钉子）', () => {
     'bridge.js 必须导入 hardenSensitiveFile');
   const calls = bridge.match(/hardenSensitiveFile\(file\)/g) ?? [];
   assert.equal(calls.length, 2, 'atomicWriteJson 与 atomicWriteText 各要调一次，实际 ' + calls.length);
-  const panel = fs.readFileSync(new URL('../../stellar-manager/lib/util.js', import.meta.url), 'utf8');
+  const panel = fs.readFileSync(pathProbe.join(panelRoot, 'lib', 'util.js'), 'utf8');
   assert.ok(panel.includes('hardenSensitiveFile(file)'), '面板的 atomicWriteJson 也要调');
-  const auth = fs.readFileSync(new URL('../../stellar-manager/lib/auth.js', import.meta.url), 'utf8');
+  const auth = fs.readFileSync(pathProbe.join(panelRoot, 'lib', 'auth.js'), 'utf8');
   assert.ok(auth.includes('hardenSensitiveFile(TOKEN_FILE)'), '口令轮换写新 token 后也要收紧');
 });

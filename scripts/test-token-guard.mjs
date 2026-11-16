@@ -192,7 +192,7 @@ assert.ok(scheduler.includes('budgetBlockedNow'), 'B站 调度器没有在 tick 
 const client = fs.readFileSync(new URL('../plugins/stellar/lib/client.js', import.meta.url), 'utf8');
 assert.ok(client.includes('Token 防爆破'), '设置页缺少「Token 防爆破」分组');
 assert.ok(client.includes('今日 ¥'), '设置页概览缺少今日花费');
-const panelCost = fs.readFileSync(new URL('../../stellar-manager/public/js/cost.js', import.meta.url), 'utf8');
+const panelCost = fs.readFileSync(pathProbe.join(panelRoot, 'public', 'js', 'cost.js'), 'utf8');
 assert.ok(panelCost.includes('今日预算'), '面板成本卡缺少「今日预算」');
 assert.ok(panelCost.includes('已用 '), '面板成本卡缺少「已用百分比」');
 assert.ok(/\(budget\.share \|\| 0\) > 0\.8/.test(panelCost), '面板成本卡缺少 80% 预警');
