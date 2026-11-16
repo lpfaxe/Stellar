@@ -7,7 +7,7 @@
 
 | | |
 | --- | --- |
-| 版本 | `1.0.5` |
+| 版本 | `1.0.6` |
 | 目标 DSH | `0.2.1-rc.2 或更新`（本机长期跑在 `0.2.2-rc.1`；`node scripts/verify-dsh-020-adaptation.mjs` 可逐项复核） |
 | 平台 | Windows 10/11（沙箱 ACL、SnowLuma 接入与启动脚本都与它绑定） |
 | 许可 | MIT（SnowLuma 是第三方专有运行时，**不随本仓库分发**） |
