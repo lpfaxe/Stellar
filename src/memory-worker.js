@@ -455,7 +455,9 @@ export function runTick(opts = {}) {
  * 人物侧写（模块四，P1）：把「近 2 天话题标题 + important 标题 + 零碎」压成一句 ≤50 字的人设。
  * 输入只给标题与零碎，不给全文 —— 每人一次调用约 1.5K in / 100 out。
  */
-export function profileCandidates({ db: conn, perOwner = 20, maxChars = 60 } = {}) {
+const FRAGMENT_PROMPT_CHARS = 160;
+
+export function profileCandidates({ db: conn, perOwner = 20, maxChars = 60, fragChars = FRAGMENT_PROMPT_CHARS } = {}) {
   const db = conn || openDb();
   const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const owners = db.prepare('SELECT DISTINCT owner_id FROM topic WHERE ended_at >= ? UNION SELECT DISTINCT owner_id FROM fragment WHERE at >= ?').all(since, since);
@@ -468,8 +470,12 @@ export function profileCandidates({ db: conn, perOwner = 20, maxChars = 60 } = {
     const topics = db.prepare(
       "SELECT title, tier, importance FROM topic WHERE owner_id = ? AND (ended_at >= ? OR tier = 'important') ORDER BY ended_at DESC LIMIT ?",
     ).all(ownerId, since, perOwner).map((item) => String(item.title || '').slice(0, maxChars)).filter(Boolean);
+    // 2026-11-16 修：零碎原来也按 maxChars(60) 截，于是「生日是6月29日」被截成
+    // 「生日是6月2」，模型照着写出「6月2日生日」并落进 detail。标题需要短，零碎需要完整，
+    // 两者用同一个上限是错的。
+    const fragMax = Math.max(maxChars, Number(fragChars) || FRAGMENT_PROMPT_CHARS);
     const frags = db.prepare('SELECT text FROM fragment WHERE owner_id = ? ORDER BY at DESC LIMIT ?')
-      .all(ownerId, perOwner).map((item) => String(item.text || '').slice(0, maxChars)).filter(Boolean);
+      .all(ownerId, perOwner).map((item) => String(item.text || '').slice(0, fragMax)).filter(Boolean);
     if (!topics.length) continue;
     const msgCount = Number(db.prepare('SELECT COUNT(*) AS n FROM cache_msg WHERE owner_id = ?').get(ownerId)?.n || 0);
     out.push({
@@ -487,6 +493,37 @@ export function profileCandidates({ db: conn, perOwner = 20, maxChars = 60 } = {
   return out;
 }
 
+/**
+ * 从模型输出里抠出侧写 JSON。
+ *
+ * 2026-11-16 修：原来只做「去掉围栏 → 找第一个 { 和最后一个 }」，任何截断都直接抛
+ * 「模型没有返回 JSON」。deepseek-flash 的思考 token 计入输出预算，主人那条提示词最长
+ * （800 字符，含 4 条零碎 + 上一版 detail），maxTokens=500 时 JSON 被腰斩成
+ * {"persona":"…","detail":"…（没收尾），于是每轮都失败、侧写永远停在旧内容。
+ * 现在保留宽松兜底（能抠出 persona 就用），但只当兜底，正文仍然优先整段解析。
+ */
+export function parseProfileJson(text) {
+  const FENCE = String.fromCharCode(96, 96, 96);
+  const raw = String(text || '').trim().split(FENCE + 'json').join('').split(FENCE).join('').trim();
+  const s = raw.indexOf('{');
+  const e = raw.lastIndexOf('}');
+  // ① 完整对象优先：最后一个 } 在第一个 { 之后才算有闭合。
+  if (s >= 0 && e > s) {
+    try {
+      const obj = JSON.parse(raw.slice(s, e + 1));
+      if (obj && typeof obj === 'object') return { obj, partial: false };
+    } catch {}
+  }
+  // ② 截断兜底：persona 在最前面，通常已经写完。**不能写在 ① 里面**
+  //    （没有闭合的 } 时 e < s，走不进 ①，兜底就永远摸不到）。
+  if (s >= 0) {
+    const m = raw.slice(s).match(/"persona"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (m) {
+      try { return { obj: { persona: JSON.parse('"' + m[1] + '"') }, partial: true }; } catch {}
+    }
+  }
+  return { obj: null, partial: false };
+}
 export function buildProfilePrompt(cand) {
   const lines = [];
   lines.push('下面是这个人和她聊过的内容的标题与零碎（不是全文）。用一句话写出这个人：他是谁、怎么相处、要注意什么。');
@@ -513,6 +550,9 @@ export function buildProfilePrompt(cand) {
   lines.push('');
   lines.push('只输出 JSON：{"persona":"不超过50字的一句话","detail":"不超过150字的补充","tags":["最多4个词"]}');
   lines.push('写「习惯与相处方式」，不要写「关系称谓」，不要编原文没有的事。');
+  // 2026-11-16：零碎是长文本截出来的，末尾可能断在半句话上（「生日是6月2」）。
+  // 不提醒的话模型会把断口当事实补全，写出错误日期。
+  lines.push('零碎是从长消息里截出来的，末尾可能断在半句上；没说完的不要补全、不要猜数字和日期。');
   return lines.join('\n');
 }
 
@@ -529,14 +569,30 @@ export async function runProfiles(opts = {}) {
   const errors = [];
   for (const cand of cands.slice(0, 6)) {
     try {
-      const text = await ask({ system: '你是 Stellar 的侧写器。只输出 JSON。', user: buildProfilePrompt(cand), maxTokens: 500, reasoningEffort: 'low' });
-      const FENCE = String.fromCharCode(96, 96, 96);
-      let raw = String(text || '').trim().split(FENCE + 'json').join('').split(FENCE).join('').trim();
-      const s = raw.indexOf('{'); const e = raw.lastIndexOf('}');
-      if (s < 0 || e <= s) throw new Error('模型没有返回 JSON');
-      const obj = JSON.parse(raw.slice(s, e + 1));
-      const persona = String(obj.persona || '').replace(/\s+/g, ' ').trim().slice(0, 50);
-      if (!persona) throw new Error('persona 为空');
+      const user = buildProfilePrompt(cand);
+      // 第一遍：留足预算（思考 token 也算在这个额度里）。
+      // 第二遍：关掉思考 + 更大额度，只在第一遍拿不到可用 persona 时走，避免多花钱。
+      const attempts = [
+        { maxTokens: 1200, reasoningEffort: 'low' },
+        { maxTokens: 2000, reasoningEffort: 'off', note: '只输出一行 JSON，不要写解释。' },
+      ];
+      let obj = null;
+      let persona = '';
+      let lastText = '';
+      for (const attempt of attempts) {
+        const text = await ask({
+          system: '你是 Stellar 的侧写器。只输出 JSON。',
+          user: attempt.note ? user + '\n\n' + attempt.note : user,
+          maxTokens: attempt.maxTokens,
+          reasoningEffort: attempt.reasoningEffort,
+        });
+        lastText = String(text || '');
+        const parsed = parseProfileJson(lastText);
+        const got = String((parsed.obj && parsed.obj.persona) || '').replace(/\s+/g, ' ').trim().slice(0, 50);
+        // 抠到 persona 才算这遍成立；只有 detail 的 JSON 也要再试一次。
+        if (parsed.obj && got) { obj = parsed.obj; persona = got; break; }
+      }
+      if (!obj) throw new Error('模型没有返回 JSON（原文：' + lastText.replace(/\s+/g, ' ').slice(0, 80) + '）');
       // 模型有时把 detail 留空：那就保留上一版，别把好不容易攒的细节洗掉。
       const nextDetail = String(obj.detail || '').replace(/\s+/g, ' ').trim().slice(0, 200) || String(cand.detail || '').slice(0, 200);
       const nextTags = (Array.isArray(obj.tags) ? obj.tags.slice(0, 4).map((x) => String(x).slice(0, 12)) : []).filter(Boolean);
