@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.4",
   "source": "git:HEAD",
-  "generatedAt": "2026-11-16T03:18:05.451Z",
+  "generatedAt": "2026-11-16T03:26:45.933Z",
   "files": {
     ".gitattributes": "651ca90b38ff7d94fb771f222a3a1c63e1a2ab836dce5fde9229525c2f0abbac",
     ".gitignore": "eb954d00871fc84b5005f84611be0247e6d84e7d52c0dfce97b79c0f64dc15a5",
@@ -606,7 +606,7 @@
     "src/web-search.js": "3becc7b6e30f20d05cc527eeb43322526ab9dbde16c09f4f3fd97a28ab624dca",
     "start-with-dsh-port.bat": "0cc2e148add2d8f78fde4b00fa68cf4cef50628ec09c0b6581fdc9948909222d",
     "start.bat": "8dd47926c44e1f75e7cece838357cd61a8694ed3c01a566224eacaefbacc6d43",
-    "stellar-manager/README.md": "8404ea105aa55c89e38338bbcaac4510a27064cdf44b13237b40d6e2984f53a7",
+    "stellar-manager/README.md": "224ef572af2fa4ef04ccf37269727477f1fe1ecf1297d09099c0b31e00851483",
     "stellar-manager/lib/access.js": "a10d8f2af7643d92eb82d3743187276478da4924b4c02efe9ce07e33f5f77bd7",
     "stellar-manager/lib/activity.js": "2e48133c8eb46f1146177684ff994a7283561e1141a693a445db86c461866297",
     "stellar-manager/lib/approvals.js": "68b5c722cb7ebb60268aeb1c70f507e2345fb65f2f4c5fb60681431d5148ce41",
