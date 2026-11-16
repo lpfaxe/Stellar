@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.5",
   "source": "git:HEAD",
-  "generatedAt": "2026-11-16T04:27:51.721Z",
+  "generatedAt": "2026-11-16T04:33:54.216Z",
   "files": {
     ".gitattributes": "651ca90b38ff7d94fb771f222a3a1c63e1a2ab836dce5fde9229525c2f0abbac",
     ".gitignore": "eb954d00871fc84b5005f84611be0247e6d84e7d52c0dfce97b79c0f64dc15a5",
@@ -11,7 +11,7 @@
     "CHANGELOG.md": "bc110080231fa77b9302d6f7002967641363679c9fb0d3de3b8f32d818982f82",
     "LICENSE": "232d76d81f3a2447fec4a3321f0ee0d15b620bcb4b556e0440296d6034804be5",
     "README.en.md": "3540ae95afcff508098fdc7a251ea384f73064cc604d6e90e8bc169004f915b4",
-    "README.md": "6fe93f4744339517e7e96be028e99103fea16aba2a97314119e74f33253fea9e",
+    "README.md": "112927def1f13d71258e0d25d6e9fcfcdffed8ed5128c531f79eef90aae401ac",
     "RULES.md": "e2c48b4f56ff35bd2894ec491c13cf566af2139a837cb01b2c3bcdc21f893496",
     "config.example.json": "70513bfbcc664a62b4d7cd6b059ee9766bcd5616630e607a689e75f8059771d3",
     "docs/FOLDER_MAP.md": "804dffe5779ddfb415c24993b4423063dc6dfa65d2af710cbaf41fd9fafc2be9",
