@@ -1,6 +1,6 @@
 {
   "name": "stellar",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "Stellar —— QQ × B站合体插件：统一设置窗口、双向脱敏记忆、鱼群保护、可扩展的平台接入层（贴吧预留）与插件接口。",
   "type": "module",
