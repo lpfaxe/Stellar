@@ -86,7 +86,7 @@
 
 - DSH 数据目录 `~/.dsh`；插件数据在 `~/.dsh/stellar/`。
 - Web GUI / 网关：**端口会漂移**（DSH 桌面端每次启动挑空闲回环端口）。用 `discoverDshBaseUrl()` 或 `state/dsh-port.json`，**别硬编码**。
-- 桥接控制台：`http://127.0.0.1:3100`（需要 `consoleToken`）；面板：`http://127.0.0.1:3300`（回环免口令，局域网 / 隧道要口令）。
+- 桥接控制台：`http://127.0.0.1:3100`（需要 `consoleToken`）；面板：`http://127.0.0.1:3300`（**本机也要登录**：带 `?code=<panel-token.txt 里那串>` 打开一次换 Cookie，之后 30 天免输入；局域网 / 隧道另需口令）。
 - SnowLuma：第三方专有运行时，**不随仓库分发、不打包**；本程序只探测、不部署（EULA §5.4）。
 - 会话日志：`~/.dsh/sessions/<项目目录>/session-<id>/session.v4.jsonl.zstd`，zstd 压缩，别当文本读。
 - 记忆库：`~/.dsh/stellar/characters/<角色>/memory/memory.db`（SQLite，schema_version 3）。

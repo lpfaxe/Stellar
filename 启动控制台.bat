@@ -12,6 +12,7 @@ echo.
 echo Overview, contacts, memory, Bilibili, QZone, logs, settings.
 echo First open looks empty because the bridge has not run yet.
 echo Open http://127.0.0.1:3300/ in a browser. Closing this window stops the console.
+echo The first open shows a passphrase page: copy the "local entry" line printed below.
 echo.
 
 set "STELLAR_NODE_DIR="

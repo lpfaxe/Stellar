@@ -53,6 +53,17 @@ function api(path, opts) {
   var timer = setTimeout(function () { ctrl.abort(); }, timeoutMs);
   o.signal = ctrl.signal;
   return fetch(path, o).then(function (res) {
+    // 会话过期/没登录：让浏览器重新走一遍 gate（它会发登录页或凭口令页换 Cookie），
+    // 而不是把「需要口令」当成普通报错挂在卡片上（2026-11-16，本机也要登录了）。
+    if (res.status === 401) {
+      if (!window.__panelRelogin) {
+        window.__panelRelogin = true;
+        location.reload();
+      }
+      const e401 = new Error('需要口令，正在重新打开登录页');
+      e401.code = 401;
+      throw e401;
+    }
     return res.json().then(function (data) {
       if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status));
       return data;

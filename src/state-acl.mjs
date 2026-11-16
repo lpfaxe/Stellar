@@ -61,6 +61,8 @@ export const SENSITIVE_BASENAMES = new Set([
   'config.json',
   'bili.config.json',
   'panel-token.txt',
+  // 面板会话 Cookie 的 sid 就在里面：读到就能冒充已登录（2026-11-16）
+  'panel-sessions.json',
   // Cloudflare 命名隧道 token = 直接能把隧道带到你账号里的凭据（2026-11-13）
   'cloudflare-tunnel-token.txt',
 ]);

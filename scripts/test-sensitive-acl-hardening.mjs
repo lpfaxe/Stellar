@@ -80,7 +80,8 @@ test('resolveAclUser 在环境变量缺失时回退到 os.userInfo（DSH 子进�
 
 test('敏感文件白名单就这几个名字，且大小写不敏感', () => {
   // 2026-11-13 加第 4 项：cloudflare-tunnel-token.txt 是能把隧道带进账号的凭据
-  assert.deepEqual([...SENSITIVE_BASENAMES].sort(), ['bili.config.json', 'cloudflare-tunnel-token.txt', 'config.json', 'panel-token.txt']);
+  // 2026-11-16 加第 5 项：panel-sessions.json 里是面板会话 sid（读到就能冒充已登录）
+  assert.deepEqual([...SENSITIVE_BASENAMES].sort(), ['bili.config.json', 'cloudflare-tunnel-token.txt', 'config.json', 'panel-sessions.json', 'panel-token.txt']);
   assert.equal(isSensitiveFile('C:\\x\\config.json'), true);
   assert.equal(isSensitiveFile('C:/x/PANEL-TOKEN.TXT'), true);
   assert.equal(isSensitiveFile('C:/x/bili.config.json'), true);

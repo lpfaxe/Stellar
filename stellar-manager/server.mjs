@@ -885,7 +885,9 @@ server.listen(PORT, HOST, () => {
   } else {
     console.log('只监听本机（127.0.0.1）。想让同一 WiFi 的手机连，设 STELLAR_PANEL_HOST=0.0.0.0 再启动。')
   }
-  logLine('panel started on ' + PORT + ' host=' + HOST + ' lan=' + lan.join(',') + ' token=' + currentToken())
+  console.log('本机入口（免输入口令）: ' + local + '/?code=' + currentToken())
+  // 不要把口令写进日志：panel.log 的 ACL 不受这里控制，同机别的账户可能读得到（PITFALLS #208）
+  logLine('panel started on ' + PORT + ' host=' + HOST + ' lan=' + lan.join(','))
   resumeRestartPolling()
   reconcileRestartState()
   if (process.env.STELLAR_NO_TUNNEL !== '1' && process.env.SURFCORE_NO_TUNNEL !== '1') {

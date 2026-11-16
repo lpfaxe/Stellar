@@ -110,9 +110,17 @@ function consumeLoginCode(code) {
   saveLoginCodes()
   return true
 }
-/** 当前请求是否已经有面板凭据（本机或有效会话），给 /api/login-code 用。 */
+/**
+ * 当前请求是否已经有面板凭据。**只认会话**（2026-11-16）。
+ *
+ * 以前这里是「本机免口令」：isLoopback(req) 为真就算已登录。后果是同一台电脑上
+ * 任何账户/任何进程打 http://127.0.0.1:3300/api/status 都能拿到明文口令，
+ * 拿到就能从公网隧道登录 —— 绑回环防的是外面，防不了本机别的用户（PITFALLS #208）。
+ * 现在本机也要先换一个会话 Cookie：启动时的本机入口会带着 ?code= 打开一次，
+ * 之后 30 天都免输入。
+ */
 export function isAuthed(req) {
-  return isLoopback(req) || validSession(req)
+  return validSession(req)
 }
 // ── 会话：随机 sid 存在 state/panel-sessions.json，面板重启不掉线 ──────────
 const sessions = new Map()
@@ -131,9 +139,20 @@ function saveSessions() {
     fs.mkdirSync(path.dirname(SESSION_FILE), { recursive: true })
     const sessionsArr = [...sessions].map(([sid, s]) => ({ sid, ...s })).slice(-MAX_SESSIONS)
     atomicWriteJson(SESSION_FILE, { version: 1, sessions: sessionsArr })
+    // rename 出来的新文件会继承父目录的 DACL，加固必须放在写之后
+    const h = hardenSensitiveFile(SESSION_FILE)
+    if (h.ok === false) logLine('warn: 收紧 panel-sessions.json ACL 失败：' + h.detail)
   } catch {}
 }
 loadSessions()
+
+// 已经存在的旧会话文件也收紧一次（进程启动时文件可能还是宽松 ACL）
+try {
+  if (fs.existsSync(SESSION_FILE)) {
+    const h = hardenSensitiveFile(SESSION_FILE)
+    if (h.ok === false) logLine('warn: 启动时收紧 panel-sessions.json ACL 失败：' + h.detail)
+  }
+} catch {}
 
 export function sessionCount() { return sessions.size }
 export function sessionInfo() {
@@ -495,12 +514,20 @@ export function requireWrite(req, res) {
   return false
 }
 
-/** 统一鉴权：本机免口令；带 ?code= 一次性码的换成 Cookie 后重定向；否则给登录页 / 401。 */
+/**
+ * 统一鉴权：所有请求都要有会话；带 ?code= 的换成 Cookie 后重定向；否则给登录页 / 401。
+ *
+ * 本机不再是法外之地（PITFALLS #208）。两条换取会话的路：
+ *   · ?code=<一次性登录码>：面板里点「复制带口令的登录链接」发出去的那种，5 分钟、只能换一次；
+ *   · ?code=<原始口令> **且请求来自本机**：本机入口用，避免本机每次还要手输。
+ *     只允许本机用，是因为原始口令进了 URL 就会留在浏览器历史/代理日志里，
+ *     外面那扇门必须走一次性码。
+ */
 export function gate(req, res, url) {
-  if (isLoopback(req)) return true
   if (validSession(req)) return true
   const qCode = String(url.searchParams.get('code') || '').toLowerCase()
-  if (qCode && consumeLoginCode(qCode)) {
+  const rawTokenOk = qCode && isLoopback(req) && sameSecret(qCode, token)
+  if (rawTokenOk || (qCode && consumeLoginCode(qCode))) {
     const sid = createSession(req)
     res.setHeader('set-cookie', cookieHeader(sid, req))
     const clean = new URL(url.toString())
