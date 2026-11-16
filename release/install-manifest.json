@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.5",
   "source": "git:HEAD",
-  "generatedAt": "2026-11-16T06:53:58.314Z",
+  "generatedAt": "2026-11-16T06:59:29.643Z",
   "files": {
     ".gitattributes": "651ca90b38ff7d94fb771f222a3a1c63e1a2ab836dce5fde9229525c2f0abbac",
     ".gitignore": "eb954d00871fc84b5005f84611be0247e6d84e7d52c0dfce97b79c0f64dc15a5",
@@ -436,7 +436,7 @@
     "scripts/test-persona-classify.mjs": "e5cb9d9364e564f5c774b1b50629977c3bd13290959808f4c61765d0dad88c4b",
     "scripts/test-persona-layer-read.mjs": "853c723106c0727c64499b9cd1496dd6b9e40a8bc41100805ecca40852411ee2",
     "scripts/test-persona-layers.mjs": "32446579185f4e42b4e72910ffcf7a32f9529169a0964f7fadf3377a282f0d06",
-    "scripts/test-persona-wake-injection.mjs": "20e7b88e9022843a90254d6c6379a645db0c2ee5814a6b5a9388d78f5dadfc75",
+    "scripts/test-persona-wake-injection.mjs": "48027c000fb5226431b44f9f04e395dfcf5b003c2971676aecd057c806ee27d4",
     "scripts/test-platform-start.mjs": "087a9c63b3417ac134bd6db099efcc8d9d8c3a20375431b3174cb67d8c307ca2",
     "scripts/test-plugin-compat.mjs": "7024b7ffa70f30306ed7547f44bc20a94a9932bee0638a657c4a15064dc90e1f",
     "scripts/test-pref-scan.mjs": "c40910c586210d48efced0e1322b0ae9ccd3bfcae635660455d84e40540af80d",
