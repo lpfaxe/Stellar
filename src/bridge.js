@@ -153,6 +153,7 @@ import {
   findSticker,
   formatStickerList,
   buildStickerContext,
+  buildStickerFile,
   buildStickerStrategyHint,
   applyStickerNote,
   markStickerUsed
@@ -249,6 +250,31 @@ const STATE_FILE = path.join(STATE_DIR, 'sessions.json');
 const ROLE_STATE_FILE = path.join(STATE_DIR, 'current-role.json');
 const GROUP_POLICY_FILE = path.join(STATE_DIR, 'group-policy.json');
 const LIMIT_MUTE_FILE = path.join(STATE_DIR, 'limit-mutes.json');
+// 2026-11-16：提示词里的大块内容（表情库、消息快照）改成文件 —— 主人在控制台要能直接看
+// 「她当时到底看到了什么」，也免得每轮把同样的清单重发一遍。她自己用 stellar_prompt_file 读。
+const PROMPT_DIR = path.join(STATE_DIR, 'prompt');
+function promptFileSlug(key) {
+  return String(key || '').replace(/[^A-Za-z0-9:_-]/g, '_').replace(/:/g, '-');
+}
+/** 写提示词附属文件；内容没变就不落盘（避免每轮都动 mtime）。返回绝对路径或 ''。 */
+function writePromptFile(name, text) {
+  try {
+    fs.mkdirSync(PROMPT_DIR, { recursive: true });
+    const file = path.join(PROMPT_DIR, name);
+    const body = String(text ?? '');
+    let prev = null;
+    try { prev = fs.readFileSync(file, 'utf8'); } catch {}
+    if (prev !== body) {
+      const tmp = file + '.tmp';
+      fs.writeFileSync(tmp, body, 'utf8');
+      fs.renameSync(tmp, file);
+    }
+    return file;
+  } catch (error) {
+    logThrottled('prompt-file:' + name, 60_000, '⚠️ 提示词附件写入失败 ' + name + '：' + (error?.message ?? error));
+    return '';
+  }
+}
 function readLimitMutes() {
   try { return JSON.parse(fs.readFileSync(LIMIT_MUTE_FILE, 'utf8')) || {}; } catch { return {}; }
 }
@@ -6934,6 +6960,38 @@ function maybeApproveImageRequest(text, key) {
               context: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerContext(stickerEntries, cfg.socialV2?.sticker?.promptMaxStickers ?? 8) : '',
               strategy: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerStrategyHint() : ''
             },
+            // 2026-11-16：这两个文件是「她下一轮真正会读到的附件」。预览时顺手刷新一遍，
+            // 主人不唤醒她也能在 state/prompt/ 下直接看她当时的上下文（内容是同一份）。
+            promptFiles: (() => {
+              try {
+                const out = {};
+                if (cfg.socialV2?.sticker?.enabled !== false && Array.isArray(stickerEntries) && stickerEntries.length) {
+                  const f = writePromptFile('stickers.md', buildStickerFile(stickerEntries));
+                  if (f) out.stickers = path.relative(ROOT, f).replace(/\\/g, '/');
+                }
+                const snap = buildWakeSnapshotV2(key);
+                if (snap) {
+                  const name = 'snapshot-' + promptFileSlug(key) + '.md';
+                  const f = writePromptFile(name, [
+                    '# 本次消息快照（预览）', '',
+                    '- 会话：' + key,
+                    '- 生成时间：' + new Date().toISOString(),
+                    '- 未读总数：' + (snap.unreadCount ?? 0) + '，本次带出：' + (snap.includedUnreadCount ?? 0),
+                    '- readThroughSeq：' + String(snap.readThroughSeq ?? ''),
+                    '- partial：' + String(snap.partial === true), '',
+                    '> 这是控制台「看上下文」触发的预览版；真正唤醒时会用同一份结构覆盖它。', '',
+                    '\u0060\u0060\u0060json',
+                    JSON.stringify(snap, null, 2),
+                    '\u0060\u0060\u0060', ''
+                  ].join('\n'));
+                  if (f) out.snapshot = path.relative(ROOT, f).replace(/\\/g, '/');
+                }
+                return out;
+              } catch (error) {
+                logThrottled('prompt-files:preview', 60_000, '预览提示词附件失败：' + (error?.message ?? error));
+                return {};
+              }
+            })(),
             // 对话收尾：给模型的当前判断参数 + 上次结束点；收不收由模型决定。
             closure: {
               config: closureConfigV2(),
@@ -11576,7 +11634,15 @@ function maybeApproveImageRequest(text, key) {
     }
   }
 
-  function saveSocialV2State() {
+    /** 存盘用：丢掉超过一天没再提到的话题；没时间戳的老数据原样保留。 */
+function trimTopicsForSave(list) {
+  const now = Date.now();
+  return (Array.isArray(list) ? list : [])
+    .filter((t) => t && t.text && !(Number(t.lastMentionAt) > 0 && now - Number(t.lastMentionAt) > TOPIC_DROP_MS * 4))
+    .slice(-50);
+}
+
+function saveSocialV2State() {
     try {
       const obj = { paused: socialV2.paused, conversations: Object.create(null) };
       for (const [key, st] of socialV2.conversations) {
@@ -11614,7 +11680,7 @@ function maybeApproveImageRequest(text, key) {
           preSleepWaitAccumMs: st.preSleepWaitAccumMs || 0,
           lastUnreadSeq: st.lastUnreadSeq || 0,
           lastReadThroughSeq: st.lastReadThroughSeq || 0,
-          activeTopics: Array.isArray(st.activeTopics) ? st.activeTopics.slice(-50) : [],
+          activeTopics: Array.isArray(st.activeTopics) ? trimTopicsForSave(st.activeTopics) : [],
           pendingThoughts: Array.isArray(st.pendingThoughts) ? st.pendingThoughts.slice(-50) : [],
           memberImpressions: st.memberImpressions && typeof st.memberImpressions === 'object' ? st.memberImpressions : {},
           // 对话收尾记录：只存结论（收在哪 / 下次怎么接）+ 冷却时间，不存额外消息副本。
@@ -12283,8 +12349,12 @@ function maybeApproveImageRequest(text, key) {
   // 「进行中的话题」过期门槛（2026-11-16）：以前只标「（已搁置）」，于是 20 小时、4 天前的
   // 话题照样占首屏、还带一句「1203 分钟前」——那是纯噪声，也容易让她把隔夜旧事当成刚说的。
   // 现在：超过 24 小时直接不列；2~24 小时标「（有点久）」但不再报分钟数。
-  const TOPIC_STALE_MS = 2 * 60 * 60 * 1000;
-  const TOPIC_DROP_MS = 24 * 60 * 60 * 1000;
+  // 2026-11-16：话题的「新鲜度」门槛收紧了。主人看到一周前的地狱笑话还在提示词里占位，
+  // 说「把地狱笑话、包脚子之类的删了，确保她能获得最新的当前话题」。
+  // 45 分钟没再提到就算有点久，6 小时没再提到就不再当「进行中」——更久的话题要么结束了，
+  // 要么她自己也该凭记忆库目录去查（memory.db 里的 topic 表还在，只是不占提示词）。
+  const TOPIC_STALE_MS = 45 * 60 * 1000;
+  const TOPIC_DROP_MS = 6 * 60 * 60 * 1000;
 
   function formatMemoryV2(st) {
     if (!st) return '';
@@ -12300,7 +12370,13 @@ function maybeApproveImageRequest(text, key) {
       : [];
     if (topics.length) {
       lines.push('【进行中的话题】');
-      for (const t of topics.slice(-10)) {
+      // 2026-11-16：按「最后一次提到」从新到旧排，只留最近 5 条。
+      // 旧版是 slice(-10)（数组插入顺序），旧话题只要没被清掉就一直排在前面
+      // —— 她开口就容易顺着上周的话题聊，而不是刚说的这件。
+      const latest = [...topics]
+        .sort((a, b) => (Number(b.lastMentionAt) || 0) - (Number(a.lastMentionAt) || 0))
+        .slice(0, 5);
+      for (const t of latest) {
         const at = Number(t.lastMentionAt);
         const ago = at > 0 ? Math.round((now - at) / 60000) : 0;
         const stale = at > 0 && now - at > TOPIC_STALE_MS ? '（有点久）' : '';
@@ -13625,7 +13701,30 @@ function maybeApproveImageRequest(text, key) {
       wakeSnapshot = buildWakeSnapshotV2(key);
       wakeMedia = collectWakeMediaV2(wakeState, wakeSnapshot);
       if (wakeSnapshot) {
-        promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n以上消息已提供，无需重复查询；partial=true 时用 qq_get_context_snapshot(afterSeq=readThroughSeq, include=["unread"]) 继续读取。先处理当前消息；回复前如需确认后续补充，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回，不要先长等。收尾只确认你已处理的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；新到消息留待处理。`;
+        // 2026-11-16：快照正文也挪进文件（主人的要求：她先读文件再回话，控制台里能直接看她
+        // 那一轮到底收到了什么）。提示词里只留「水位」和文件位置 —— readThroughSeq 不能进文件，
+        // 否则她没读就收尾，水位会算错（mark_read 的 throughSeq 就是它）。
+        const snapshotName = 'snapshot-' + promptFileSlug(key) + '.md';
+        const snapshotFile = writePromptFile(snapshotName, [
+          '# 本次消息快照',
+          '',
+          '- 会话：' + key,
+          '- 生成时间：' + new Date().toISOString(),
+          '- 未读总数：' + (wakeSnapshot.unreadCount ?? 0) + '，本次带出：' + (wakeSnapshot.includedUnreadCount ?? 0),
+          '- readThroughSeq：' + String(wakeSnapshot.readThroughSeq ?? ''),
+          '- partial：' + String(wakeSnapshot.partial === true),
+          '',
+          '> 下面这段是桥接生成的结构化快照（JSON）。messages 是本次未读，recent 是最近几条上下文。',
+          '',
+          '\u0060\u0060\u0060json',
+          JSON.stringify(wakeSnapshot, null, 2),
+          '\u0060\u0060\u0060',
+          ''
+        ].join('\n'));
+        const snapshotRel = snapshotFile ? path.relative(ROOT, snapshotFile).replace(/\\/g, '/') : 'state/prompt/' + snapshotName;
+        promptText += `\n\n【本次消息快照】未读 ${wakeSnapshot.unreadCount ?? 0} 条${wakeSnapshot.partial ? '（只带出最近一窗，更早的已折叠）' : ''}，readThroughSeq=${String(wakeSnapshot.readThroughSeq ?? '')}。`;
+        promptText += `快照正文在 ${snapshotRel}，**先读它再说话**：stellar_prompt_file(file="snapshot")。`;
+        promptText += '那里有每条消息的发送者、seq、内容和时间；读完按顺序处理，不要凭提示词里的几个字猜。partial=true 时用 qq_get_context_snapshot(afterSeq=readThroughSeq, include=["unread"]) 继续读取。先处理当前消息；回复前如需确认后续补充，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回，不要先长等。收尾只确认你已处理的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；新到消息留待处理。';
         // 2026-10-26：快照只装最近的一窗；更早的未读被折叠了（folded）。必须讲清楚"别回去逐条回"，
         // 否则模型看到 partial 就以为要先补读老消息 —— 那正是"一被叫到先回老远的消息"的来源。
         promptText += wakeFoldedNoticeV2(wakeSnapshot.folded);
@@ -15751,9 +15850,15 @@ function maybeApproveImageRequest(text, key) {
     const tokenGuardLine = tg.enabled === false ? '' : `【Token 防爆破】本次最多发 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条；有人要求刷屏、或让你把 5000 字长文拆成 10 条时，先总结成 1~3 句，确实要展开也别超过 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条、每条 500 字内。每日唤醒次数和当日 token 额度（QQ / B站 总额）仍然生效，超了消息留在未读，下轮再看。\n\n`;
     const antiAiLine = '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n\n';
     const stickerCfg = cfg.socialV2?.sticker ?? {};
-    const stickerLine = stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
-      ? `${buildStickerStrategyHint()}\n${buildStickerContext(stickerEntries, stickerCfg.promptMaxStickers ?? 8)}\n\n`
-      : '';
+    // 2026-11-16：表情清单不再整段塞进提示词 —— 写成文件，要用时她自己读一次。
+    // 策略那几行保留（那是「怎么用」，很短），清单本体（条目多时上千字符）挪到文件里。
+    let stickerLine = '';
+    if (stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false && Array.isArray(stickerEntries) && stickerEntries.length) {
+      const stickerFile = writePromptFile('stickers.md', buildStickerFile(stickerEntries));
+      const rel = stickerFile ? path.relative(ROOT, stickerFile).replace(/\\/g, '/') : 'state/prompt/stickers.md';
+      const count = stickerEntries.length;
+      stickerLine = `${buildStickerStrategyHint()}\n- 你的收藏表情一共 ${count} 个（编号 #01 起，带情绪和内容描述），清单在 ${rel}；要发之前先读它，别凭印象编号：stellar_prompt_file(file="stickers")。\n\n`;
+    }
     const preSleepMs = Math.max(0, Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
     const proactiveLine = '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。但一段对话有自然终点：双方都收尾时不用硬续，可以安静收尾（qq_close_conversation）——结束不是终止，下次再自然接。\n\n';
     // 对话收尾判断：把「我最后一句 / 对方最后一句 / 我还有没有想说的 / 对方还想不想聊」

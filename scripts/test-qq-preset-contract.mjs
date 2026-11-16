@@ -37,7 +37,10 @@ test('local/admin tool restrictions and existing compaction budgets stay intact'
 });
 
 test('snapshots are optional, partial snapshots require reading, and watermarks are not message IDs', () => {
-  assert.match(prefix, /可能附带【本次消息快照】/);
+  // 2026-11-16：快照正文挪进文件，提示词里只留水位 + 文件位置，规则跟着改。
+  assert.match(prefix, /【本次消息快照】/);
+  assert.match(prefix, /stellar_prompt_file\(file="snapshot"\)/);
+  assert.match(prefix, /stellar_prompt_file\(file="stickers"\)/);
   assert.match(prefix, /partial=true[^。]*继续读取/);
   assert.match(prefix, /readThroughSeq 是桥接本地的 seq，不是 QQ messageId/);
   assert.match(prefix, /没有水位[^。]*省略 throughSeq/);

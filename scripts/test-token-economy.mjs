@@ -1,7 +1,9 @@
 // Exercise real bridge HTTP handlers and prompt delivery with isolated files,
 // fixture-only QQ/DSH peers, and no production process or credentials.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
 import { bridgeHarness } from './audit-bridge-harness.mjs';
 
 const KEY = 'group:456';
@@ -9,6 +11,14 @@ const ACTIVE = { mode: 'active' };
 const DIVING = { mode: 'diving', infinite: true, triggers: { atMention: true, anyMessage: false } };
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const seqs = (messages) => Array.from(messages, (message) => message.seq);
+// 2026-11-16：快照正文不再内联进提示词，改由桥接写 state/prompt/snapshot-<slug>.md，
+// 让她用 stellar_prompt_file 自己读（主人要看上下文也方便）。断言改成读那个文件。
+const snapshotFile = (h, key = KEY) => path.join(h.temp, 'state', 'prompt', 'snapshot-' + key.replace(/[^A-Za-z0-9:_-]/g, '_').replace(/:/g, '-') + '.md');
+const snapshotText = (h, key = KEY) => {
+  const file = snapshotFile(h, key);
+  assert.ok(fs.existsSync(file), '这个会话应当已经写过快照文件：' + file);
+  return fs.readFileSync(file, 'utf8');
+};
 let failures = 0;
 let tests = 0;
 
@@ -507,8 +517,10 @@ await test('offline wake replay builds a fresh snapshot with the current session
   await h.flushQueue();
   assert.equal(h.calls.prompts.length, 1);
   const content = h.calls.prompts[0].content.map((part) => part.text || '').join('\n');
-  assert.ok(content.includes('queued initial message'));
-  assert.ok(content.includes('queued later message'));
+  const snap = snapshotText(h);
+  assert.ok(snap.includes('queued initial message'), '排队的旧消息应当进快照文件');
+  assert.ok(snap.includes('queued later message'), '新消息也进快照文件');
+  assert.ok(content.includes('stellar_prompt_file(file="snapshot")'), '提示词要让她去读快照');
   assert.ok(content.includes(st.agentToken));
   assert.ok(!content.includes(originalToken));
   assert.equal((await request('mark-read', { body: { throughSeq: 2 }, token: st.agentToken })).status, 200);
@@ -532,11 +544,13 @@ await test('real wake delivery inlines compact messages with exact quote and med
   await h.sendWakePromptV2(KEY, 'question');
   assert.equal(h.calls.prompts.length, 1);
   const text = h.calls.prompts[0].content.filter((part) => part.type === 'text').map((part) => part.text).join('\n');
-  assert.ok(text.includes('fixture-inline-content'));
-  assert.ok(text.includes('900719925474099312345'), 'quote ID must remain an exact string');
-  assert.ok(text.includes('fixture-forward-123'), 'forward handle must remain fetchable');
-  assert.ok(text.includes('readThroughSeq'));
-  assert.ok(!text.includes('fixture-secret'), 'media URL is unnecessary when the local seq can resolve it');
+  const snap = snapshotText(h);
+  assert.ok(snap.includes('fixture-inline-content'), '正文在快照文件里');
+  assert.ok(snap.includes('900719925474099312345'), 'quote ID must remain an exact string');
+  assert.ok(snap.includes('fixture-forward-123'), 'forward handle must remain fetchable');
+  assert.ok(text.includes('readThroughSeq'), '水位必须留在提示词里');
+  assert.ok(!snap.includes('fixture-secret'), 'media URL is unnecessary when the local seq can resolve it');
+  assert.ok(!text.includes('"conversationKey"'), '提示词里不该再有整段 JSON');
   const close = await request('wake-config', { body: { config: ACTIVE, throughSeq: 1 } });
   assert.equal(close.status, 200, 'delivered inline content should authorize its cursor');
   assert.deepEqual(seqs(st.unread), []);

@@ -4455,6 +4455,61 @@ server.tool(
   }
 );
 
+server.tool(
+  'stellar_prompt_file',
+  '读桥接发给你的提示词附件（只读、只能读你自己那两个）。file="stickers" 是你的收藏表情完整清单（编号/情绪/内容），要发表情前先读；file="snapshot" 是本次唤醒的消息快照正文（谁说了什么、seq、时间），唤醒提示里让你先读它再说话。返回纯文本，长文件会截断提示。',
+  {
+    key: z.string().describe('当前会话 key，形如 private:<QQ> 或 group:<群号>'),
+    token: z.string().optional().describe('会话令牌（唤醒提示【会话令牌】那一行的值原样传入）；群聊里也必须传，否则不知道这份快照是谁的'),
+    file: z.enum(['stickers', 'snapshot']).describe('stickers = 表情完整清单；snapshot = 本次唤醒的消息快照')
+  },
+  async ({ key, token, file }) => {
+    const wanted = String(file ?? '').trim();
+    if (wanted !== 'stickers' && wanted !== 'snapshot') {
+      return { content: [{ type: 'text', text: 'file 只能是 stickers 或 snapshot。' }], isError: true };
+    }
+    // 只认令牌换来的身份，绝不按调用方给的 key 猜——否则谁都能读别人的快照。
+    const ident = await resolveAgentIdentity(token);
+    if (!ident || !ident.key) {
+      return { content: [{ type: 'text', text: '需要会话令牌才能读提示词附件：把提示里【会话令牌】那一行的值原样传到 token。' }], isError: true };
+    }
+    if (String(key || '').trim() && String(key).trim() !== ident.key) {
+      return { content: [{ type: 'text', text: 'key 和令牌对不上（令牌属于 ' + ident.key + '），不读。' }], isError: true };
+    }
+    const dir = path.join(ROOT, 'state', 'prompt');
+    const name = wanted === 'stickers'
+      ? 'stickers.md'
+      : 'snapshot-' + String(ident.key).replace(/[^A-Za-z0-9:_-]/g, '_').replace(/:/g, '-') + '.md';
+    const target = path.join(dir, name);
+    const base = path.resolve(dir) + path.sep;
+    if (!path.resolve(target).startsWith(base)) {
+      return { content: [{ type: 'text', text: '路径不合法。' }], isError: true };
+    }
+    let body = '';
+    try {
+      body = fs.readFileSync(target, 'utf8');
+    } catch (error) {
+      if (error && error.code === 'ENOENT') {
+        return {
+          content: [{
+            type: 'text',
+            text: (wanted === 'stickers'
+              ? '还没有表情清单（你一个收藏表情都没有，或桥接刚重启还没生成）。用 qq_list_stickers 看线上有哪些，或先 qq_collect_sticker 收一张。'
+              : '这一轮还没有快照文件（可能是没开快照注入，或桥接刚重启还没写过）。需要消息就直接 qq_get_context_snapshot / qq_get_unread_messages 现查。')
+          }],
+          isError: true
+        };
+      }
+      return { content: [{ type: 'text', text: '读提示词附件失败：' + (error && error.message ? error.message : error) }], isError: true };
+    }
+    const MAX = 20000;
+    if (body.length > MAX) {
+      return { content: [{ type: 'text', text: body.slice(0, MAX) + '\n\n…（已截断，全文 ' + body.length + ' 字符）' }] };
+    }
+    return { content: [{ type: 'text', text: body }] };
+  }
+);
+
 // 审批执行器：每 5 秒取一次「已批准」的记录，claim 后以主人权限代理执行。
 setInterval(() => { tickApprovals(); }, 5000).unref?.();
 recoverStaleExecutions();

@@ -258,6 +258,9 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     fishChatWindows, evaluateConversationFishGuard, fishGuardSendBlock, recordFishWindow,
     tokenGuardWakeBlock, tokenGuardSendBlock, bridgeDailyUsage, learnerBudgetBlock,
     buildWakePromptV2, buildWakeSnapshotV2, wakeFoldedNoticeV2, sendWakePromptV2, socialV2,
+    // 话题新鲜度（2026-11-16）：主人看到一周前的地狱笑话还占着提示词，
+    // 这里把渲染函数也暴露给测试，直接断言过期话题不再出现。
+    formatMemoryV2, trimTopicsForSave,
     currentRoleHint, currentRoleHintV2, adminPromptLine, ownerMessageTag,
     memoryCardPromptBlock, recordMemoryInboxEvent, recordSelfMemoryEvent,
     refreshMode, modeAllowed, trackTurnEvent, replayPendingWakeReasonsV2,
