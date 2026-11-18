@@ -77,10 +77,35 @@ export function cacheInbound(entry, log) {
   return payload;
 }
 
+/**
+ * 桥接自己发的系统提示（错误横幅、审批请求、已停止…）。这些不是她说的话，
+ * 记进 memory.db 会被当成 role='self'，切不出双人话题就降级成「零碎记忆」，
+ * 之后她侧写/检索时会把它们当成自己说过的内容（2026-11-18 的 502 横幅就是这么进去的）。
+ * 只认桥接自己的固定前缀，不按「像不像系统话」猜。
+ */
+const SYSTEM_NOTICE_PREFIXES = [
+  '⚠️ agent 处理出错：',
+  '⚠️ 本条回复因疑似包含敏感信息',
+  '⚠️ 消息未被接受：',
+  '⚠️ 回答提交失败，请再回复一次。',
+  '⚠️ 审批回执提交失败，请再回复一次',
+  '⏹️ 已停止',
+  '🔐 agent 请求审批：',
+  '✅ 已通过审批',
+  '❌ 已拒绝审批',
+];
+
+export function isSystemNotice(text) {
+  const body = String(text || '').trim();
+  if (!body) return false;
+  return SYSTEM_NOTICE_PREFIXES.some((p) => body.startsWith(p));
+}
 /** 出站：她自己说的话。没有这一条，切出来的话题就是「对方一个人在说话」。 */
 export function cacheOutbound({ conversationKey, text, at, selfUserId } = {}, log) {
   const body = String(text || '').trim();
   if (!body || !conversationKey) return null;
+  // 系统提示不进记忆：她没说过，别让她以后以为说过。
+  if (isSystemNotice(body)) return null;
   const payload = {
     conversationKey: String(conversationKey),
     ownerId: ownerIdForKey(conversationKey),
