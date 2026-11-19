@@ -142,6 +142,26 @@ console.log('## 4. bundle 声明与安全边界');
   ok(deniedAll, '非法/未知/空工具名一律拒绝（fail-closed）');
 }
 
+
+console.log('## 5. bili-slim 的压缩阈值（2026-11-18 省钱改动）');
+{
+  // 背景：DSH 的 compaction-basic 默认 thresholdRatio 0.8，而 deepseek-flash 声明 1M 窗口，
+  // 等于 80 万 token 才压缩 —— 实际永不触发，B站 会话长期停在 35 万上下文，
+  // 每天 100+ 次调用全按 cacheHit 重读（单日 1.14 元、占总花费 80%）。
+  const row = load(patchFileFor('bili-slim'))[0].insert[0];
+  const compaction = row.config.plugins.find((r) => r.id === 'compaction');
+  const basic = compaction?.config?.find?.((r) => r.id === 'compaction-basic');
+  ok(basic !== undefined, 'bili-slim 里找得到 compaction-basic 行');
+  const cfg = basic?.config ?? {};
+  ok(cfg.thresholdRatio === 0.15, `thresholdRatio = 0.15（实得 ${String(cfg.thresholdRatio)}）`);
+  ok(cfg.retainRatio === 0.05, `retainRatio = 0.05（实得 ${String(cfg.retainRatio)}）`);
+  // 正确性不变量：retain 相对 messageBudget、threshold 相对 contextWindow，
+  // 而 messageBudget = contextWindow - reserved，所以只要 retainRatio < thresholdRatio，
+  // 就一定满足 DSH 的 `retainTokens < thresholdTokens` 校验（否则插件报错、整条压缩失效）。
+  ok(cfg.retainRatio < cfg.thresholdRatio,
+    `retainRatio(${cfg.retainRatio}) < thresholdRatio(${cfg.thresholdRatio})：否则 DSH 会拒绝配置`);
+  ok(cfg.thresholdRatio < 0.8, '阈值确实低于 DSH 默认 0.8（否则这次改动等于没做）');
+}
 console.log(failures === 0 ? '\n✅ agent preset patch 契约通过' : `\n❌ ${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);
 

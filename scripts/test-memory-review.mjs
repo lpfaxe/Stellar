@@ -22,8 +22,16 @@ fs.writeFileSync(path.join(root, 'stellar', 'characters', 'current.json'), JSON.
 const db = await import('../src/memory-db.js');
 const worker = await import('../src/memory-worker.js');
 
-const D1 = '2026-11-11';
-const D2 = '2026-11-12';
+// 2026-11-19 修：原来硬编码 2026-11-11 / 2026-11-12，而 profileCandidates() 只取
+// 「最近 7 天」（ended_at >= Date.now() - 7d）。日期一滑出窗口，侧写用例全部返回空候选，
+// 复核用例不走窗口所以照过 —— 看起来像回归、其实是测试自己的时间在漂。改成相对今天算。
+function dayOffset(n) {
+  const d = new Date(Date.now() - n * 86400000);
+  const p = (v) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+const D1 = dayOffset(2); // 前天
+const D2 = dayOffset(1); // 昨天
 
 function add(role, text, at, extra = {}) {
   return db.append({

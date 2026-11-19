@@ -97,6 +97,13 @@
   config:
     - id: compaction-basic
       name: '@deepseek-ai/dsh-compaction-basic'
+      config:
+        # 2026-11-18：默认 thresholdRatio 0.8 在 1M 窗口下等于 72 万 token 才压缩，
+        # 实测她的 B站 会话长期停在 30~40 万上下文、每天 100+ 次调用全按 cacheHit 重读，
+        # 单日 B站 烧到 1.14 元（占全部 80%）。压到 15%（约 15.7 万）后上下文砍一半以上。
+        # retainRatio 0.05（约 4 万）而不是默认 0.16：默认保留量比新阈值还大，会被配置校验直接拒。
+        thresholdRatio: 0.15
+        retainRatio: 0.05
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'
     - id: tool-result-pruner
