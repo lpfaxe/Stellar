@@ -36,3 +36,6 @@ desktop.ini
 .DS_Store
 __pycache__/
 *.pyc
+
+# Windows 某些组件会把缓存写到「字面量 %SystemDrive%」目录（测试跑完会冒出来，不是我们的文件）
+/%SystemDrive%/
