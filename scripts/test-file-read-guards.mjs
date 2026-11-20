@@ -109,5 +109,6 @@ test('mcp-snowluma-safe.js 的 file_read 真的走了这两道闸', () => {
   assert.match(src, /const abs = assertReadableLocalPath\(wantedPath,/);
   assert.match(src, /if \(!allowPrivate\) await assertPublicHttpUrl\(url\);/);
   assert.match(src, /fetchFileBuffer\(wantedUrl\)/, '模型传的 url 必须走默认（公网校验）分支');
-  assert.match(src, /fileDownloadUrl\(file, key\), \{ allowPrivate: true \}/, 'OneBot 给的下载地址允许本机端口');
+  assert.match(src, /await fileDownloadUrl\(file, key, \{ allowOwnerFallback: isOwner \}\)/, 'OneBot 给的下载地址要能取到（群文件没有私聊取址接口）');
+  assert.match(src, /\{ allowPrivate: true \}/, 'OneBot 给的下载地址允许本机端口');
 });

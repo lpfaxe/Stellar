@@ -8944,6 +8944,17 @@ function maybeApproveImageRequest(text, key) {
             for (const m of formatted.messages || []) {
               for (const fid of m.nestedForwardIds || []) remember(fid);
             }
+            // 这条转发里的文件也登记一份：她显式调 qq_get_forward_msg 时同样要能用
+            // stellar_file_read(forwardId=..., name=...) 读到里面的 Word/PDF（2026-11-20）。
+            {
+              const flat = [];
+              for (const m of formatted.messages || []) {
+                for (const f of Array.isArray(m.files) ? m.files : []) {
+                  flat.push({ ...f, sender: m.sender || '' });
+                }
+              }
+              rememberForwardFiles(key, id, flat);
+            }
             // 抓取嵌套转发的前几条作为预览，让 AI 不需要二次调用也能先看到内容。
             const nestedPreviews = [];
             const nestedIds = [];
@@ -8962,6 +8973,14 @@ function maybeApproveImageRequest(text, key) {
                 const nfmt = formatForwardResponse(ndata, { maxMessages: 3, maxCharsPerMessage: 120 });
                 for (const nm of nfmt.messages || []) {
                   for (const nfid of nm.nestedForwardIds || []) remember(nfid);
+                }
+                // 嵌套那层里的文件也登记（forwardId 用嵌套 id）
+                {
+                  const nflat = [];
+                  for (const nm of nfmt.messages || []) {
+                    for (const f of Array.isArray(nm.files) ? nm.files : []) nflat.push({ ...f, sender: nm.sender || '' });
+                  }
+                  rememberForwardFiles(key, fid, nflat);
                 }
                 nestedPreviews.push({ id: fid, ...nfmt });
               } catch (error) {
@@ -11460,7 +11479,10 @@ function maybeApproveImageRequest(text, key) {
         pendingThoughts: [],
         memberImpressions: {},
         // 上一次自然收尾记录（对话结束点 + 下次接法）；没有收过尾时为 null。
-        closure: null
+        closure: null,
+        // 合并转发里出现过的文件（2026-11-20）：转发内部消息不进 recentMessages，
+        // 所以文档定位信息要单独记一份，MCP 的 stellar_file_read 才能按 forwardId 找到它。
+        forwardFiles: []
       };
       rememberAgentToken(key, st.agentToken);
       socialV2.conversations.set(key, st);
@@ -11564,7 +11586,11 @@ function maybeApproveImageRequest(text, key) {
             lastFishGuard: (val.lastFishGuard && typeof val.lastFishGuard === 'object') ? val.lastFishGuard : undefined,
             fishGuardLog: (Array.isArray(val.fishGuardLog) ? val.fishGuardLog : [])
               .filter((x) => x && typeof x === 'object')
-              .slice(-30)
+              .slice(-30),
+            // 转发里的文件定位信息：跨重启保留，否则重启后「刚才转发的那份文档」就找不到了。
+            forwardFiles: (Array.isArray(val.forwardFiles) ? val.forwardFiles : [])
+              .filter((x) => x && typeof x === 'object' && (x.name || x.fileId))
+              .slice(-40)
           };
           // 拉黑之后，他**拉黑前**堆在未读/最近上下文里的消息也不能再喂给模型 ——
           // 否则下一次唤醒（哪怕是被别人触发的）会把它们当成新消息来回应，
@@ -11690,7 +11716,8 @@ function saveSocialV2State() {
           fishGuardBypass: st.fishGuardBypass && typeof st.fishGuardBypass === 'object' ? st.fishGuardBypass : undefined,
           lastFishGuard: st.lastFishGuard && typeof st.lastFishGuard === 'object' ? st.lastFishGuard : undefined,
           fishGuardLog: Array.isArray(st.fishGuardLog) ? st.fishGuardLog.slice(-30) : [],
-          seenForwardIds: Array.from(seenForwardIds.get(key) || []).slice(-1000)
+          seenForwardIds: Array.from(seenForwardIds.get(key) || []).slice(-1000),
+          forwardFiles: Array.isArray(st.forwardFiles) ? st.forwardFiles.slice(-40) : []
         };
       }
       atomicWriteJson(SOCIAL_V2_FILE, obj);
@@ -13554,15 +13581,60 @@ function saveSocialV2State() {
     return ids;
   }
 
+  // 转发里的文件登记（2026-11-20）：转发内部消息不进 recentMessages，所以这里单独存一份
+  // 「哪个会话的哪份转发里有什么文件」，MCP 的 stellar_file_read(forwardId=..., name=...) 靠它定位。
+  function rememberForwardFiles(key, forwardId, files) {
+    if (!Array.isArray(files) || !files.length) return [];
+    let st = null;
+    try { st = getSocialV2State(key); } catch { return []; }
+    const list = Array.isArray(st.forwardFiles) ? st.forwardFiles : (st.forwardFiles = []);
+    const now = Date.now();
+    const added = [];
+    for (const f of files) {
+      const name = String(f?.name ?? '').trim().slice(0, 120);
+      const fileId = String(f?.fileId ?? '').trim();
+      if (!name && !fileId) continue;
+      const sig = forwardId + '|' + (fileId || name);
+      const item = {
+        sig,
+        forwardId,
+        name: name || '未命名文件',
+        fileId,
+        fileHash: String(f?.fileHash ?? '').trim(),
+        url: String(f?.url ?? '').trim(),
+        size: Number(f?.size) || 0,
+        sender: String(f?.sender ?? '').slice(0, 60),
+        at: now
+      };
+      const idx = list.findIndex((x) => x && x.sig === sig);
+      if (idx >= 0) list[idx] = item;
+      else list.push(item);
+      added.push(item);
+    }
+    while (list.length > 40) list.shift();
+    // 立刻落盘：MCP 是另一个进程，读的是磁盘上那份 social-v2.json。
+    try { saveSocialV2State(); } catch {}
+    return added;
+  }
+
   async function readForwardDigest(id) {
     const data = await bot.raw('get_forward_msg', { id });
     const formatted = formatForwardResponse(data, {
       maxMessages: FORWARD_PREVIEW_MAX_MESSAGES,
       maxCharsPerMessage: FORWARD_PREVIEW_MAX_CHARS
     });
+    const files = [];
     const lines = (formatted.messages || []).map((msg) => {
       const text = String(msg.text || '').replace(/\s+/g, ' ').trim() || '[无文字]';
-      return `${msg.index}. ${msg.sender || '某人'}：${text}`;
+      // 附件要点出名字：不然正文里只有「[文件 报告.docx]」，她不知道那是个能读的文档。
+      const attached = (Array.isArray(msg.files) ? msg.files : [])
+        .map((f) => String(f?.name || '').trim())
+        .filter(Boolean);
+      for (const f of Array.isArray(msg.files) ? msg.files : []) {
+        if (f && (f.name || f.fileId)) files.push({ ...f, sender: msg.sender || '', index: msg.index });
+      }
+      const suffix = attached.length ? `（附件：${attached.join('、')}）` : '';
+      return `${msg.index}. ${msg.sender || '某人'}：${text}${suffix}`;
     });
     const media = [];
     let mediaTotal = 0;
@@ -13572,7 +13644,7 @@ function saveSocialV2State() {
         if (media.length < 3) media.push(item);
       }
     }
-    return { total: formatted.total, truncated: formatted.truncated, lines, media, mediaTotal };
+    return { total: formatted.total, truncated: formatted.truncated, lines, media, mediaTotal, files };
   }
 
   // 读一份合并转发的正文块；prompt 预读和 wait/unread 的返回共用这一份实现。
@@ -13600,10 +13672,20 @@ function saveSocialV2State() {
           seen.add(id);
           continue;
         }
+        const registered = rememberForwardFiles(key, id, digest.files);
+        const fileHint = registered.length
+          ? [
+              `（这条转发里有 ${registered.length} 个文件，能读正文：` +
+              registered.map((f) => f.name).join('、') +
+              '。要看内容就调 stellar_file_read(key=本会话, forwardId="' + id + '", name="文件名")，' +
+              'Word/PDF/PPT/Excel 都能读；扫描件没有文字层会读不出来，那就直说看不到。）'
+            ]
+          : [];
         blocks.push([
           `【合并转发的聊天记录 ${id}（共 ${digest.total} 条${digest.truncated ? '，只贴了前面一部分' : ''}）】`,
           '这是 QQ 聊天记录，不是 B站/其他平台的内容；按聊天记录理解，不用再调 qq_get_forward_msg。',
           ...(digest.mediaTotal ? [`（这条转发里还有 ${digest.mediaTotal} 张图/表情，要看图就调 qq_get_forward_msg 带同一个 id，它会把图附在结果里。）`] : []),
+          ...fileHint,
           ...digest.lines
         ].join('\n'));
         for (const item of digest.media) media.push(item);

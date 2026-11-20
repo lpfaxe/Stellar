@@ -218,7 +218,8 @@ const tests = [
   'test-audit-regressions.mjs',
   // 表情语义层：编号分配、情绪识别、本地注意力编码、语境匹配、注入文本；
   // 以及表情库/工具面接线（编号可当 stickerId、收藏时带 emotion/content）。
-  'test-sticker-semantics.mjs', 'test-stickers.mjs',
+  'test-sticker-semantics.mjs', 'test-forward-files.mjs',
+  'test-stickers.mjs',
   // 图片/表情链路（动图/表情包字段、CDN 优先与 emoji_id 兜底）+ 联网搜索
   // （DSH 同一路 DeepSeek 搜索、Bing RSS 兜底、凭据优先级与端点安全；
   //  本轮新增：空结果 note 必须在写缓存之前生成，否则缓存命中丢掉提示）。

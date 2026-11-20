@@ -4263,26 +4263,66 @@ function findFileEntry(key, opts) {
       files.push({ ...f, messageId: (m && m.messageId) || null, seq: m && m.seq });
     }
   }
-  if (!files.length) return { error: '状态里没找到文件记录（可能是很久以前的消息，或文件已被清理；让主人重发一次）。' };
+  // 合并转发里的文件（2026-11-20）：转发内部消息不进 unread/recentMessages，
+  // 桥接读转发时把定位信息单独写进 conv.forwardFiles，这里并进来一起找。
+  const forwarded = (Array.isArray(conv.forwardFiles) ? conv.forwardFiles : [])
+    .filter((f) => f && (f.name || f.fileId))
+    .map((f) => ({ ...f, forwardId: f.forwardId || '', fromForward: true }));
+  const wantForward = String((opts && opts.forwardId) || '').trim();
+  const wantFileId = String((opts && opts.fileId) || '').trim();
+  if (!files.length && !forwarded.length) {
+    return { error: '状态里没找到文件记录（可能是很久以前的消息，或文件已被清理；让对方重发一次）。' };
+  }
   const wantMid = String((opts && opts.messageId) || '').trim();
   const wantName = String((opts && opts.name) || '').trim().toLowerCase();
+  let pool2 = files;
+  if (wantForward || wantFileId) {
+    pool2 = forwarded.filter((f) => {
+      if (wantForward && String(f.forwardId || '') !== wantForward) return false;
+      if (wantFileId && String(f.fileId || '') !== wantFileId) return false;
+      return true;
+    });
+    if (!pool2.length && wantFileId) pool2 = forwarded.filter((f) => String(f.fileId || '') === wantFileId);
+  } else if (!wantMid && !wantName) {
+    // 没点名时，优先最近一次转发里的文件（正文提示就是这么引导的）。
+    pool2 = [...files, ...forwarded];
+  }
   let hit = null;
   if (wantMid) hit = files.find((f) => f.messageId && String(f.messageId) === wantMid) || null;
-  if (!hit && wantName) hit = files.find((f) => String(f.name || '').toLowerCase().includes(wantName)) || null;
-  const explicit = Boolean(wantMid || wantName);
+  if (!hit && wantFileId) hit = forwarded.find((f) => String(f.fileId || '') === wantFileId) || null;
+  if (!hit && wantName) hit = pool2.find((f) => String(f.name || '').toLowerCase().includes(wantName)) || null;
+  if (!hit && (wantForward || wantFileId)) hit = pool2[0] || null;
+  const explicit = Boolean(wantMid || wantName || wantForward || wantFileId);
   if (!hit && explicit) {
     // 明确点名了却没找到：宁可报错，也不要静默读成「最近一个文件」——那会把 A 文件的内容
     // 当成 B 文件答出来，比读不到更糟。
-    const known = files.slice(-5).map((f) => (f.name || '未命名') + (f.messageId ? '（messageId=' + f.messageId + '）' : '')).join('、');
-    return { error: '没找到你说的那个文件（' + (wantMid ? 'messageId=' + wantMid : 'name≈' + wantName) + '）。最近这几个是：' + known };
+    const knownPool = (pool2 && pool2.length ? pool2 : [...files, ...forwarded]).slice(-5);
+    const known = knownPool.map((f) => (f.name || '未命名') + (f.messageId ? '（messageId=' + f.messageId + '）' : (f.forwardId ? '（在转发 ' + f.forwardId + ' 里）' : ''))).join('、');
+    return { error: '没找到你说的那个文件（' + (wantMid ? 'messageId=' + wantMid : wantFileId ? 'fileId=' + wantFileId : wantForward ? 'forwardId=' + wantForward : 'name≈' + wantName) + '）。最近这几个是：' + (known || '无') };
   }
-  if (!hit) hit = files[files.length - 1];
-  return { file: hit, total: files.length, explicit };
+  if (!hit) hit = pool2[pool2.length - 1];
+  return { file: hit, total: pool2.length, explicit };
 }
 
-async function fileDownloadUrl(file, key) {
+async function fileDownloadUrl(file, key, { allowOwnerFallback = true } = {}) {
   const direct = String((file && file.url) || '').trim();
   if (/^https?:\/\//i.test(direct)) return direct;
+  // 2026-11-20：合并转发里的文件可能是群成员发的，get_private_file_url 拿不到（它按主人私聊
+  // 的 user_id 去查）。先试通用 get_file —— 它只认 file_id，群/私聊都能用。
+  const fileId = String((file && file.fileId) || '').trim();
+  if (fileId) {
+    try {
+      const data = await onebot('get_file', {
+        file_id: fileId,
+        ...(String((file && file.fileHash) || '').trim() ? { file_hash: String(file.fileHash) } : {})
+      });
+      const got = typeof data === 'string' ? data : String((data && (data.url || data.file)) || '').trim();
+      if (/^https?:\/\//i.test(got)) return got;
+    } catch (error) {
+      if (!allowOwnerFallback) throw new Error('拿不到下载链接：' + (error && error.message ? error.message : error));
+    }
+  }
+  if (!allowOwnerFallback) throw new Error('拿不到下载链接（文件可能已过期，让对方重发一次）');
   const owner = String(String(key || '').replace(/^private:/, '') || getConfig().ownerQQ || '').trim();
   const userId = Number(owner) || Number(getConfig().ownerQQ) || 0;
   const data = await onebot('get_private_file_url', {
@@ -4366,20 +4406,46 @@ server.tool(
 
 server.tool(
   'stellar_file_read',
-  '读主人发来的文档正文（只给主人用，key 必须是 private:<主人QQ>）。支持 PDF / Word(doc/docx) / PPT(ppt/pptx) / Excel(xls/xlsx) / WPS(wps/et/dps)，以及 txt/csv/md/rtf/html。用 messageId 或 name 定位刚发来的文件（消息提示里 files[].messageId），本地文件传 path，网络文件传 url。返回提取出的文字；长文档只给开头并把全文存成 spill 文件，要通读就按返回里的路径用 stellar_spill_read 分段读（每次 8000 字），读完再总结，不许只凭开头下结论。扫描件 PDF 没有文字层会读不出来 —— 那就直说看不到，别编。',
+  '读文档正文。支持 PDF / Word(doc/docx) / PPT(ppt/pptx) / Excel(xls/xlsx) / WPS(wps/et/dps)，以及 txt/csv/md/rtf/html。主人能用全部来源（messageId / name / path / url）；群聊或非主人会话只能用「这个会话里合并转发过来的文件」——传 forwardId + name（提示里【合并转发的聊天记录 id】那段会给）。用 messageId 或 name 定位刚发来的文件（消息提示里 files[].messageId）。返回提取出的文字；长文档只给开头并把全文存成 spill 文件，要通读就按返回里的路径用 stellar_spill_read 分段读（每次 8000 字），读完再总结，不许只凭开头下结论。扫描件 PDF 没有文字层会读不出来 —— 那就直说看不到，别编。',
   {
     key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
     messageId: z.string().optional().describe('文件所在消息的 QQ messageId（消息提示里的 files[].messageId）'),
-    name: z.string().optional().describe('文件名（含扩展名，可只写一部分）；没给 messageId 时用它匹配'),
+    forwardId: z.string().optional().describe('合并转发的 id（提示里【合并转发的聊天记录 <id>】那个 id）；转发里的文档用这个 + name 定位'),
+    fileId: z.string().optional().describe('文件的 file_id（一般不用传，有 fileId 时可直接定位）'),
+    name: z.string().optional().describe('文件名（含扩展名，可只写一部分）；没给 messageId/forwardId 时用它匹配'),
     path: z.string().optional().describe('本地文件路径（工作区相对路径或绝对路径都行）'),
     url: z.string().optional().describe('文件的 http(s) 下载地址'),
     maxChars: z.union([z.number(), z.string()]).optional().describe('最多返回多少字：默认 12000，上限 20000')
   },
-  async ({ key, token, messageId, name, path: filePath, url, maxChars }) => {
+  async ({ key, token, messageId, forwardId, fileId, name, path: filePath, url, maxChars }) => {
     try {
+      const keyStr = String(key || '').trim();
+      // 两种身份（2026-11-20）：
+      //  · 主人：全部来源（messageId/name/path/url）都能读；
+      //  · 非主人（群聊/别人的私聊）：只允许读「这个会话里合并转发过来的文件」——
+      //    那些文档本来就在这个会话里公开传过，读它不越权。凭会话令牌确认「你是这个会话的自己」。
       const denied = await ownerOnlyError(key, token);
-      if (denied) return { content: [{ type: 'text', text: denied }], isError: true };
+      const isOwner = !denied;
+      let ident = null;
+      if (!isOwner) {
+        ident = await resolveAgentIdentity(token);
+        if (!ident || !ident.key) {
+          return { content: [{ type: 'text', text: denied }], isError: true };
+        }
+        if (ident.key !== keyStr) {
+          return {
+            content: [{ type: 'text', text: 'key 和会话令牌对不上（令牌属于 ' + ident.key + '），不读。' }],
+            isError: true
+          };
+        }
+        if (String(filePath || '').trim() || String(url || '').trim()) {
+          return {
+            content: [{ type: 'text', text: '只有主人能用 path/url 读任意文件。合并转发里的文件请传 forwardId + name（提示里【合并转发的聊天记录 <id>】那段会给）。' }],
+            isError: true
+          };
+        }
+      }
       const max = Math.min(20000, Math.max(1000, Number(maxChars) || 12000));
       const wantedPath = String(filePath || '').trim();
       const wantedUrl = String(url || '').trim();
@@ -4400,14 +4466,23 @@ server.tool(
         buffer = fs.readFileSync(abs);
         if (!fileName) fileName = path.basename(abs);
       } else {
-        const found = findFileEntry(key, { messageId, name });
+        const found = findFileEntry(key, { messageId, forwardId, fileId, name });
         if (found.error) return { content: [{ type: 'text', text: found.error }], isError: true };
         const file = found.file;
+        if (!isOwner && file.fromForward !== true) {
+          return {
+            content: [{ type: 'text', text: '这个会话里只有合并转发过来的文件能读（这是别人直接发的文件，只有主人能读）。' }],
+            isError: true
+          };
+        }
         fileName = String(file.name || fileName || '').trim() || '未命名文件';
         if (!found.explicit) notes.push('没指定具体文件，读的是最近一个：' + fileName);
         else if (found.total > 1) notes.push('状态里有 ' + found.total + ' 个文件，这次读的是「' + fileName + '」');
         // 这个 URL 是 OneBot 自己给的（不是模型传的），可能指向本机端口 → 不再做公网校验
-        buffer = await fetchFileBuffer(await fileDownloadUrl(file, key), { allowPrivate: true });
+        buffer = await fetchFileBuffer(
+          await fileDownloadUrl(file, key, { allowOwnerFallback: isOwner }),
+          { allowPrivate: true }
+        );
       }
       const { extractDocument } = await loadDocExtract();
       // 取全文（上限 40 万字）再决定给模型看多少：长文档整本落盘，模型只看开头 +

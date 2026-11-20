@@ -137,7 +137,7 @@ function parseBridgeImports(code) {
 //   数据（owner=group:456、123 的 2115 行垃圾就是这么来的）。
 // 桩成空实现：审计关心的是桥接转发逻辑，不是记忆库落盘。
 const AUTO_BIND_SKIP = new Set(['./character-persona.js', './memory-cache.js', './memory-read.js']);
-export async function bridgeHarness({ config = {}, savedState, files = {}, globals = {}, history = {} } = {}) {
+export async function bridgeHarness({ config = {}, savedState, files = {}, globals = {}, history = {}, forwards = {} } = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-audit-bridge-'));
   fs.mkdirSync(path.join(temp, 'src'));
   fs.mkdirSync(path.join(temp, 'state'));
@@ -157,7 +157,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, typeof content === 'string' ? content : JSON.stringify(content));
   }
-  const calls = { created: [], archived: [], sent: [], prompts: [], follows: [], cancelled: [], images: [], faces: [], http: [] };
+  const calls = { created: [], archived: [], sent: [], prompts: [], follows: [], cancelled: [], images: [], faces: [], http: [], raw: [] };
   // 语音发送在桥接里是**直接 fetch 网关**（与文本/表情共用 sendChain，但要自己带 record 段），
   // 所以这里给 VM 注入一个记录型 fetch：既不让测试真的发 QQ 消息，又能断言发出的段内容。
   const fakeFetch = async (url, init = {}) => {
@@ -220,6 +220,20 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     callUnary: async (method, params) => { calls.cancelled.push({ method, params }); return success({ accepted: true }); },
   };
   class FakeBot {
+    // get_forward_msg 夹具（2026-11-20）：合并转发里的文件能不能读，取决于读转发时是否
+    // 把 file 段收集起来并登记进 forwardFiles。这里按 id 返回调用方给的节点数组。
+    async raw(action, params = {}) {
+      calls.raw.push({ action, params });
+      if (action === 'get_forward_msg') {
+        const hit = forwards[String(params && params.id)];
+        if (hit) return { messages: hit };
+        return { messages: [] };
+      }
+      // 其它 raw 动作一律按「能查到的空结果」回：get_friend_list 必须包含主人，
+      // 否则目的回合会以 not-friend 提前返回（2026-11-20 加 raw 时踩过）。
+      if (action === 'get_friend_list') return { data: [{ user_id: 123, nickname: '主人' }] };
+      return {};
+    }
     async sendPrivateMessage(id, text) { calls.sent.push({ kind: 'private', id, text }); }
     async sendGroupMessage(id, text) { calls.sent.push({ kind: 'group', id, text }); }
     async getImage({ file }) {
@@ -269,6 +283,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     collectors, setupSleepTimerV2,
     getInitialPrompt, setInitialPrompt, loadInitialPrompts, formatInitialPromptV2,
     initialPrompts, initialPromptMaxChars,
+    // 合并转发里的文件（2026-11-20）：读转发要能登记 forwardFiles，测试直接调这两支。
+    forwardDigestBlock, readForwardDigest, rememberForwardFiles,
     extractMediaFromSegments, segmentsToText, fetchOneBotImage, fetchMediaData, resolveMediaList,
     emojiCdnCandidates, getImageDimensions, acceptImageBuffer, MAX_MEDIA_BYTES, bot,
     isConversationBusyV2, v2TurnStartAt, turnLeaseNoted, TURN_BUSY_LEASE_MS,

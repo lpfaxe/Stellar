@@ -156,6 +156,21 @@ function segmentMedia(seg) {
   return null;
 }
 
+// 转发里的文件段（2026-11-20）：以前只渲染成「[文件 xxx]」，转发内部的 Word/Excel/PDF
+// 既没有 file_id 也没有可定位的 messageId，MCP 侧完全没有入口去读。这里把定位信息
+// 原样留下来，交给桥接登记 + stellar_file_read 去下载解析。
+function segmentFile(seg) {
+  if (!seg || typeof seg !== 'object' || seg.type !== 'file') return null;
+  const d = seg.data ?? {};
+  const name = String(d.name ?? d.file ?? d.file_name ?? d.fileName ?? '').trim();
+  const fileId = String(d.file_id ?? d.fileId ?? d.id ?? '').trim();
+  const url = String(d.url ?? d.file_url ?? d.fileUrl ?? '').trim();
+  const fileHash = String(d.file_hash ?? d.fileHash ?? '').trim();
+  const size = Number(d.size ?? d.file_size ?? d.fileSize ?? 0) || 0;
+  if (!name && !fileId && !url) return null;
+  return { name: name.slice(0, 120), fileId, fileHash, url, size };
+}
+
 function segmentNestedForwardId(seg) {
   if (!seg || typeof seg !== 'object' || seg.type !== 'forward') return null;
   return forwardIdFromData(seg.data);
@@ -165,14 +180,17 @@ function segmentNestedForwardId(seg) {
 function collectSegmentMeta(content) {
   const media = [];
   const nestedForwardIds = [];
-  if (!Array.isArray(content)) return { media, nestedForwardIds };
+  const files = [];
+  if (!Array.isArray(content)) return { media, nestedForwardIds, files };
   for (const seg of content) {
     const m = segmentMedia(seg);
     if (m) media.push(m);
+    const f = segmentFile(seg);
+    if (f) files.push(f);
     const nested = segmentNestedForwardId(seg);
     if (nested && !nestedForwardIds.includes(nested)) nestedForwardIds.push(nested);
   }
-  return { media, nestedForwardIds };
+  return { media, nestedForwardIds, files };
 }
 
 export function formatForwardResponse(data, options = {}) {
@@ -214,6 +232,8 @@ export function formatForwardResponse(data, options = {}) {
       messageSeq: nodeMessageSeq(node),
       text,
       media: meta.media,
+      // 2026-11-20：转发里的文件也要带出去，否则里面的 Word/PDF 永远读不到。
+      ...(meta.files.length ? { files: meta.files } : {}),
       nestedForwardIds: meta.nestedForwardIds
     };
   });
