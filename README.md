@@ -423,6 +423,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
   B站 动态 / 评论 / 私信、QQ空间说说与评论、视频脚本（`vlog render` / `vlog publish`，命中退出码 8，不渲染不发布）。
   实现在 [plugins/stellar/tools/lib/privacy-guard.mjs](plugins/stellar/tools/lib/privacy-guard.mjs)。
 - **文件读取有闸**：`stellar_file_read` 的本地路径必须在工作区内、URL 必须过公网白名单（挡 SSRF）。
+  扫描件 PDF 会自动走 Windows 自带 OCR（零安装），详见 [DOCUMENTS.md](docs/guides/features/DOCUMENTS.md)。
 
 详见 [SECURITY_BASELINE.md](docs/guides/operations/SECURITY_BASELINE.md)、[BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md)、[RULES.md](RULES.md)。
 

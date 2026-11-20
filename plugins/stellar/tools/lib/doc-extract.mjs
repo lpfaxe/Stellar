@@ -11,9 +11,16 @@ import os from 'node:os';
 import zlib from 'node:zlib';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { ocrAvailable, ocrFile } from './ocr.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PDFJS_PATH = path.resolve(HERE, '..', 'vendor', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs');
+// pdfjs 有两处来源：打包进 vendor 的那份，以及仓库根 node_modules 里的正式依赖。
+// 公开仓库不带 vendor/node_modules（被 .gitignore 排除），所以克隆下来只有后者 —— 都必须能找到。
+const PDFJS_CANDIDATES = [
+  path.resolve(HERE, '..', 'vendor', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs'),
+  path.resolve(HERE, '..', '..', '..', '..', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs')
+];
+const PDFJS_PATH = PDFJS_CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || PDFJS_CANDIDATES[0];
 export const MAX_INPUT_BYTES = 60 * 1024 * 1024;
 
 const KIND_LABEL = {
@@ -321,13 +328,22 @@ function odfToText(buf) {
   return { text, meta: {} };
 }
 
+// 扫描件的判定：把页眉标记去掉后，平均每页有效字少于 5 个才当「没有文字层」。
+// 阈值刻意定得很低：有文字层的 PDF 哪怕只有一行字也不该白白花 2 秒去 OCR。
+// 抽成纯函数是为了能单测，也避免把 OCR 判定散在分支里。
+export function needsOcr(text, pages = 1) {
+  const body = String(text || '').replace(/【第 \d+ 页】/g, '').replace(/\s+/g, '');
+  const n = Math.max(1, Number(pages) || 1);
+  return body.length < n * 5;
+}
+
 // ── PDF（pdfjs-dist，vendor 里自带） ────────────────────────────────────────
 async function pdfToText(buf, { maxPages = 30 } = {}) {
   let pdfjs;
   try {
     pdfjs = await import(/* @vite-ignore */ 'file://' + PDFJS_PATH.replace(/\\/g, '/'));
   } catch (error) {
-    throw new Error('PDF 解析组件加载失败：' + (error?.message ?? error));
+    throw new Error('PDF 解析组件加载失败（缺 pdfjs-dist：项目根目录跑一次 npm install）：' + (error?.message ?? error));
   }
   const doc = await pdfjs.getDocument({
     data: new Uint8Array(buf),
@@ -456,7 +472,32 @@ export async function extractDocument(opts = {}) {
   let note = '';
   try {
     switch (kind) {
-      case 'pdf': ({ text, meta } = await pdfToText(buffer, { maxPages: opts.maxPages })); break;
+      case 'pdf': {
+        ({ text, meta } = await pdfToText(buffer, { maxPages: opts.maxPages }));
+        const pages = Number(meta?.readPages) || 1;
+        if (needsOcr(text, pages) && ocrAvailable()) {
+          let srcPath = opts.filePath;
+          let tmpOcrDir = null;
+          if (!srcPath) {
+            tmpOcrDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'stellar-ocr-src-'));
+            srcPath = path.join(tmpOcrDir, 'input.pdf');
+            await fsp.writeFile(srcPath, buffer);
+          }
+          const ocr = await ocrFile(srcPath, {
+            maxPages: Math.max(Number(opts.maxPages) || 30, 1),
+            width: Number(opts.ocrWidth) || 2200
+          });
+          if (tmpOcrDir) { try { await fsp.rm(tmpOcrDir, { recursive: true, force: true }); } catch {} }
+          if (ocr.ok && ocr.text) {
+            text = ocr.text;
+            meta = { ...meta, ocr: true, ocrPages: ocr.pages, ocrMs: ocr.ms };
+            note = '（扫描件：文字是系统 OCR 认出来的，个别字可能认错）';
+          } else {
+            note = '（这个 PDF 没有文字层，OCR 也没认出字：' + (ocr.note || '未知原因') + '）';
+          }
+        }
+        break;
+      }
       case 'docx': ({ text, meta } = docxToText(buffer)); break;
       case 'xlsx': ({ text, meta } = xlsxToText(buffer, { maxRows: opts.maxRows })); break;
       case 'pptx': ({ text, meta } = pptxToText(buffer)); break;

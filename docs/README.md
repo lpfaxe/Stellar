@@ -14,6 +14,7 @@
 | 知道版本号怎么走、怎么升 | [getting-started/VERSIONS.md](guides/getting-started/VERSIONS.md) |
 | 看懂它由哪几个进程组成 | [architecture/ARCHITECTURE.md](guides/architecture/ARCHITECTURE.md) |
 | 搞清楚记忆是怎么存的 | [features/MEMORY.md](guides/features/MEMORY.md) |
+| 她能读哪些文档（含扫描件 OCR） | [features/DOCUMENTS.md](guides/features/DOCUMENTS.md) |
 | 让它有脾气、有说话风格 | [features/CHARACTER_PERSONA.md](guides/features/CHARACTER_PERSONA.md) |
 | 为什么它会主动找人说话 | [features/PURPOSE_OUTREACH.md](guides/features/PURPOSE_OUTREACH.md) |
 | 对话怎么算结束 | [features/CONVERSATION_CLOSURE.md](guides/features/CONVERSATION_CLOSURE.md) |

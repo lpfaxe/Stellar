@@ -80,6 +80,7 @@
     "@snowluma/mcp": "^1.14.20",
     "@snowluma/sdk": "^1.14.20",
     "js-yaml": "^4.3.2",
+    "pdfjs-dist": "^4.10.38",
     "zod": "^4.4.3"
   }
 }

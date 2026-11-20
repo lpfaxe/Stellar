@@ -20,6 +20,8 @@ const tests = [
   // 2026-11-13：file_read 原来能读任意绝对路径、能请求任意 URL（含 127.0.0.1:3300），
   // 现在两道闸都在 src/file-read-guard.js，这条钉子防止有人把白名单放宽。
   'test-file-read-guards.mjs',
+  // 2026-11-20：扫描版 PDF 走 Windows 自带 OCR（零安装）。
+  'test-ocr-fallback.mjs',
   // 敏感文件（config.json / bili.config.json / panel-token.txt）写完必须重新收紧 ACL ——
   // 2026-11-13 事故：桥接回写 dsh 端口后，手工加固过的 config.json 十分钟内退回 Authenticated Users:M。
   'test-sensitive-acl-hardening.mjs',

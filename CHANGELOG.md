@@ -12,9 +12,15 @@
 - **群聊/非主人也能读转发里的文件**。`stellar_file_read` 原来只有主人能用（`ownerOnlyError`），群里别人转发的文档一概读不了。现在按来源分权：主人能用 `path` / `url` 读任意文件；非主人只能读**本会话合并转发里出现过的文件**，而且必须先凭会话令牌确认是「自己的会话」——传 `path` / `url` 直接拒绝。
 - **群文件取址不再只走私聊接口**。原来只用 `get_private_file_url`（按主人私聊的 user_id 查），群成员发的文件根本取不到。现在先试通用 `get_file`（只认 file_id，群/私聊都行），失败了才回退私聊接口，且非主人不享受这个回退。
 
+### 修复
+
+- **扫描件 PDF 现在能读了**。只有图片、没有文字层的 PDF 以前只会回一句「这个 PDF 里没有可提取的文字（可能是扫描件/纯图片）」。现在自动走 Windows 自带 OCR（`Windows.Data.Pdf` 渲染 + `Windows.Media.Ocr` 认字，优先中文），零安装、约 0.5–1 秒/页，默认认前 30 页；返回里会注明「文字是 OCR 认出来的，个别字可能认错」。只有几乎没有文字层（去掉页眉后平均每页不足 5 字）才会 OCR，有文字层的 PDF 不会白白多花两秒。
+- **克隆下来读 PDF 不再报缺组件**。`plugins/stellar/tools/vendor/node_modules` 本来就被 `.gitignore` 排除，所以新克隆的仓库里根本没有 pdfjs —— 一读 PDF 就报「PDF 解析组件加载失败」。现在 `pdfjs-dist` 进了根 `package.json`（`npm install` 就会装），解析器先找 vendor 那份、再找仓库根的那份，缺了会明确提示「项目根目录跑一次 npm install」。
+
 ### 变更
 
 - 正文里的附件只列**名字**、不塞文件内容；一份转发里有几个文件就写几个，没有文件时整句不出现（不为空内容付 token）。
+- 新增 [docs/guides/features/DOCUMENTS.md](docs/guides/features/DOCUMENTS.md)：能读哪些格式、扫描件怎么处理、读不了时她会说什么。
 
 ## [1.0.6] - 2026-11-16
 
