@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "version": "1.0.7",
   "source": "git:HEAD",
-  "generatedAt": "2026-11-20T08:52:06.228Z",
+  "generatedAt": "2026-11-20T09:04:37.213Z",
   "files": {
     ".gitattributes": "651ca90b38ff7d94fb771f222a3a1c63e1a2ab836dce5fde9229525c2f0abbac",
-    ".gitignore": "eb954d00871fc84b5005f84611be0247e6d84e7d52c0dfce97b79c0f64dc15a5",
+    ".gitignore": "8b9f29ff92a9fe879ea6aca909e2e3500d443e8f64eda067164fa5b78340e3be",
     ".npmrc": "a093bb2fed59d699b7f9a62a5203cc196054c624e9c39c6d908c9e7db5dd2464",
     "AGENTS.md": "2fb2fd0e30a28482e0fe035d9024f81a688b803b438897cc9cf9135d5e645cb3",
     "CHANGELOG.md": "b41324acea87644cd67414682f421a4692506f742c10cdc40aeff8a1509cb56c",
