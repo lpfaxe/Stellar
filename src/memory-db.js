@@ -1,7 +1,7 @@
 /**
  * 记忆库（SQLite）：新记忆机制的存储层。
  *
- * 表结构在 memory-db-schema.sql；本文件负责连接、迁移与查询封装。
+ * 设计：CHANGELOG.md 表结构 / §4 模块一 / §5 模块二）
  *
  * 边界（别越界）：
  *  · 只装「启用之后的新对话」。旧档案（memory-card*.jsonl / memory-inbox.jsonl /
@@ -16,7 +16,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { activeMemoryPaths } from './character-persona.js';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const DB_FILE_NAME = 'memory.db';
 
 const SCHEMA_FILE = new URL('./memory-db-schema.sql', import.meta.url);
@@ -48,12 +48,27 @@ export function openDb({ file } = {}) {
   db.exec('PRAGMA busy_timeout=3000');
   db.exec('PRAGMA foreign_keys=ON');
   db.exec(ddl);
+  // 老库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，schema 里加列必须在这里
+  // 显式 ALTER 一次（sqlite 的 ADD COLUMN 不能带非常量默认值，所以默认值给字面量）。
+  migrateColumns(db);
   try {
     db.prepare('INSERT INTO meta(k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run('schema_version', String(SCHEMA_VERSION));
     db.prepare('INSERT OR IGNORE INTO meta(k, v) VALUES (?, ?)').run('engine', 'memorydb-v1');
   } catch {}
   connections.set(dbFile, db);
   return db;
+}
+
+/** 给老库补上后来新增的列（幂等）。 */
+function migrateColumns(db) {
+  const want = [['topic', 'scope', "TEXT NOT NULL DEFAULT 'direct'"]];
+  for (const [table, column, type] of want) {
+    try {
+      const cols = db.prepare('PRAGMA table_info(' + table + ')').all();
+      if (cols.some((c) => String(c.name) === column)) continue;
+      db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + type);
+    } catch {}
+  }
 }
 
 export function closeDb({ file } = {}) {
@@ -80,6 +95,36 @@ export function ownerIdForKey(conversationKey) {
   return k || 'unknown';
 }
 
+/**
+ * 回填参与人索引（v4 升级用）：老话题建的时候还没有 topic_participant 表，
+ * 新表建好后它们在里面是空的 —— 不补的话「按人查群话题」对历史数据全失效。
+ * 只跑一次（meta 里记标记），重复调用直接返回 already。
+ */
+export function backfillParticipants({ db: conn } = {}) {
+  const db = conn || openDb();
+  const done = db.prepare("SELECT v FROM meta WHERE k = 'participants_backfilled'").get();
+  if (done && String(done.v) === '1') return { ok: true, already: true, topics: 0 };
+  const topics = db.prepare('SELECT id FROM topic').all();
+  let touched = 0;
+  db.exec('BEGIN');
+  try {
+    for (const t of topics) {
+      const rows = db.prepare('SELECT role, speaker_id, speaker_name FROM topic_msg WHERE topic_id = ?').all(String(t.id));
+      const people = participantsOf(rows);
+      for (const one of people) {
+        db.prepare('INSERT INTO topic_participant (topic_id, qq, name, role, msgs) VALUES (?, ?, ?, ?, ?) ON CONFLICT(topic_id, qq) DO UPDATE SET msgs = excluded.msgs')
+          .run(String(t.id), one.qq, one.name, one.role, one.msgs);
+      }
+      if (people.length) touched += 1;
+    }
+    db.prepare("INSERT INTO meta (k, v) VALUES ('participants_backfilled', '1') ON CONFLICT(k) DO UPDATE SET v = excluded.v").run();
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    return { ok: false, error: String(error?.message ?? error) };
+  }
+  return { ok: true, already: false, topics: touched };
+}
 /** 两字切分（FTS trigram 对 2 字中文返回空，用它做 LIKE 兜底）。 */
 export function bigramsOf(text) {
   const clean = String(text || '').replace(/[\r\n\t]+/g, ' ').trim();
@@ -185,22 +230,120 @@ export function nextTopicSeq(db, ownerId, day) {
 }
 
 /**
+ * 从一段消息里聚合出参与者：谁说的、说了几条、叫什么名字。
+ *
+ * 群的坑（2026-11-15）：群里同名很常见（两个「小号」），光靠 speaker_name 分不清人，
+ * 所以以 speaker_id 为准聚合，名字只作显示。她自己的行 role='self'，speaker_id 是她的号。
+ */
+export function participantsOf(rows = []) {
+  const map = new Map();
+  for (const row of rows) {
+    const qq = String(row.speaker_id || '').trim();
+    if (!qq) continue;
+    const hit = map.get(qq) || { qq, name: '', role: 'user', msgs: 0 };
+    hit.msgs += 1;
+    if (row.role === 'self') hit.role = 'self';
+    const name = String(row.speaker_name || '').trim();
+    // 私聊的 speaker_name 是「私聊」这种占位，不能当人名存。
+    if (name && name !== '私聊' && !hit.name) hit.name = name;
+    map.set(qq, hit);
+  }
+  return [...map.values()].sort((a, b) => b.msgs - a.msgs);
+}
+
+/** 某个话题的参与者（按发言条数降序）。 */
+export function listTopicParticipants(topicId, { db: conn } = {}) {
+  const db = conn || openDb();
+  try {
+    return db.prepare('SELECT qq, name, role, msgs FROM topic_participant WHERE topic_id = ? ORDER BY msgs DESC').all(String(topicId || ''));
+  } catch { return []; }
+}
+
+/**
+ * 群成员名册：这个群里出现过的所有人（按发言条数排）。
+ * 用途：唤醒提示里给她一份「谁是谁」的名单，否则群里三个人她只认得最后说话那个。
+ */
+export function groupRoster(ownerId, { limit = 12, db: conn } = {}) {
+  const db = conn || openDb();
+  const id = String(ownerId || '').trim();
+  if (!id) return [];
+  try {
+    return db.prepare(
+      'SELECT p.qq, MAX(p.name) AS name, MAX(p.role) AS role, SUM(p.msgs) AS msgs, MAX(t.ended_at) AS last_at '
+      + 'FROM topic_participant p JOIN topic t ON t.id = p.topic_id '
+      + 'WHERE t.owner_id = ? GROUP BY p.qq ORDER BY msgs DESC, last_at DESC LIMIT ?',
+    ).all(id, Math.max(1, Math.min(50, Number(limit) || 12)));
+  } catch { return []; }
+}
+
+/** 参与者渲染成「名字(QQ)」。名字缺失时只给 QQ，绝不留空。 */
+export function formatParticipants(list = [], { selfId = '', ownerQQ = '', max = 6 } = {}) {
+  const parts = [];
+  for (const who of list.slice(0, max)) {
+    const qq = String(who.qq || '');
+    const mark = who.role === 'self' || (qq && String(selfId) === qq) ? '她' : (qq && String(ownerQQ) === qq ? '主人' : '');
+    // 没人名时：她 / 主人 直接当名字用（这两个身份比 QQ 号有用），其余标 QQxxx。
+    // 旧数据的 speaker_name 是「私聊」占位（已过滤成空），所以这条路经常走到。
+    const name = String(who.name || '').trim() || (mark || ('QQ' + qq));
+    const tail = name.includes(qq) || !qq ? '' : '(' + qq + ')';
+    parts.push(mark && !name.includes(mark) ? mark + '·' + name + tail : name + tail);
+  }
+  if (list.length > max) parts.push('…等 ' + list.length + ' 人');
+  return parts.join('、');
+}
+
+/**
+ * 按人找话题：「A 昨天说了什么」要同时拿到与 A 的私聊话题 + A 在群里参与的话题。
+ *
+ * 为什么不能只用 search（关键词）：她知道「昨天」但不知道对方用的词 —— 按人+时间捞，
+ * 再让她挑标题，比让她猜关键词准得多。
+ */
+export function topicsForPerson(qq, { limit = 8, db: conn } = {}) {
+  const db = conn || openDb();
+  const who = String(qq || '').trim();
+  if (!who) return [];
+  const n = Math.max(1, Math.min(30, Number(limit) || 8));
+  try {
+    return db.prepare(
+      'SELECT DISTINCT t.id, t.title, t.tier, t.day_key, t.ended_at, t.scope, t.conversation_key,'
+      + ' (SELECT SUM(msgs) FROM topic_participant p2 WHERE p2.topic_id = t.id AND p2.qq = ?) AS my_msgs '
+      + 'FROM topic t LEFT JOIN topic_participant p ON p.topic_id = t.id '
+      + 'WHERE t.owner_id = ? OR p.qq = ? '
+      + 'ORDER BY (t.tier = \'important\') DESC, t.ended_at DESC LIMIT ?',
+    ).all(who, who, who, n);
+  } catch { return []; }
+}
+
+/**
  * 建话题（含正文）。硬约束在这里落地：段内必须同时有 user 与 self，否则不建。
  * 返回 { ok:true, id } 或 { ok:false, reason }。
  */
 export function insertTopic({ topic = {}, rows = [], db: conn } = {}) {
   const db = conn || openDb();
   const roles = new Set(rows.map((r) => r.role));
-  if (!roles.has('user') || !roles.has('self')) {
+  // scope：direct = 这段里她说过话（或这是私聊，她必然会说话）；ambient = 她只是旁观。
+  // 为什么需要 ambient（2026-11-15 主人要求）：群聊里别人的对话也要按话题存下来，
+  // 否则「A 昨天在群里说了什么」永远查不到。旁观话题不能要求 self 在场。
+  // 判定顺序（2026-11-15 收紧）：
+  //  · 只有显式要求旁观、且这段里她确实没说话，才算 ambient；
+  //  · 其余一律 direct，并且仍然要求「有她有对方」—— 她一个人在私聊里自说自话不算话题。
+  if (!rows.length) return { ok: false, reason: 'empty segment' };
+  const wantsAmbient = String(topic.scope || '') === 'ambient';
+  const scope = (wantsAmbient && roles.has('user') && !roles.has('self')) ? 'ambient' : 'direct';
+  if (scope !== 'ambient' && (!roles.has('user') || !roles.has('self'))) {
     return { ok: false, reason: 'segments must contain both sides', missing: ['user', 'self'].filter((r) => !roles.has(r)) };
   }
+  const effectiveScope = scope;
   const day = String(topic.dayKey || (rows[0] && rows[0].day_key) || dayKey());
   const ownerId = String(topic.ownerId || (rows[0] && rows[0].oid) || 'unknown');
   const conversationKey = String(topic.conversationKey || (rows[0] && rows[0].ck) || '');
   const startedAt = Number(topic.startedAt || (rows[0] && rows[0].at) || Date.now());
   const endedAt = Number(topic.endedAt || (rows[rows.length - 1] && rows[rows.length - 1].at) || startedAt);
-  const importance = Math.max(0, Math.min(100, Number(topic.importance) || 0));
-  const tier = String(topic.tier || (importance >= 80 ? 'important' : 'daily'));
+  // 旁听来的内容永远压在最低档：复核模型会把「别人的随口一句」当成关于她的事，
+  // 一旦进 important 就永远删不掉（pruneWindow 不删 important）。所以这道闸放在存储层，
+  // 而不是只写在 worker 里 —— 任何调用方塞 importance=90 都压不住。
+  const importance = scope === 'ambient' ? 0 : Math.max(0, Math.min(100, Number(topic.importance) || 0));
+  const tier = scope === 'ambient' ? 'daily' : String(topic.tier || (importance >= 80 ? 'important' : 'daily'));
   let id = String(topic.id || '');
   if (!id) {
     // 并发/同一天多 owner 都可能拿到同一个序号，撞了就往后再试一次。
@@ -216,8 +359,8 @@ export function insertTopic({ topic = {}, rows = [], db: conn } = {}) {
   db.exec('BEGIN');
   try {
     db.prepare(
-      'INSERT INTO topic (id, owner_id, conversation_key, day_key, title, summary, tier, importance, facets, sentiment, msg_count, started_at, ended_at, promoted_at, promote_reason, created_at) '
-      + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO topic (id, owner_id, conversation_key, day_key, title, summary, tier, importance, facets, sentiment, msg_count, started_at, ended_at, promoted_at, promote_reason, created_at, scope) '
+      + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       id, ownerId, conversationKey, day, summarize,
       String(topic.summary || '').slice(0, 120),
@@ -228,11 +371,15 @@ export function insertTopic({ topic = {}, rows = [], db: conn } = {}) {
       tier === 'important' ? now : null,
       tier === 'important' ? String(topic.promoteReason || 'score') : '',
       now,
+      effectiveScope,
     );
     const stmt = db.prepare('INSERT INTO topic_msg (topic_id, seq, role, speaker_id, speaker_name, text, at) VALUES (?, ?, ?, ?, ?, ?, ?)');
     rows.forEach((row, index) => {
       stmt.run(id, index + 1, String(row.role || 'user'), String(row.speaker_id || ''), String(row.speaker_name || ''), String(row.text || ''), Number(row.at) || now);
     });
+    // 参与者索引（按人查话题的入口）：谁在这个话题里说过话、说了几条、叫什么。
+    const pstmt = db.prepare('INSERT INTO topic_participant (topic_id, qq, name, role, msgs) VALUES (?, ?, ?, ?, ?) ON CONFLICT(topic_id, qq) DO UPDATE SET msgs = msgs + excluded.msgs, name = CASE WHEN excluded.name != \'\' THEN excluded.name ELSE topic_participant.name END');
+    for (const who of participantsOf(rows)) pstmt.run(id, who.qq, who.name, who.role, who.msgs);
     db.prepare("UPDATE cache_msg SET process_state = 'split', keep = ? WHERE id IN (" + rows.map(() => '?').join(',') + ')')
       .run(tier === 'important' ? 1 : 0, ...rows.map((r) => r.id));
     db.exec('COMMIT');
@@ -252,7 +399,7 @@ export function insertTopic({ topic = {}, rows = [], db: conn } = {}) {
     bodyParts.push(key);
   }
   upsertSearchDoc({ refType: 'topic', refId: id, ownerId, at: endedAt, body: bodyParts.join(' '), db });
-  return { ok: true, id, tier };
+  return { ok: true, id, tier, scope: effectiveScope };
 }
 
 /** 检索文档 upsert（同一 ref 只留一条，靠 (ref_type, ref_id) 删旧插新）。 */
@@ -452,7 +599,7 @@ export function readTopic(topicId, { full = false, maxChars = 2000, db: conn } =
     kept.push(row);
     sent += len;
   }
-  return { topic: head, rows: kept, total: rows.length, truncated: kept.length < rows.length };
+  return { topic: head, rows: kept, total: rows.length, truncated: kept.length < rows.length, participants: listTopicParticipants(topicId, { db }) };
 }
 
 /** 把话题渲染成给模型看的文本（双方都在，身份明确）。 */
@@ -462,6 +609,12 @@ export function formatTopicForModel(data, { maxChars = 2000 } = {}) {
   const when = new Date(Number(t.started_at)).toLocaleString('zh-CN', { hour12: false });
   const head = '【话题】' + t.title + '  (' + when + ', ' + (t.tier === 'important' ? '重要 ' + t.importance : '日常') + ')';
   const lines = [head];
+  if (Array.isArray(data.participants) && data.participants.length) {
+    lines.push('参与人：' + formatParticipants(data.participants, { max: 8 }));
+  }
+  if (String(t.scope || '') === 'ambient') {
+    lines.push('（这条是你在群里旁听到的，你自己没说话 —— 别当成自己的经历讲。）');
+  }
   if (t.summary) lines.push('摘要：' + t.summary);
   const tags = (() => { try { return JSON.parse(t.facets || '[]'); } catch { return []; } })();
   if (tags.length) lines.push('标签：' + tags.join('/'));
@@ -469,7 +622,10 @@ export function formatTopicForModel(data, { maxChars = 2000 } = {}) {
   let used = 0;
   for (const row of data.rows) {
     const clock = new Date(Number(row.at)).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
-    const who = row.role === 'self' ? '她(你)' : (row.speaker_name || (row.speaker_id ? 'QQ' + row.speaker_id : '对方'));
+    // 群里同名很常见：名字后面带 QQ，且她自己标成「她」。名字本身可能是空（私聊）。
+    const who = row.role === 'self'
+      ? '她(你)'
+      : ((row.speaker_name && row.speaker_name !== '私聊' ? row.speaker_name : 'QQ' + String(row.speaker_id || '')) + (row.speaker_id ? '(' + row.speaker_id + ')' : ''));
     const text = String(row.text || '');
     if (used + text.length > Number(maxChars)) { lines.push('…（后面还有 ' + (data.total - data.rows.indexOf(row)) + ' 条没显示，需要就说「继续」）'); break; }
     lines.push(clock + ' ' + who + ': ' + text);
@@ -485,9 +641,23 @@ export function catalog({ ownerId, limit = 20, db: conn } = {}) {
   const db = conn || openDb();
   const n = Math.max(1, Math.min(50, Number(limit) || 20));
   const rows = db.prepare(
-    "SELECT id, title, tier, importance, ended_at, day_key FROM topic WHERE owner_id = ? "
+    "SELECT id, title, tier, importance, ended_at, day_key, scope, conversation_key FROM topic WHERE owner_id = ? "
     + "ORDER BY (tier = 'important') DESC, ended_at DESC LIMIT ?",
   ).all(String(ownerId || ''), n);
+  // 参与者一次批量捞（每条各查一次 SQL 会在目录重建时放大成 N 次磁盘读）。
+  const ids = rows.map((r) => String(r.id));
+  const pMap = new Map();
+  if (ids.length) {
+    try {
+      const list = db.prepare('SELECT topic_id, qq, name, role, msgs FROM topic_participant WHERE topic_id IN (' + ids.map(() => '?').join(',') + ') ORDER BY msgs DESC').all(...ids);
+      for (const one of list) {
+        const arr = pMap.get(String(one.topic_id)) || [];
+        arr.push(one);
+        pMap.set(String(one.topic_id), arr);
+      }
+    } catch {}
+  }
+  const withPeople = rows.map((r) => ({ ...r, participants: pMap.get(String(r.id)) || [] }));
   const fragRow = db.prepare("SELECT COUNT(*) AS n FROM fragment WHERE owner_id = ?").get(String(ownerId || ''));
   const profile = db.prepare('SELECT persona FROM profile WHERE owner_id = ?').get(String(ownerId || ''));
   let zones = null;
@@ -495,26 +665,45 @@ export function catalog({ ownerId, limit = 20, db: conn } = {}) {
   // 事实条数一起带上：目录里要显示「另有 N 条重要事实」，否则她不知道事实区存在。
   let facts = null;
   try { facts = factStats({ ownerId, db }); } catch {}
-  return { rows, fragments: Number(fragRow && fragRow.n ? fragRow.n : 0), persona: profile ? String(profile.persona || '') : '', zones, facts };
+  // 群聊多给一份名册（谁在这个群里说过话、叫什么、是不是主人）：
+  // 群里三个人她只认得最后一个说话的人，名册让她能把「A 说的」和「B 说的」分开。
+  let roster = [];
+  if (String(ownerId || '').startsWith('group:')) {
+    try { roster = groupRoster(ownerId, { db, limit: 12 }); } catch {}
+  }
+  return { ownerId: String(ownerId || ''), roster, rows: withPeople, fragments: Number(fragRow && fragRow.n ? fragRow.n : 0), persona: profile ? String(profile.persona || '') : '', zones, facts };
 }
 
 /** 目录渲染成注入块（目标 ≈450 字符，只给标题，不给正文）。 */
-export function formatCatalogForModel(data, { titles = 8, maxChars = 600 } = {}) {
+export function formatCatalogForModel(data, { titles = 8, maxChars = 600, ownerQQ = '', selfId = '' } = {}) {
   if (!data) return '';
   const list = (data.rows || []).slice(0, Math.max(1, Math.min(20, Number(titles) || 8)));
   const lines = [];
   if (data.persona) lines.push('［侧写］' + data.persona);
+  // 群名册：先给「这些人是谁」，再给话题。否则她读到时不知道谁是主人、谁刚才说过话。
+  if (Array.isArray(data.roster) && data.roster.length) {
+    lines.push('［群里的人］' + formatParticipants(data.roster, { selfId, ownerQQ, max: 10 }) + '（括号里是 QQ 号；同名不同人靠号区分）');
+  }
   if (list.length) {
     lines.push('［记忆·目录］只给标题，细节要自己查（查过再说，别编）：');
     for (const row of list) {
       const when = String(row.day_key || '').slice(5);
       const mark = row.tier === 'important' ? '  [重要]' : '';
-      lines.push('· ' + row.id + ' ' + row.title + '  (' + when + ')' + mark);
+      // 参与人随标题一起给（主人 2026-11-15 要求）：她得先知道「这话是谁说的」，
+      // 否则群里三个人的话题在目录里长得一样，只能瞎读。
+      const people = row.participants && row.participants.length
+        ? '  — ' + formatParticipants(row.participants, { selfId, ownerQQ, max: 4 })
+        : '';
+      const amb = row.scope === 'ambient' ? '  [旁观]' : '';
+      lines.push('· ' + row.id + ' ' + row.title + '  (' + when + ')' + mark + people + amb);
     }
     if (data.fragments > 0) lines.push('· 另有 ' + data.fragments + ' 条零碎记忆（爱好/雷区/习惯），想找用 stellar_memory_search');
     // 按人分类（2026-11-13 主人的要求）：先确认问的是谁的事，再决定查谁。
     // 不加这句时她会拿当前对话对象的记忆去答别人的问题（或反过来把别人的事当自己的）。
-    lines.push('查法：先确认问的是谁的事 —— 问本人就查本人（ownerId 用当前对话对象的号）；问别人的，先按那个人的号查，查到别人的事只给结论、别转述细节。stellar_memory_catalog 看全目录 → stellar_memory_topic 读某条 → stellar_memory_search 搜关键词。都没有就说「不记得」，别硬凑。');
+    const inGroup = String(data.ownerId || '').startsWith('group:');
+    lines.push(inGroup
+      ? '查法（群里）：先认人 —— 谁问你就查谁。① 他跟你的私聊记忆（stellar_memory_catalog ownerId=他的号）② 他在这群里参与过的话题（stellar_memory_search about=他的号）③ 都没有才翻零碎记忆（stellar_memory_search 关键词）。读到别人的事只给结论、别转述细节；旁听到的话题（标 [旁观]）别当成自己的经历。'
+      : '查法：先确认问的是谁的事 —— 问本人就查本人（ownerId 用当前对话对象的号）；问别人的，先按那个人的号查，查到别人的事只给结论、别转述细节。stellar_memory_catalog 看全目录 → stellar_memory_topic 读某条 → stellar_memory_search 搜关键词。都没有就说「不记得」，别硬凑。');
     const zoneLine = formatZoneCatalogLine(data.zones);
     if (zoneLine) lines.push(zoneLine);
     const factN = Number(data.facts && data.facts.total) || 0;
@@ -543,10 +732,11 @@ export function formatZoneCatalogLine(zones) {
 }
 
 /** 全文检索：>=3 字走 FTS5 trigram；<3 字走 bigrams LIKE 兜底。 */
-export function search({ q, ownerId, scope = 'current', limit = 5, db: conn } = {}) {
+export function search({ q, ownerId, scope = 'current', about = '', limit = 5, db: conn } = {}) {
   const db = conn || openDb();
   const query = String(q || '').trim();
-  if (!query) return [];
+  const aboutWho = String(about || '').trim();
+  if (!query && !aboutWho) return [];
   const n = Math.max(1, Math.min(10, Number(limit) || 5));
   const cross = String(scope) === 'all';
   const rows = [];
@@ -557,18 +747,46 @@ export function search({ q, ownerId, scope = 'current', limit = 5, db: conn } = 
     const args = cross ? [query, n] : [query, String(ownerId || ''), n];
     try { for (const row of db.prepare(sql).all(...args)) push(row); } catch {}
   }
-  if (!rows.length) {
+  if (query && !rows.length) {
     const like = '%' + query + '%';
     const sql = 'SELECT ref_type, ref_id, owner_id, body, at FROM search_doc '
       + 'WHERE (body LIKE ? OR bigrams LIKE ?)' + (cross ? '' : ' AND owner_id = ?') + ' ORDER BY at DESC LIMIT ?';
     const args = cross ? [like, '%' + query + '%', n] : [like, '%' + query + '%', String(ownerId || ''), n];
     try { for (const row of db.prepare(sql).all(...args)) push(row); } catch {}
   }
-  return rows;
+  // 按人检索（2026-11-15）：A 问「你记得我昨天说的话吗」时，光靠关键词找不到 ——
+  // 对方说的是「那个方案」，她搜关键词永远搜不到。这里直接把「跟 A 有关的」话题捞出来：
+  // 私聊 A 的（owner_id = A）+ A 在群里参与过的（topic_participant.qq = A）。
+  // 排在关键词结果之后（关键词命中的更精准），但一定给：宁可多读一条，不要回答「不记得」。
+  if (aboutWho) {
+    try {
+      const extra = db.prepare(
+        'SELECT DISTINCT \'topic\' AS ref_type, t.id AS ref_id, t.owner_id AS owner_id, '
+        + '(t.title || \' \' || COALESCE(t.summary, \'\')) AS body, t.ended_at AS at '
+        + 'FROM topic t LEFT JOIN topic_participant p ON p.topic_id = t.id '
+        // 非跨库时只在这个范围里找：当前会话的对象 + 被问的这个人。
+        // 群里查 A 时当前会话对象是 group:<群号>，而「跟 A 的私聊」owner_id 是 A 本人 ——
+        // 只按 group 过滤会把私聊那条漏掉（主人要的正是这两种一起查）。
+        + 'WHERE (t.owner_id = ? OR p.qq = ?)' + (cross ? '' : ' AND (t.owner_id = ? OR t.owner_id = ?)') +
+        ' ORDER BY (t.tier = \'important\') DESC, t.ended_at DESC LIMIT ?',
+      ).all(...(cross ? [aboutWho, aboutWho, n] : [aboutWho, aboutWho, String(ownerId || ''), aboutWho, n]));
+      for (const row of extra) push(row);
+    } catch {}
+  }
+  // 话题行补上参与人：跨人检索时「这条是谁的话题」必须看得见，否则会把别人的事当自己的。
+  const out = [];
+  for (const row of rows) {
+    if (row.ref_type === 'topic') {
+      const people = listTopicParticipants(row.ref_id, { db });
+      const scopeRow = (() => { try { return db.prepare('SELECT scope FROM topic WHERE id = ?').get(String(row.ref_id)); } catch { return null; } })();
+      out.push({ ...row, participants: people, scope: scopeRow ? String(scopeRow.scope || 'direct') : 'direct' });
+    } else out.push(row);
+  }
+  return out;
 }
 
 /** 检索结果渲染成文本（跨 owner 时要标归属）。 */
-export function formatSearchForModel(rows, { currentOwner } = {}) {
+export function formatSearchForModel(rows, { currentOwner, ownerQQ = '', selfId = '' } = {}) {
   if (!rows || !rows.length) return '没搜到相关记忆（就是不记得，别编）。';
   const out = [];
   for (const row of rows) {
@@ -576,7 +794,10 @@ export function formatSearchForModel(rows, { currentOwner } = {}) {
     const kind = row.ref_type === 'topic' ? '话题' : (row.ref_type === 'fragment' ? '零碎' : (row.ref_type === 'fact' ? '事实' : '侧写'));
     const body = String(row.body || '').replace(/[\r\n]+/g, ' ').slice(0, 80);
     const own = currentOwner && String(row.owner_id) !== String(currentOwner) ? '  (属于 ' + row.owner_id + '，别转述具体内容)' : '';
-    out.push('[' + kind + '] ' + body + '  (' + clock + ')' + own + (row.ref_type === 'topic' ? '  → ' + row.ref_id : ''));
+    const people = Array.isArray(row.participants) && row.participants.length
+      ? '  ' + formatParticipants(row.participants, { selfId, ownerQQ, max: 4 }) + (row.scope === 'ambient' ? '（旁观）' : '')
+      : '';
+    out.push('[' + kind + '] ' + body + '  (' + clock + ')' + people + own + (row.ref_type === 'topic' ? '  → ' + row.ref_id : ''));
   }
   return out.join('\n');
 }
@@ -735,6 +956,10 @@ export function pruneWindow({ targetDay, trashDir, db: conn } = {}) {
 /** 强制晋升一个话题（复核 / 手工）。 */
 export function promoteTopic(topicId, { reason = 'review', db: conn } = {}) {
   const db = conn || openDb();
+  // 旁观话题永远不晋升：旁听到的别人的事不该变成她的长期记忆。
+  // 上游 reviewCandidates 已经过滤过，这道兜底是给「别的调用方直接调 promoteTopic」留的。
+  const row = db.prepare("SELECT COALESCE(scope, 'direct') AS scope FROM topic WHERE id = ?").get(String(topicId));
+  if (row && row.scope === 'ambient') return false;
   const info = db.prepare("UPDATE topic SET tier = 'important', promoted_at = ?, promote_reason = ? WHERE id = ?")
     .run(Date.now(), String(reason), String(topicId));
   return Number(info.changes || 0) > 0;

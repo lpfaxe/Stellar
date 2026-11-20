@@ -26,6 +26,7 @@ import { addTodo, listTodos, getTodo, updateTodo, parseDueAt, formatTodo } from 
 import { createQuestion } from './owner-questions.js';
 import { serializeModelData } from './qq-model-view.js';
 import { EMOTION_LABELS } from './sticker-semantics.js';
+import { cabinetDir, saveToCabinet, humanBytes, listCabinetNames, CABINET_MAX_BYTES } from './file-cabinet.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -303,7 +304,7 @@ async function legacyReadToolAllowed() {
   return String(status?.mode ?? '') === 'closed-agent';
 }
 
-const server = new McpServer({ name: 'snowluma-safe', version: '1.0.0' });
+const server = new McpServer({ name: 'snowluma-safe', version: '0.2.0-r4' });
 
 // ── 工具开关必须在**注册期**生效，而不是只在校验期 ──────────────────────────
 //
@@ -1222,7 +1223,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectStic
 if (cfg.socialV2?.tools?.getSelfImage !== false) {
   server.tool(
     'qq_get_self_image',
-    '查看你自己的形象图片（使用者放在 assets/self-image.png 或在 config.json 配 socialV2.selfImage 的那张）。被问“你长什么样/发张自拍/你是什么形象”时可以先看这张；没有配图会返回提示，这时用角色卡里的文字描述自己，别编造画面。',
+    '查看你自己的默认 Q 版形象图片（DeepSeek 小鲸鱼形象）。当你被问“你长什么样/发张自拍/你是什么形象”时，可以调用这个工具看自己的样子；返回的图片会直接进入你的视觉上下文。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）')
@@ -1237,7 +1238,7 @@ if (cfg.socialV2?.tools?.getSelfImage !== false) {
         }
         return {
           content: [
-            { type: 'text', text: '这是你自己的形象：' },
+            { type: 'text', text: '这是你的默认 Q 版形象：' },
             { type: 'image', mimeType: data.image.mimeType, data: data.image.data }
           ]
         };
@@ -2018,7 +2019,7 @@ const RULE_TOPICS = Object.freeze({
   report: '每天给主人写日报',
   cost: '花钱与预算（大任务先报价）',
   group: '群聊（预留，当前未启用）',
-  file: '读文件（PDF / Word / PPT / Excel / WPS）'
+  file: '读文件 / 存进文件柜（PDF / Word / PPT / Excel / WPS）'
 });
 // key -> { at, topics:Set }
 const rulesLoaded = new Map();
@@ -2098,7 +2099,8 @@ const GATED_TOPICS = Object.freeze({
   stellar_qzone_react: 'qzone',
   stellar_qzone_delete_comment: 'qzone',
   stellar_douyin_watch: 'douyin',
-  stellar_file_read: 'file'
+  stellar_file_read: 'file',
+  stellar_file_save: 'file'
 });
 
 // 把这个 MCP 进程里注册的「分类工具」自动包上规则门（必须在我们自己的 server.tool 注册之前装好）。
@@ -2117,7 +2119,7 @@ server.tool(
   'stellar_rules',
   '查某一类工具的规矩（B 站/空间/生图/看图/抖音/日报/花钱/群聊）。不带 topic 返回目录。首次使用某类工具时规则会自动附在结果里，这里只是需要先看一眼或用完想复查时用。',
   {
-    key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
+    key: z.string().describe('当前会话 key，形如 private:<QQ> 或 group:<群号>；非主人只能读本会话转发里的文件'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
     topic: z.string().optional().describe('bili / qzone / image / vision / douyin / report / cost / group')
   },
@@ -2611,11 +2613,8 @@ async function searchMemory(query, maxChars, limit) {
 // 权限：主人可以看全部人、查任何人的记忆；非主人只能看自己、查自己的记忆。
 // 这里只读，不改通讯录（改名/关系走控制台，避免模型顺手改主人的人际关系）。
 function contactsStateFile() {
-  // DSH_HOME 优先：与 src/memory-db.js 的口径一致，也让测试能注入 fixture
-  // （以前硬编码 USERPROFILE，干净机器上会读到真实通讯录或读不到，测试结果取决于本机）。
-  const home = process.env.DSH_HOME
-    || path.join(process.env.USERPROFILE || process.env.HOME || os.homedir(), '.dsh');
-  return path.join(home, 'stellar', 'state', 'friends.json');
+  const home = process.env.USERPROFILE || process.env.HOME || os.homedir();
+  return path.join(home, '.dsh', 'stellar', 'state', 'friends.json');
 }
 
 let contactsStateCache = { at: 0, book: null };
@@ -3303,14 +3302,36 @@ server.tool(
       if (!rows.length && !data.fragments && !data.persona) {
         return { content: [{ type: 'text', text: '记忆库里还没有 ' + owner + ' 的话题（启用后才会开始记）。' }] };
       }
+      const roster = Array.isArray(data.roster) ? data.roster : [];
       const lines = [];
       if (data.persona) lines.push('侧写：' + data.persona);
+      if (roster.length) {
+        // 群里的名册：名字后面必须带 QQ —— 同名的人在这类群里太常见了。
+        lines.push('［群里的人］' + roster.map((p) => {
+          const nm = String(p.name || '').trim();
+          const qq = String(p.qq || '');
+          const label = nm && !nm.includes(qq) ? nm + '(' + qq + ')' : (nm || 'QQ' + qq);
+          return p.role === 'self' ? label + '·她' : label;
+        }).join('、'));
+      }
       lines.push('对象：' + owner + '｜话题 ' + rows.length + ' 条｜零碎记忆 ' + (Number(data.fragments) || 0) + ' 条');
       for (const row of rows) {
         const when = String(row.day_key || '').slice(5);
-        lines.push('· ' + row.id + '  ' + row.title + '  (' + when + ')' + (row.tier === 'important' ? '  [重要]' : ''));
+        const people = Array.isArray(row.participants) && row.participants.length
+          ? '  — ' + row.participants.slice(0, 6).map((p) => {
+            const nm = String(p.name || '').trim();
+            const qq = String(p.qq || '');
+            const label = nm && !nm.includes(qq) ? nm + '(' + qq + ')' : (nm || 'QQ' + qq);
+            return p.role === 'self' ? '她' : label;
+          }).join('、')
+          : '';
+        const ambient = String(row.scope || '') === 'ambient' ? '  [旁观]' : '';
+        lines.push('· ' + row.id + '  ' + row.title + '  (' + when + ')' + (row.tier === 'important' ? '  [重要]' : '') + people + ambient);
       }
       lines.push('要细节用 stellar_memory_topic(topicId=…)；搜关键词用 stellar_memory_search(q=…)。');
+      if (roster.length) {
+        lines.push('问某人说过什么时：先 stellar_memory_search(about=那个人的QQ)，它会把「跟这个人的私聊」和「这个人在群里参与过的话题」一起搜出来；还没有才翻零碎。');
+      }
       return { content: [{ type: 'text', text: lines.join('\n') }] };
     } catch (error) {
       return { content: [{ type: 'text', text: '读记忆目录失败：' + (error?.message ?? error) + '。（若是 node:sqlite 加载失败，说明当前 Node 版本太老）' }], isError: true };
@@ -3339,6 +3360,8 @@ server.tool(
       const data = mod.readTopic(wantId, { full: full === true, maxChars: keep });
       // 话题归属必须核对：否则非主人拿到 id 就能读别人的整段对话（id 是顺序号，很好猜）。
       const topicOwner = String(data?.topic?.owner_id ?? '');
+      // 群会话的 access.owner 就是 group:<群号>，本群话题（含她旁观到的）都允许读；
+      // 但读到别人私聊的话题仍然拒 —— 群号与私聊号不会相等。
       if (topicOwner && topicOwner !== access.owner && !access.actor.isOwner) {
         return { content: [{ type: 'text', text: '这个 id 不是你的记忆（id 形如 tp_… 是顺序号，猜不到别人的）。可以先用 stellar_memory_catalog 看你自己的目录。' }], isError: true };
       }
@@ -3361,9 +3384,10 @@ server.tool(
     q: z.string().describe('关键词（尽量给具体名词，如「绝区零」「抽卡」「生日」）'),
     ownerId: z.string().optional().describe('只在这个对象名下搜：数字QQ / group:<群号>；不填就是当前会话的对方'),
     scope: z.string().optional().describe('current=只搜当前对象（默认）；all=跨所有对象搜（结果会标归属）'),
+    about: z.string().optional().describe('按人搜：给这个人的 QQ，会同时搜「他跟我的私聊话题」和「他在群里参与过的话题」。群里被问「你记得我昨天说的吗」就用它'),
     limit: z.number().optional().describe('返回几条（默认 5，上限 10）')
   },
-  async ({ key, token, q, ownerId, scope, limit }) => {
+  async ({ key, token, q, ownerId, scope, about, limit }) => {
     try {
       const query = String(q ?? '').trim();
       if (query.length < 2) return { content: [{ type: 'text', text: '关键词至少 2 个字' }], isError: true };
@@ -3374,15 +3398,27 @@ server.tool(
       if (wantAll && !access.actor.isOwner) {
         return { content: [{ type: 'text', text: '只有主人可以跨对象搜记忆。你可以搜自己的（不加 scope）。' }], isError: true };
       }
+      // about 是「按人查」的口子：非主人只能查自己，否则随便填一个 QQ 就能读到别人的私聊话题。
+      const aboutWho = String(about ?? '').trim();
+      if (aboutWho && !access.actor.isOwner && aboutWho !== access.actor.ownerId) {
+        return { content: [{ type: 'text', text: '只有主人可以按别人的号查记忆。要查就说你自己的号。' }], isError: true };
+      }
       const owner = wantAll ? '' : access.owner;
       const mod = await memoryDbModule();
       const rows = mod.search({
         q: query,
         ownerId: owner,
         scope: String(scope ?? '').trim() === 'all' ? 'all' : 'current',
+        about: aboutWho,
         limit: Math.max(1, Math.min(10, Number(limit) || 5)),
       });
-      const text = mod.formatSearchForModel(rows, { currentOwner: owner });
+      // 参与人里要标出「她」和「主人」：群里同名的人多，只给名字分不清谁是谁。
+      const text = mod.formatSearchForModel(rows, {
+        currentOwner: owner,
+        ownerQQ: String(getConfig().ownerQQ ?? ''),
+        // 她自己那一行靠 role='self' 标「她」，不用知道自己的号（MCP 侧拿不到）。
+        selfId: '',
+      });
       return { content: [{ type: 'text', text }] };
     } catch (error) {
       return { content: [{ type: 'text', text: '搜记忆失败：' + (error?.message ?? error) }], isError: true };
@@ -3403,7 +3439,7 @@ server.tool(
     ownerId: z.string().optional().describe('谁的事实：数字QQ / group:<群号>；不填就是当前会话的对方'),
     kind: z.string().optional().describe('write：birthday/anniversary/like/dislike/allergy/contact/address/nickname/promise/identity/note'),
     label: z.string().optional().describe('write：这一条的标题，如「生日」「不吃」「手机号」（同人同 label 覆盖）'),
-    text: z.string().optional().describe('write/update：内容，如「1月1日」「香菜」'),
+    text: z.string().optional().describe('write/update：内容，如「6月29日」「香菜」'),
     privacy: z.string().optional().describe('normal / private / secret（默认按 kind 给：生日 contact 地址偏私密）'),
     weight: z.number().optional().describe('1~5，越大越优先注入（生日/过敏 5，喜好 3）'),
     id: z.number().optional().describe('update/delete：事实 #id（list 里有）'),
@@ -4335,15 +4371,16 @@ async function fileDownloadUrl(file, key, { allowOwnerFallback = true } = {}) {
   return url;
 }
 
-async function fetchFileBuffer(url, { allowPrivate = false } = {}) {
+async function fetchFileBuffer(url, { allowPrivate = false, maxBytes = FILE_MAX_BYTES } = {}) {
   if (!allowPrivate) await assertPublicHttpUrl(url);
+  const cap = Number(maxBytes) > 0 ? Number(maxBytes) : FILE_MAX_BYTES;
   const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(90000) });
   if (!res.ok) throw new Error('下载失败：HTTP ' + res.status);
   const declared = Number(res.headers.get('content-length') || 0);
-  if (declared > FILE_MAX_BYTES) throw new Error('文件太大（' + (declared / 1048576).toFixed(1) + ' MB），上限 60 MB');
+  if (declared > cap) throw new Error('文件太大（' + (declared / 1048576).toFixed(1) + ' MB），上限 ' + (cap >= 1048576 ? (cap / 1048576) + ' MB' : (cap / 1024) + ' KB'));
   const buf = Buffer.from(await res.arrayBuffer());
   if (!buf.length) throw new Error('下载到的是空文件');
-  if (buf.length > FILE_MAX_BYTES) throw new Error('文件太大（' + (buf.length / 1048576).toFixed(1) + ' MB），上限 60 MB');
+  if (buf.length > cap) throw new Error('文件太大（' + (buf.length / 1048576).toFixed(1) + ' MB），上限 ' + (cap >= 1048576 ? (cap / 1048576) + ' MB' : (cap / 1024) + ' KB'));
   return buf;
 }
 
@@ -4404,6 +4441,68 @@ server.tool(
   }
 );
 
+server.tool(
+  'stellar_file_list',
+  '列出「主人的文件柜」里的文件（名字 / 类型 / 大小 / 改动时间）。文件柜是主人在控制台放文档的地方（Word/Excel/PPT/PDF/图片都行），内容不会自动进你的上下文——需要看某个文件时先列一遍拿到准确文件名，再用 stellar_file_read(path="<dir>/<文件名>") 读那一个；没让你看的文件不要主动读，白花时间也白花 token。只给主人用。',
+  {
+    key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
+    token: z.string().optional().describe('会话令牌（唤醒提示里【会话令牌】那一行的值原样传入；没有就不传）'),
+    limit: z.union([z.number(), z.string()]).optional().describe('最多列几个（默认 80，上限 200）')
+  },
+  async ({ key, token, limit }) => {
+    try {
+      const denied = await ownerOnlyError(key, token);
+      if (denied) return { content: [{ type: 'text', text: denied }], isError: true };
+      const dir = path.join(dshHome(), 'stellar', 'files');
+      const max = Math.min(200, Math.max(1, Number(limit) || 80));
+      let names = [];
+      try { names = fs.readdirSync(dir).filter((n) => !n.startsWith('.') && n !== 'index.jsonl'); } catch { names = []; }
+      if (!names.length) {
+        return {
+          content: [{
+            type: 'text',
+            text: '文件柜现在是空的：' + dir + '\n主人还没往这里放东西。他要是在聊天里直接发文件，照旧用 messageId 读。'
+          }]
+        };
+      }
+      const EXT = {
+        doc: 'Word', docx: 'Word', wps: 'Word', rtf: 'Word', odt: 'Word',
+        xls: 'Excel', xlsx: 'Excel', et: 'Excel', csv: 'Excel', ods: 'Excel',
+        ppt: 'PPT', pptx: 'PPT', dps: 'PPT', odp: 'PPT',
+        pdf: 'PDF', txt: '文本', md: '文本', json: '文本', log: '文本',
+        png: '图片', jpg: '图片', jpeg: '图片', webp: '图片', gif: '图片',
+        zip: '压缩包', '7z': '压缩包', rar: '压缩包'
+      };
+      const rows = [];
+      for (const n of names) {
+        let st = null;
+        try { st = fs.statSync(path.join(dir, n)); } catch { continue; }
+        if (!st.isFile()) continue;
+        const ext = String(path.extname(n) || '').slice(1).toLowerCase();
+        rows.push({ n, size: st.size, at: st.mtimeMs, kind: EXT[ext] || '文件' });
+      }
+      rows.sort((a, b) => b.at - a.at);
+      const shown = rows.slice(0, max);
+      const stamp = (ms) => {
+        const d = new Date(ms);
+        const p2 = (x) => String(x).padStart(2, '0');
+        return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+      };
+      const kb = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+      const body = shown.map((r) => '- ' + r.n + '（' + r.kind + ' · ' + kb(r.size) + ' · ' + stamp(r.at) + '）').join('\n');
+      const more = rows.length > shown.length ? '\n（还有 ' + (rows.length - shown.length) + ' 个没列，加 limit 再看）' : '';
+      return {
+        content: [{
+          type: 'text',
+          text: '主人的文件柜：' + dir + '\n共 ' + rows.length + ' 个文件：\n' + body + more +
+            '\n\n要看正文就用 stellar_file_read(path="' + dir + '/<上面那个名字>")；一次只读你要看的那一份，别整个柜子都读。'
+        }]
+      };
+    } catch (e) {
+      return { content: [{ type: 'text', text: '列文件柜失败：' + String(e && e.message || e) }], isError: true };
+    }
+  }
+);
 server.tool(
   'stellar_file_read',
   '读文档正文。支持 PDF / Word(doc/docx) / PPT(ppt/pptx) / Excel(xls/xlsx) / WPS(wps/et/dps)，以及 txt/csv/md/rtf/html。主人能用全部来源（messageId / name / path / url）；群聊或非主人会话只能用「这个会话里合并转发过来的文件」——传 forwardId + name（提示里【合并转发的聊天记录 id】那段会给）。用 messageId 或 name 定位刚发来的文件（消息提示里 files[].messageId）。返回提取出的文字；长文档只给开头并把全文存成 spill 文件，要通读就按返回里的路径用 stellar_spill_read 分段读（每次 8000 字），读完再总结，不许只凭开头下结论。扫描件 PDF 没有文字层会读不出来 —— 那就直说看不到，别编。',
@@ -4526,6 +4625,97 @@ server.tool(
       return { content: [{ type: 'text', text: head.join('\n') }] };
     } catch (error) {
       return { content: [{ type: 'text', text: '读文件失败：' + (error && error.message ? error.message : error) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'stellar_file_save',
+  '把文件正式存进文件柜（长期保存；主人之后能在面板的文件柜里看到、下载、再读）。主人说「存下来 / 收好 / 先放着 / 存进文件柜」时必须真的调这个工具——只回一句「收好了」而没调过它就是骗人。来源按优先级取一个：text（你手上已有的正文，要和 name 一起给）＞ path（本机文件）＞ url（直链）＞ messageId / forwardId / fileId / name（聊天里的附件）。同名不覆盖，自动改成「名字 (2)」。非主人只能用本会话里传过的附件和 text，不能用 path/url。',
+  {
+    key: z.string().describe('当前会话 key，形如 private:<QQ> 或 group:<群号>'),
+    token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
+    messageId: z.string().optional().describe('文件所在消息的 QQ messageId（消息提示里的 files[].messageId）'),
+    forwardId: z.string().optional().describe('合并转发的 id；转发里的文件用这个 + name 定位'),
+    fileId: z.union([z.string(), z.number()]).optional().describe('文件的 file_id（一般不用传）'),
+    name: z.string().optional().describe('文件名：给 text 时是存进柜子用的名字；定位聊天附件时可只写一部分'),
+    saveAs: z.string().optional().describe('存进柜子时改用的名字（不改就用原文件名）'),
+    path: z.string().optional().describe('本机文件路径（主人专属）'),
+    url: z.string().optional().describe('文件的 http(s) 直链（主人专属）'),
+    text: z.string().optional().describe('直接存的正文（笔记、配额、清单这类；配合 name 指定文件名）'),
+    note: z.string().optional().describe('一句备注，会写进文件柜索引')
+  },
+  async ({ key, token, messageId, forwardId, fileId, name, saveAs, path: filePath, url, text, note }) => {
+    try {
+      const keyStr = String(key || '').trim();
+      const denied = await ownerOnlyError(key, token);
+      const isOwner = !denied;
+      let ident = null;
+      if (!isOwner) {
+        ident = await resolveAgentIdentity(token);
+        if (!ident || !ident.key) return { content: [{ type: 'text', text: denied }], isError: true };
+        if (ident.key !== keyStr) {
+          return { content: [{ type: 'text', text: 'key 和会话令牌对不上（令牌属于 ' + ident.key + '），不存。' }], isError: true };
+        }
+        if (String(filePath || '').trim() || String(url || '').trim()) {
+          return { content: [{ type: 'text', text: '只有主人能用 path/url 存本机或网上的文件。本会话里收到的附件请传 messageId / forwardId / name。' }], isError: true };
+        }
+      }
+      const wantedPath = String(filePath || '').trim();
+      const wantedUrl = String(url || '').trim();
+      const wantedText = text == null ? '' : String(text);
+      const wantName = String(saveAs || name || '').trim();
+      const hasMessage = Boolean(String(messageId || '').trim() || String(forwardId || '').trim() || String(fileId || '').trim());
+      let buffer = null;
+      let fileName = wantName;
+      let via = '';
+      if (wantedText) {
+        buffer = Buffer.from(wantedText, 'utf8');
+        via = 'text';
+        if (!fileName) {
+          const d = new Date();
+          const p2 = (x) => String(x).padStart(2, '0');
+          fileName = '记录-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + '.txt';
+        }
+      } else if (wantedPath) {
+        const abs = assertReadableLocalPath(wantedPath, { workspaceRoot: WORKSPACE_ROOT, stellarRoot: ROOT, dshHome: dshHome() });
+        const stat = fs.statSync(abs);
+        if (!stat.isFile()) throw new Error('path 不是文件：' + wantedPath);
+        if (stat.size > CABINET_MAX_BYTES) throw new Error('文件太大（' + humanBytes(stat.size) + '），文件柜上限 ' + humanBytes(CABINET_MAX_BYTES));
+        buffer = fs.readFileSync(abs);
+        if (!fileName) fileName = path.basename(abs);
+        via = 'path';
+      } else if (wantedUrl) {
+        buffer = await fetchFileBuffer(wantedUrl, { maxBytes: CABINET_MAX_BYTES });
+        if (!fileName) fileName = decodeURIComponent(wantedUrl.split('?')[0].split('/').pop() || '文件');
+        via = 'url';
+      } else if (hasMessage || fileName) {
+        const found = findFileEntry(key, { messageId, forwardId, fileId, name });
+        if (found.error) return { content: [{ type: 'text', text: '存不了：' + found.error }], isError: true };
+        const file = found.file;
+        // name 在这里可能只是「用来定位的一部分名字」，不能拿来当文件名；只有 saveAs 才改名字。
+        fileName = String(saveAs || '').trim() || String(file.name || '').trim() || '未命名文件';
+        buffer = await fetchFileBuffer(await fileDownloadUrl(file, key, { allowOwnerFallback: isOwner }), { allowPrivate: true, maxBytes: CABINET_MAX_BYTES });
+        via = 'message';
+      } else {
+        return { content: [{ type: 'text', text: '要存哪一份？传 messageId / name（聊天里的附件）、path、url 或 text 之一。' }], isError: true };
+      }
+      if (!buffer || !buffer.length) throw new Error('拿到的是空内容');
+      if (buffer.length > CABINET_MAX_BYTES) throw new Error('文件太大（' + humanBytes(buffer.length) + '），文件柜上限 ' + humanBytes(CABINET_MAX_BYTES));
+      const dir = cabinetDir(dshHome());
+      const saved = saveToCabinet(dir, fileName, buffer, { by: isOwner ? 'owner' : 'stellar', note: String(note || '').trim() });
+      if (!saved || saved.ok !== true) {
+        return { content: [{ type: 'text', text: '没存成：' + ((saved && saved.message) || '未知错误') }], isError: true };
+      }
+      let count = 0;
+      try { count = listCabinetNames(dir).length; } catch { count = 0; }
+      const head = ['已存进文件柜：' + saved.name + '（' + humanBytes(saved.bytes) + ' · ' + saved.kind + '）'];
+      if (saved.name !== fileName) head.push('柜里本来就有同名的，这个存成了「' + saved.name + '」（旧的那份没动）');
+      head.push('位置：' + dir + '（柜子里现在 ' + count + ' 个文件）');
+      head.push('主人问起或者要读内容时：stellar_file_read(path="' + saved.path + '")。');
+      return { content: [{ type: 'text', text: head.join('\n') }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: '存文件失败：' + (error && error.message ? error.message : error) }], isError: true };
     }
   }
 );

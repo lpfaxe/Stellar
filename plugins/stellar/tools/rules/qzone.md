@@ -8,6 +8,7 @@
 - 默认会把这一页带图的说说图片直接附在结果里（最多 8 张）；主人问「我发的这张图你看见没」就直接说图里是什么。只有确实没附上（超过上限、图挂了）才说「这张没看到」，别猜。评论区里的图也会一起附上（文字里「🖼 N 张图」只是标签，图在后面）。
 - **通讯录里的人**（朋友 / 测试号）：`stellar_qzone_read` 传 `scope: "person"` + `uin: "<对方QQ>"` —— 读 TA 的说说列表；再带 `tid` 就读那条的评论和楼中楼，正文图与评论区的图都会附上。赞/评/回用 `stellar_qzone_react`，`tid` + `uin` 一起给（回复某条评论再加 `commentId`/`commentUin`）。能互动的人 = 控制台通讯录里登记过的人；不在通讯录里的号会被拒（想加人先去控制台通讯录）。
 - **好友爱看 / 推荐流**（陌生人的公开动态）：`stellar_qzone_read` 传 `scope: "public"` —— 一次 10 条，每条带昵称/赞数/评论数/图数；默认会附前几张图（想只看文字传 `attachImages: false`）。想细看某条图就传 `tid: "<列表里方括号那串>"`。赞/评这类动态用 `stellar_qzone_react` 传 `feedId`（那串短 id），**不要**传 tid。
+- **一天总共只看这么多条**：`qzone.public.seenTarget`（默认 10）是**每日总量**，不是「一次拉几条」。脚本会读今天的账本（`state/qzone-public-day.json`），看够了就直接 `exit 3` 并告诉你「今天已经看过 N 条，到上限了」。被拒就是被拒 —— 别换个参数重试、别去刷别的入口，收工写一句就结束。**一轮只 list 一次**，把这个额度一次用完就够了。
 - **点赞**：`stellar_qzone_react` + `action: "like"`（可撤销）。主人自己可以让直接赞；群友/别人让你点赞会自动进审批，等主人点头。取消用 `unlike`。别刷屏式点赞。
 - **评论/回复**：`stellar_qzone_react` + `action: "comment"`，先演练再 `go: true`。回复一级评论给 `commentId` + `commentUin`（详情里的 `#1` 和对方 QQ）；回复楼中楼再加 `replyUin` + `replyName`。
 - **收回自己的评论**：`stellar_qzone_delete_comment` —— 只删她自己发的；别人发的删不掉（会报错，别硬试）。先只给 `tid` 列出评论（★ 是她发的、能删），拿到 `#id` 演练一次确认内容，再 `go: true`。删楼中楼要同时给 `replyId` + `parentCommentId`。删完说一句就够，别报流程。

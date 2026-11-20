@@ -1291,3 +1291,10 @@ button.ghost.on { border-color:var(--accent); color:var(--accent-ink); }
 .v6-url { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; }
 .v6-url a { font-size: 12px; word-break: break-all; }
 .v6-url .v6-copy { flex: 0 0 auto; }
+
+/* 文件柜列表（2026-11-20）*/
+.fc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line,rgba(255,255,255,.07))}
+.fc-row:last-child{border-bottom:0}
+.fc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg,#e6e9f0);text-decoration:none}
+.fc-name:hover{text-decoration:underline}
+.fc-meta{white-space:nowrap}

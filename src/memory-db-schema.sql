@@ -1,5 +1,5 @@
 -- 记忆库 schema（memory-db.js 打开连接时执行；全部 IF NOT EXISTS，可重复跑）
--- 设计：见 src/memory-db.js 顶部注释（表结构的来由与不变量）
+-- 设计：CHANGELOG.md §3
 
 -- ① 缓冲：所有聊天先落盘（唯一高频写入表，只 INSERT + 定期 DELETE）
 CREATE TABLE IF NOT EXISTS cache_msg (
@@ -38,10 +38,28 @@ CREATE TABLE IF NOT EXISTS topic (
   ended_at INTEGER NOT NULL,
   promoted_at INTEGER,
   promote_reason TEXT NOT NULL DEFAULT '',
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  -- scope（2026-11-15 群聊改造）：direct = 她参与过；ambient = 她只是旁观（群里别人在聊）。
+  -- 为什么不用 tier 表达：tier 是「值不值得长期留」，scope 是「我在不在场」，两件事不能混。
+  scope TEXT NOT NULL DEFAULT 'direct'
 );
 CREATE INDEX IF NOT EXISTS idx_topic_cat ON topic(owner_id, tier, ended_at DESC);
 CREATE INDEX IF NOT EXISTS idx_topic_day ON topic(day_key, tier);
+
+-- ②b 话题参与者：一个话题里都有谁说过话（谁说了几条、叫什么）。
+--   为什么单独一张表而不是往 topic 塞 JSON：检索是「按人找话题」——「A 问起昨天的事，
+--   先查与 A 的私聊话题 + A 在群里参与的话题」。按人查必须能走索引，JSON 里翻不动。
+--   群聊里一条 topic 通常有 3~5 个人，行数很小。
+CREATE TABLE IF NOT EXISTS topic_participant (
+  topic_id TEXT NOT NULL,
+  qq TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'other',
+  msgs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (topic_id, qq)
+);
+CREATE INDEX IF NOT EXISTS idx_tp_qq ON topic_participant(qq);
+CREATE INDEX IF NOT EXISTS idx_tp_topic ON topic_participant(topic_id);
 
 -- ③ 话题正文：important 话题在这里永久保存（不依赖 cache_msg）
 CREATE TABLE IF NOT EXISTS topic_msg (
@@ -157,7 +175,7 @@ CREATE INDEX IF NOT EXISTS idx_zone_day ON zone_note(zone, day_key);
 -- ⑪ 人物事实（2026-11-13 主人要求：重要记忆不再只靠话题，生日这类私人信息单独存、权重高）
 --   为什么单独一张表：
 --    · 事实的来源不止对话（主人可在面板直接注入、她可自己写），而且不该被两天窗口删掉；
---    · 同一件事会反复提到（「我生日1月1」说了三遍），必须按 (owner, kind, label) 去重而不是堆行；
+--    · 同一件事会反复提到（「我生日6月29」说了三遍），必须按 (owner, kind, label) 去重而不是堆行；
 --    · 隐私要能分级：谁能看到这条事实由 privacy 决定，不靠名字里有没有「生日」猜。
 --   privacy: normal（她自己在群里也能用）/ private（只在跟本人的对话里用）/ secret（只本人私聊 + 面板）
 CREATE TABLE IF NOT EXISTS fact (

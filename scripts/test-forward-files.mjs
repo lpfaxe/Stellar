@@ -16,7 +16,7 @@ const NODES = [
   {
     type: 'node',
     data: {
-      name: '测试员A', uin: '2493502782', time: 1763600000,
+      name: '测试员A', uin: '1000000003', time: 1763600000,
       content: [
         { type: 'text', data: { text: '这是我整理的季度报告，你帮我看看结论' } },
         { type: 'file', data: { name: '季度报告.docx', file_id: 'FID-DOCX-1', size: 20480, file_hash: 'HASH1' } }
@@ -26,7 +26,7 @@ const NODES = [
   {
     type: 'node',
     data: {
-      name: '小土豆', uin: '2474013276', time: 1763600060,
+      name: '示例好友', uin: '1000000004', time: 1763600060,
       content: [
         { type: 'text', data: { text: '还有个表' } },
         { type: 'file', data: { name: '预算.xlsx', file_id: 'FID-XLSX-1', size: 8192 } }

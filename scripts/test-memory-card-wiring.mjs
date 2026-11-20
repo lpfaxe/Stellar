@@ -24,9 +24,13 @@ assert.match(bridge, /recordSelfMemoryEvent\(key, sent\.join\('\\n'\)\)/, 'v2 �
 assert.match(bridge, /recordSelfMemoryEvent\(key, text\)/, 'v1 发送没有记录她自己的发言');
 assert.match(bridge, /isSelf: true/, '桥接 inbox 自发言没有 isSelf 标记');
 assert.match(bridge, /const memoryBlock = memoryCardPromptBlock\(/, 'v1/chat 角色提示没有注入记忆卡');
-assert.match(bridge, /const memoryCardText = memoryCardPromptBlock\(/, 'v2 唤醒提示没有注入记忆卡');
+assert.match(bridge, /if \(readUnifiedMemorySettings\(\)\.engine === 'db'\) return '';/, '桥接的 memoryCardPromptBlock 没有在 engine=db 时短路');
+// 2026-11-15 起 engine='db' 时旧卡退役（v2 唤醒走新库目录），card 模式下仍读旧卡，两种分支都要钉住。
+assert.match(bridge, /const cardRetired = memorySettings\.engine === 'db'/, 'v2 唤醒没有判断旧卡是否退役');
+assert.match(bridge, /const withCard = !cardRetired &&/, '旧卡退役后仍可能被注入');
+assert.match(bridge, /const memoryCardText = \(cardRetired \|\| dbCatalogOn\) \? '' : blendMemoryBlocks\(/, '旧卡退役后没有跳过 blendMemoryBlocks');
 assert.match(bridge, /\/api\/memory-card\/notify/, '桥接缺少记忆卡容量告警端点');
-assert.match(bridge, /memoryCard: memoryMode\(\) === 'vector' \? '' : memoryCardPromptBlock\(key\)/, 'qq_get_prompt 没有按模式返回记忆卡');
+assert.match(bridge, /memoryCard: memoryDbEngine\(\) \? '' : \(memoryMode\(\) === 'vector' \? '' : memoryCardPromptBlock\(key\)\)/, 'qq_get_prompt 在 engine=db 时仍返回旧卡');
 
 // 2) B站 调度器：每次醒来的统一上下文里有记忆卡（仅 B站 公开 scope）。
 assert.match(scheduler, /memoryCardPromptBlock\('bili'\)/, 'B站调度器没有注入记忆卡');
@@ -34,6 +38,9 @@ assert.match(scheduler, /memoryCardBlockForBili\(\)/, 'B站记忆卡块没有接
 
 // 3) 插件：定时维护 + 控制台 API + 生命周期清理。
 assert.match(index, /startMemoryCardTimer\(\{ log: pluginLog, callBridge \}\)/, '插件没有启动记忆卡定时维护');
+assert.match(memoryPlugin, /function cardRetiredNow\(/, '插件没有判断旧卡是否退役');
+assert.match(memoryPlugin, /if \(retired\) \{/, '退役后没有清空注入产物');
+assert.match(memoryPlugin, /if \(cardRetiredNow\(\)\) return '';/, '退役后 memoryCardPromptBlock 仍返回旧卡');
 assert.match(index, /\/memory-card/, '插件缺少记忆卡 API 路由');
 assert.match(index, /handleMemoryCard/, '插件缺少记忆卡处理器');
 assert.match(index, /memoryCard: memoryCardStatusNow\(\)/, '概览没有记忆卡状态');

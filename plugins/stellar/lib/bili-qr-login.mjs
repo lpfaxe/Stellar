@@ -199,6 +199,9 @@ function cookieHeaderOf(cookies) {
   return parts.join('; ');
 }
 
+// 网络不通与「B站 明确说未登录」必须分开：前者不能判成 cookie 过期（否则一次网络抖动就停掉生物钟）。
+const NAV_NETWORK_ERROR = Object.freeze({ networkError: true });
+
 async function navAccount(cookies) {
   const cookie = cookieHeaderOf(cookies);
   if (!cookie) return null;
@@ -217,7 +220,7 @@ async function navAccount(cookies) {
     if (!data?.data?.isLogin || !data.data.mid) return null;
     return { mid: String(data.data.mid), name: String(data.data.uname ?? '') };
   } catch {
-    return null;
+    return NAV_NETWORK_ERROR;
   } finally {
     clearTimeout(timer);
   }
@@ -243,11 +246,18 @@ export async function verifyStoredCredentials(target = 'owner') {
     return { ok: false, code: 'bili.bad-credentials', error: '凭据文件读不出来或缺少 SESSDATA', hint: '点「换号（清除旧凭据）」后重新扫码' };
   }
   const account = await navAccount({ SESSDATA: cred.sessdata, bili_jct: cred.bili_jct, buvid3: cred.buvid3 });
+  if (account && account.networkError) {
+    return {
+      ok: false, code: 'bili.network',
+      error: '连不上 B站（网络不通或超时），这次不确定登录是否还有效',
+      hint: '先检查网络/代理，过一会儿再核查一次',
+    };
+  }
   if (!account) {
     return {
       ok: false, code: 'bili.cookie-expired',
-      error: 'B站 返回“未登录”（cookie 过期、被踢下线，或网络不通）',
-      hint: '先确认网络能访问 api.bilibili.com；仍失败就重新扫码登录',
+      error: 'B站 明确返回“未登录”：cookie 过期或被踢下线',
+      hint: '到「B站」页重新扫码登录',
     };
   }
   if (cred.mid && String(cred.mid) !== String(account.mid)) {
@@ -449,7 +459,7 @@ export async function pollQrLogin(id) {
     }
     if (cookies.SESSDATA && cookies.bili_jct) {
       const account = await navAccount(cookies);
-      if (account) {
+      if (account && !account.networkError) {
         const cfg = readBiliConfig().config ?? {};
         const verdict = validateQrAccount({
           target: session.target,

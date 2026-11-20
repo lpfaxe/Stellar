@@ -1,4 +1,4 @@
-﻿<#
+<#
   给这台笔记本开「开机自动登录」，让 06:30 的记忆复核在断电恢复后能准点跑。
 
   背景：主人所在地 0 点后断电断网、早上 6 点恢复供电。
@@ -19,7 +19,7 @@ param([switch]$Check, [switch]$Apply, [switch]$Revert)
 $ErrorActionPreference = 'Stop'
 $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 $user = 'user'
-$backupDir = 'D:\' + [char]0x684C + [char]0x9762 + '\Dsh\Robot\_archive\backups\autologon-2026-11-13'
+$backupDir = Join-Path $env:USERPROFILE 'stellar-autologon-backup'
 
 function Show-Current {
   $v = Get-ItemProperty $key

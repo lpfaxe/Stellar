@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url'
 // lib/ 的上一级才是面板根目录（public、panel-token.txt 都在那儿）
 export const PANEL_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 export const __dirname = PANEL_ROOT
-export const PORT = Number(process.env.STELLAR_PANEL_PORT || process.env.SURFCORE_PANEL_PORT || 3300)
+export const PORT = Number(process.env.STELLAR_PANEL_PORT || 3300)
 // 默认只听本机回环（127.0.0.1）。面板对外只走 cloudflared 隧道 —— 那条会被判成 public、默认只读。
 // 为什么不再默认 '::'：绑 '::' 等于把面板直接挂到公网 IPv6 上，谁能扫到端口谁就能进登录页，
 // 而本机是非管理员、加不了防火墙规则，只能靠口令硬扛。要让同一 WiFi 的手机直连，
 // 显式设 STELLAR_PANEL_HOST=0.0.0.0（或 '::'）再开。
-export const HOST = process.env.STELLAR_PANEL_HOST || process.env.SURFCORE_PANEL_HOST || '127.0.0.1'
+export const HOST = process.env.STELLAR_PANEL_HOST || '127.0.0.1'
 export const HOME = process.env.USERPROFILE || os.homedir()
 export const DSH_HOME = process.env.DSH_HOME || path.join(HOME, '.dsh')
 export const SURF = process.env.STELLAR_DATA_DIR || path.join(DSH_HOME, 'stellar')
@@ -40,11 +40,11 @@ export const LOGS = {
   panel: PANEL_LOG
 }
 // SnowLuma 的安装位置各家不同：优先环境变量，其次常见路径，最后留空（相关按钮会提示没找到）。
-export const SNOW = process.env.STELLAR_SNOWLUMA_DIR || (['D:/SnowLuma', path.join(HOME, 'SnowLuma')].find((d) => { try { return fs.existsSync(d) } catch { return false } }) || '')
+export const SNOW = process.env.STELLAR_SNOWLUMA_DIR || (['C:/SnowLuma', path.join(HOME, 'SnowLuma'), path.join(HOME, 'AppData', 'Local', 'Programs', 'SnowLuma')].find((d) => { try { return fs.existsSync(d) } catch { return false } }) || '')
 export const NODE = process.execPath
-export const DSH_EXE = process.env.STELLAR_DSH_EXE || process.env.SURFCORE_DSH_EXE || findDshExe()
+export const DSH_EXE = process.env.STELLAR_DSH_EXE || findDshExe()
 function findDshExe() {
-  const guess = ['D:/dsh/DeepSeek Harness.exe', path.join(HOME, 'AppData', 'Local', 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe')]
+  const guess = ['C:/Program Files/DeepSeek Harness/DeepSeek Harness.exe', path.join(HOME, 'AppData', 'Local', 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe')]
   for (const f of guess) { try { if (fs.existsSync(f)) return f } catch {} }
   return ''
 }

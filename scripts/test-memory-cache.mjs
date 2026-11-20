@@ -84,7 +84,7 @@ test('桥接自己的系统提示不进出站记忆（2026-11-18 的 502 横幅�
   // 事故原样：她「发」了这条错误横幅，对方没回 → 单边 → 降级成零碎记忆。
   const banner = '⚠️ agent 处理出错：DeepSeek Messages request failed (502)';
   assert.equal(isSystemNotice(banner), true);
-  assert.equal(cacheOutbound({ conversationKey: 'private:2474013276', text: banner, at: Date.now(), selfUserId: '2601728971' }, () => {}), null);
+  assert.equal(cacheOutbound({ conversationKey: 'private:1000000004', text: banner, at: Date.now(), selfUserId: '1000000002' }, () => {}), null);
   assert.equal(cacheOutbound({ conversationKey: 'private:1', text: '⏹️ 已停止', at: Date.now() }, () => {}), null);
   assert.equal(cacheOutbound({ conversationKey: 'private:1', text: '🔐 agent 请求审批：stellar_bili_post', at: Date.now() }, () => {}), null);
   // 她真正说的话里也可能带 ⚠️，但不能按「像不像系统话」误杀

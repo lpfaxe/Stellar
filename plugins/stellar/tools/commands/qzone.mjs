@@ -666,6 +666,9 @@ const PUBLIC_TTL_MS = 24 * 3600 * 1000
 const QZP = qz.public ?? {}
 const PUBLIC_LIKE_LIMIT = Math.max(0, Number(QZP.likeLimit ?? 3) || 0)
 const PUBLIC_COMMENT_LIMIT = Math.max(0, Number(QZP.commentLimit ?? 3) || 0)
+// 2026-11-20（主人）：一天**总共**能看几条。以前 seenTarget 只当「每次 list 拉几条」，
+// 她在同一轮里连跑 4 次 list → 账本 40 条 = 上限的 4 倍，谁都没拦。
+const PUBLIC_SEEN_LIMIT = Math.max(1, Math.min(60, Number(QZP.seenTarget ?? 10) || 10))
 
 function publicId(feed) {
   return String(feed?.cell_common?.feed_id ?? '')
@@ -929,7 +932,17 @@ async function fetchPublicFeeds(want = 10) {
 async function publicList() {
   // 默认看几条 = qzone.public.seenTarget（控制台「她每天做什么」里改的），缺省 10；显式 --n 优先。
   const seenDefault = Math.max(1, Math.min(30, Number(QZP.seenTarget ?? 10) || 10))
-  const want = Math.max(1, Math.min(30, Number(args.get('n') ?? args.get('num') ?? seenDefault) || seenDefault))
+  const asked = Math.max(1, Math.min(30, Number(args.get('n') ?? args.get('num') ?? seenDefault) || seenDefault))
+  // 今日总量的硬闸：账本里已有的条数算「今天已经看过」，剩下的才是这次能拉的。
+  // 公开流每次请求返回的都是新的一批，所以重复 list 确实会越看越多 —— 必须在这里拦。
+  const seenToday = readPublicDay().items.length
+  const left = Math.max(0, PUBLIC_SEEN_LIMIT - seenToday)
+  if (left <= 0) {
+    console.error('✗ 今天已经看过 ' + seenToday + ' 条公开动态，到上限了（qzone.public.seenTarget = ' + PUBLIC_SEEN_LIMIT + '）。')
+    console.error('  不要再拉新的一批：用 qzone public score / like / comment 处理已经拉下来的那些，然后 qzone public today 收尾。')
+    process.exit(3)
+  }
+  const want = Math.min(asked, left)
   // 每条动态最多下几张图（0=不下）。上限 3 —— 一次 10 条全带图会太贵，也看不完。
   const wantImages = Math.max(0, Math.min(3, Number(args.get('images') ?? 0) || 0))
   const { feeds, hasMore } = await fetchPublicFeeds(want)
@@ -976,7 +989,10 @@ async function publicList() {
     for (const g of r.images) console.log('  🖼 ' + g)
   })
   console.log('\n点赞：qzone public like --id <id> --dry|--go；评论：qzone public comment --id <id> --text "…" --dry|--go')
-  console.log('今天已赞 ' + reactedToday('public-like') + '/' + PUBLIC_LIKE_LIMIT + ' 条、已评 ' + reactedToday('public-comment') + '/' + PUBLIC_COMMENT_LIMIT + ' 条')
+  console.log('今天已看 ' + (seenToday + rows.length) + '/' + PUBLIC_SEEN_LIMIT + ' 条公开动态（这次 ' + rows.length + ' 条）；已赞 ' + reactedToday('public-like') + '/' + PUBLIC_LIKE_LIMIT + ' 条、已评 ' + reactedToday('public-comment') + '/' + PUBLIC_COMMENT_LIMIT + ' 条')
+  if (seenToday + rows.length >= PUBLIC_SEEN_LIMIT) {
+    console.log('⚠️ 今天看够了（上限 ' + PUBLIC_SEEN_LIMIT + ' 条）：别再 list，把这一批处理完就收尾。')
+  }
 }
 
 async function publicMedia() {

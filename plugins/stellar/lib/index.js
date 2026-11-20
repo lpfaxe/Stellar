@@ -189,11 +189,11 @@ export function apply(ctx) {
   // 这里重新排队，用户下次退出 DSH 就会应用（2026-10-28 反馈：点几次都还是旧版本）。
   try { resumePendingApply({ stateDir: STATE_DIR, pluginLog }); } catch (error) { pluginLog('[updates] 启动重试失败：', String(error?.message ?? error)); }
 
-  // 历史迁移期的一次性逻辑**已整段删除**。
+  // 2026-10-22 起：`Stellar` 迁移期的一次性逻辑**已整段删除**。
   // 原因：当年为了把旧工作区改名，留了「有 .legacy-workspace 标记就删/移旧目录」的代码；
   // 这类「启动时按标记动用户目录」的代码风险远大于收益（误删不可逆），迁移也早已完成。
   // 现在的约定：插件**不碰**任何工作区目录；清理旧目录一律由人工或用脚本先备份再动。
-  
+  // 相关事故与处置见 CHANGELOG.md #1/#3。
 
   const platforms = new PlatformRegistry();
   platforms.setStatus('qq', () => bridgeStatus());
@@ -215,6 +215,27 @@ export function apply(ctx) {
   let schedulerStatus = { running: false, startedAt: null, lastError: null, lastTickAt: null };
   // 关闭温柔模式并丢弃上下文时递增：给 B站 一个全新 DSH sessionId，旧历史不再带入。
   let biliSessionEpoch = 0;
+  // 2026-11-20：epoch 以前只在内存里，DSH 一重启就退回旧的大会话（bili-whale-*，当时上下文已 40 万 token，
+  // 每轮光缓存命中就要钱，一次 DSH 重启后的首轮还会整段重算）。改成落盘，重启后接着用新会话。
+  const BILI_EPOCH_FILE = path.join(STATE_DIR, 'bili-session-epoch.json');
+  function readBiliSessionEpoch() {
+    try {
+      const raw = JSON.parse(fs.readFileSync(BILI_EPOCH_FILE, 'utf8'));
+      const n = Number(raw && raw.epoch);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch {
+      return 0;
+    }
+  }
+  function writeBiliSessionEpoch(epoch, reason) {
+    try {
+      fs.mkdirSync(STATE_DIR, { recursive: true });
+      fs.writeFileSync(BILI_EPOCH_FILE, JSON.stringify({ epoch, reason, at: new Date().toISOString() }, null, 2));
+    } catch (error) {
+      pluginLog('写 bili-session-epoch.json 失败：', String(error && error.message || error));
+    }
+  }
+  biliSessionEpoch = readBiliSessionEpoch();
   let syncTimer = null;
   let memoryCardTimer = null;
 let memoryDbTimer = null;
@@ -279,11 +300,11 @@ let memoryDbTimer = null;
     },
   });
 
-  // ── 每日 token 额度 / 用量采集 ──────────────────────────────────────────
+  // ── 每日 token 额度 / 用量采集（2026-11-11 从 Stellar 移植回来）──────────
   // 插件是唯一能同时看到 QQ、B站、黑话学习会话的地方：用 session/event 实时累计，
   // 设置页展示、B站调度器拦截、QQ 桥接（读 daily 快照）都共用这一份。
   // 2026-11-11 之前这段被 feature-strip 剥掉了，快照冻结在 08:47，面板把 6.27M token
-  // 全算成 B站（qq 显示 0）—— 修法是把采集器装回来。
+  // 全算成 B站（qq 显示 0）—— 修法是把采集器装回来，见 CHANGELOG.md
   const tokenBudget = createTokenBudgetService({
     ctx,
     dshHome: DSH_HOME,
@@ -406,10 +427,107 @@ let memoryDbTimer = null;
     scheduler = null;
     schedulerStatus = idleSchedulerStatus('reset');
     biliSessionEpoch = Date.now();
+    writeBiliSessionEpoch(biliSessionEpoch, 'manual-reset');
     const next = startSchedulerNow();
     return { reset: true, sessionId: next?.sessionId ?? null, started: next?.running === true };
   }
   startSchedulerNow();
+
+  // ── 上下文预算守门（2026-11-20）────────────────────────────────────────
+  // B站 会话是长驻的：从 11-16 一路续跑到 40 万 token，每轮光缓存命中就 0.4 元/天；
+  // DSH 一重启，下一次唤醒还要把整段前缀重算（实测单次 0.43 元）。
+  // 这里量的是**真实用量**（context-telemetry 里的 totalTokens），过线且她闲着就换新会话。
+  const BILI_ROTATE_AT = 120_000;
+  const BILI_CTX_FILE = path.join(STATE_DIR, 'context-telemetry-plugin.jsonl');
+  function biliTurnContext(wantSessionId) {
+    if (!wantSessionId) return { last: null, ctx: 0 };
+    try {
+      const st = fs.statSync(BILI_CTX_FILE);
+      const len = Math.min(st.size, 256 * 1024);
+      const buf = Buffer.alloc(len);
+      const fd = fs.openSync(BILI_CTX_FILE, 'r');
+      try { fs.readSync(fd, buf, 0, len, st.size - len); } finally { fs.closeSync(fd); }
+      const lines = buf.toString('utf8').split('\n');
+      if (st.size > len) lines.shift();
+      let last = null;
+      let ctx = 0;
+      for (const line of lines) {
+        if (!line || line.indexOf(wantSessionId) < 0) continue;
+        let row = null;
+        try { row = JSON.parse(line); } catch { continue; }
+        if (String(row && row.sessionId) !== wantSessionId) continue;
+        last = row;
+        if (row.kind === 'turn_start') ctx = 0;
+        if (row.kind === 'model_call') {
+          const t = Number(row.totalTokens);
+          if (Number.isFinite(t) && t > ctx) ctx = t;
+        }
+      }
+      return { last, ctx };
+    } catch {
+      return { last: null, ctx: 0 };
+    }
+  }
+  let lastBiliRotateAt = 0;
+  function biliContextWatch() {
+    if (!scheduler || !schedulerStatus.running) return;
+    const want = String(schedulerStatus.sessionId || '');
+    const measured = biliTurnContext(want);
+    if (!measured.last || measured.ctx < BILI_ROTATE_AT) return;
+    // 只在「上一轮已经收尾并且安静了 60 秒」时才动，别把正在写的话掐掉。
+    const idle = measured.last.kind === 'turn_end' && Date.now() - Number(measured.last.ts || 0) > 60_000;
+    if (!idle) return;
+    if (Date.now() - lastBiliRotateAt < 30 * 60_000) return;
+    lastBiliRotateAt = Date.now();
+    pluginLog('B站 会话上下文 ' + Math.round(measured.ctx / 1000) + 'K 已超 ' + Math.round(BILI_ROTATE_AT / 1000) + 'K，换一个新会话（旧上下文不再带入）');
+    void resetBiliSchedulerSession()
+      .then((r) => pluginLog('B站 会话已轮换：' + (r && r.sessionId ? r.sessionId : '（未启动）')))
+      .catch((error) => pluginLog('B站 会话轮换失败：', String(error && error.message || error)));
+  }
+  const biliContextTimer = setInterval(biliContextWatch, 5 * 60_000);
+  biliContextTimer.unref?.();
+
+  // ── B站 登录态守门（2026-11-20）──────────────────────────────────────────
+  // 事故：cookie 11-08 就过期了（nav 返回 -101），但启动只看「凭据文件在不在」，
+  // 于是生物钟照跑：每次唤醒先撞 -101，再用 shell 绕，一天 16 轮、近 2700 万 token 白烧。
+  // 这里每 15 分钟真问一次 nav：连着两次「未登录」就停掉生物钟，等重新扫码后再起。
+  const BILI_LOGIN_CHECK_MS = 15 * 60_000;
+  const BILI_LOGIN_DEAD_CODES = new Set(['bili.no-credentials', 'bili.bad-credentials', 'bili.cookie-expired', 'bili.mid-mismatch']);
+  let biliLoginFails = 0;
+  let biliLoginChecking = false;
+  async function biliLoginWatch() {
+    if (!scheduler || !schedulerStatus.running) return;
+    if (biliLoginChecking) return;
+    biliLoginChecking = true;
+    try {
+      const check = await verifyStoredCredentials('fish').catch(() => null);
+      if (check && check.ok) {
+        if (biliLoginFails) pluginLog('B站 登录态恢复正常');
+        biliLoginFails = 0;
+        return;
+      }
+      const code = String(check?.code || '');
+      // 「明确失效」（凭据没了/读不出、B站 直说未登录、号的 mid 对不上）立刻停；
+      // 只有网络不通才要连续两次——别让一次抖动把生物钟关掉。
+      biliLoginFails = BILI_LOGIN_DEAD_CODES.has(code) ? 2 : biliLoginFails + 1;
+      if (biliLoginFails < 2) {
+        pluginLog('B站 登录态看起来不对（' + (check?.error || '未知原因') + '），15 分钟后再确认一次');
+        return;
+      }
+      stopSchedulerNow();
+      schedulerStatus = idleSchedulerStatus('cookie-expired');
+      schedulerStatus.lastError = check?.error || 'B站 登录已失效';
+      pluginLog('B站 登录已失效（' + (check?.error || '原因不明') + '）：生物钟已停，去「设置 → B站」重新扫码登录，登录后会自动重新启动');
+    } catch (error) {
+      pluginLog('B站 登录态检查失败：', String(error?.message ?? error));
+    } finally {
+      biliLoginChecking = false;
+    }
+  }
+  const biliLoginTimer = setInterval(biliLoginWatch, BILI_LOGIN_CHECK_MS);
+  biliLoginTimer.unref?.();
+  // 启动后 20 秒先查一遍：过期就别让它空转一个小时。
+  setTimeout(() => { void biliLoginWatch(); }, 20_000).unref?.();
 
   // 管理员称呼的存量修复：v0.7.2 及以前只把 ownerQQ 投影到 QQ config.json，
   // displayName/biliName/gentle 留在 unified，桥接独立进程读不到 → 叫“管理员”。
@@ -913,7 +1031,7 @@ let memoryDbTimer = null;
     if (result.saved.unified && process.env.STELLAR_SKIP_AUTOSTART !== '1') {
       if (!afterPlatformStart.bili && beforePlatformStart.bili) {
         // 用 retire 而不是 stop：除了清定时器，还取消当前在途的 DSH 回合，
-        // 否则关掉开关后她这一轮仍可能把消息发出去。
+        // 否则关掉开关后她这一轮仍可能把消息发出去（见 PITFALLS #62）。
         try { await scheduler?.retire?.(); } catch (error) { result.warnings.push(`取消 B站 在途回合失败：${error?.message ?? error}`); }
         scheduler = null;
         schedulerStatus = idleSchedulerStatus('disabled');
@@ -3133,7 +3251,7 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
 
   // ── QQ 鱼群保护（设置页「最近触发」）────────────────────────────────────
   // 桥接把每次新触发写进 social-v2.json 的 fishGuardLog（每群最多 30 条）；
-  // 设置页只读这个文件，不再靠翻活动日志。见 历史踩坑记录。
+  // 设置页只读这个文件，不再靠翻活动日志。见 PITFALLS #30 / #31。
   function handleQqFishGuard(res) {
     try {
       const file = path.join(QQ_STATE_DIR(), 'social-v2.json');
@@ -3930,6 +4048,7 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
     if (characterTimer) clearInterval(characterTimer);
     if (syncTimer) clearInterval(syncTimer);
     if (bridgeRepairTimer) clearInterval(bridgeRepairTimer);
+    if (biliContextTimer) clearInterval(biliContextTimer);
     void extensionHost.deactivateAll();
     for (const dispose of disposers) { try { dispose(); } catch {} }
   });

@@ -88,7 +88,13 @@ export function warmCatalog(ownerId, opts = {}) {
     .then((mod) => {
       const data = mod.catalog({ ownerId: id, limit: 50 });
       // 侧写单独一行放最前（设计 §7.2），所以这里不把 persona 拼进目录块。
-      const text = mod.formatCatalogForModel({ ...data, persona: '' }, { titles, maxChars });
+      const text = mod.formatCatalogForModel({ ...data, persona: '' }, {
+        titles,
+        maxChars,
+        // 名册里要标出「她」和「主人」：这两个身份不能靠猜名字（群里可能有人昵称就叫主人）。
+        ownerQQ: String(opts.ownerQQ || ''),
+        selfId: String(opts.selfId || ''),
+      });
       const next = {
         ready: true,
         text: String(text || ''),
@@ -114,6 +120,25 @@ export function warmCatalog(ownerId, opts = {}) {
     .finally(() => { catalogInflight.delete(id); });
   catalogInflight.set(id, task);
   return task;
+}
+
+/**
+ * 等一次目录预热完成（异步，唤醒路径专用）。
+ *
+ * 为什么需要：warmCatalog 是 fire-and-forget，buildWakePromptV2 紧接着同步读快照，
+ * 进程刚起/刚重启时那次读必然是空 → 退回旧记忆卡。实测 11-15 的 22 次群/私唤醒里
+ * 仍有 8 次（36%）落在旧卡上。这里给唤醒路径一个有限等待的口子，
+ * 调用方必须自己加超时（不能因为 sqlite 卡住就不回消息）。
+ *
+ * 返回快照对象（可能 ready=false，例如库打不开），永不抛错。
+ */
+export async function awaitCatalog(ownerId, opts = {}) {
+  try {
+    await warmCatalog(ownerId, opts);
+  } catch (error) {
+    noteError(error, opts.log);
+  }
+  return catalogSnapshot(ownerId);
 }
 
 /** 同步读目录快照：{ ready, text, fragments, topics, persona, at, error } 或 null。 */

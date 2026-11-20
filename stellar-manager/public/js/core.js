@@ -23,10 +23,8 @@ function switchTab(name) {
 document.querySelectorAll('#tabbar button').forEach(function (b) {
   b.onclick = function () { switchTab(b.dataset.tab); };
 });
-// 旧键 surfcore-tab 只读一次做迁移（历史上这个面板叫 surfcore-manager），之后只写 stellar-tab
 try {
-  state.tab = localStorage.getItem('stellar-tab') || localStorage.getItem('surfcore-tab') || 'overview';
-  if (localStorage.getItem('surfcore-tab')) localStorage.removeItem('surfcore-tab');
+  state.tab = localStorage.getItem('stellar-tab') || 'overview';
 } catch (e) {}
 try {
   var qTab = new URLSearchParams(location.search).get('tab');

@@ -56,7 +56,8 @@ function dshRunning() {
 
 /** 换入后冒烟：Electron 用 asar 内的 fs 读一个文件。integrity fuse 若开启，这里会立刻失败。 */
 function smokeTest() {
-  const r = spawnSync(EXE, ['-e', "process.stdout.write(require('fs').readFileSync('D:/deepseek/resources/app.asar/dsh/package.json','utf8').slice(0,12))"], {
+  const asarPkg = path.join(path.dirname(EXE), 'resources', 'app.asar', 'dsh', 'package.json');
+  const r = spawnSync(EXE, ['-e', `process.stdout.write(require('fs').readFileSync(${JSON.stringify(asarPkg)},'utf8').slice(0,12))`], {
     encoding: 'utf8',
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     timeout: 30000,

@@ -1,5 +1,5 @@
 /**
- * Stellar 插件侧的「今日 token 用量」采集器。
+ * Stellar 插件侧的「今日 token 用量」采集器（2026-11-11 从 Stellar 移植回来）。
  *
  * 为什么要插件自己采，而不是只读 QQ 桥接的账本：
  *   · 桥接只 follow QQ 会话，看不到 `bili-whale*`（B站 生物钟）和它们的子会话；
@@ -85,6 +85,8 @@ function budgetFallbackFromQqConfig(cfg) {
   return {
     qq: { cny, tokens: null },
     bili: { cny: null, tokens: null },
+    // 好友爱看：默认不限（它跟 B站 一样是后台自己刷的，靠总额兜底）。
+    feed: { cny: null, tokens: null },
     other: { cny: null, tokens: null },
     total: { cny: null, tokens: null },
   };
@@ -191,6 +193,8 @@ export function createTokenBudgetService({
     const learnerId = readLearnerId();
     if (learnerId && id === learnerId) return 'other';
     if (/^bili-whale(?:-|$)/.test(id)) return 'bili';
+    // 好友爱看（QQ 空间公开推荐流）从 2026-11-20 起跑在自己的会话里，单独记一类账。
+    if (/^feed-whale(?:-|$)/.test(id)) return 'feed';
     const parent = header.parentSession ?? summary.parentSessionId;
     if (parent) {
       const parentCategory = sessionCategory.get(String(parent)) ?? state.sessions[String(parent)]?.category;
@@ -728,7 +732,7 @@ export function createTokenBudgetService({
   }
 
   function addLimit(scope, unit, amount) {
-    if (!SCOPES.includes(scope)) throw new Error('scope 必须是 qq / bili / other / total');
+    if (!SCOPES.includes(scope)) throw new Error('scope 必须是 qq / bili / feed / other / total');
     if (unit !== 'cny' && unit !== 'tokens') throw new Error('unit 必须是 cny / tokens');
     const delta = Number(amount);
     if (!Number.isFinite(delta) || delta <= 0) throw new Error('加额度必须是正数');
@@ -743,6 +747,7 @@ export function createTokenBudgetService({
     return saveLimits({
       qq: { cny: null, tokens: null },
       bili: { cny: null, tokens: null },
+      feed: { cny: null, tokens: null },
       other: { cny: null, tokens: null },
       total: { cny: null, tokens: null },
     });

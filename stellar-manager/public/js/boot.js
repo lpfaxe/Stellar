@@ -5,6 +5,7 @@ loadStatus().then(loadCapabilities).then(loadLog).then(loadReports).then(loadTod
   .then(function () { return window.loadQzonePublic ? loadQzonePublic() : null; })
   .then(function () { return window.loadBiliVideos ? loadBiliVideos() : null; })
   .then(function () { return window.loadWebImages ? loadWebImages() : null; })
+  .then(function () { return window.loadFiles ? loadFiles() : null; })
   .then(function () { return window.loadDailyTasks ? loadDailyTasks() : null; })
   .then(loadCost)
   .then(function () { return window.loadMemoryDb ? loadMemoryDb() : null; })
@@ -38,6 +39,7 @@ every(60000, loadDynamics);
 every(60000, function () { if (window.loadQzonePublic) loadQzonePublic(); });
 every(60000, function () { if (window.loadBiliVideos) loadBiliVideos(); });
 every(60000, function () { if (window.loadWebImages) loadWebImages(); });
+every(60000, function () { if (window.loadFiles) loadFiles(); });
 every(60000, function () { if (window.loadDailyTasks) loadDailyTasks(); });
 every(20000, function () { if (window.loadMemoryDb) loadMemoryDb(); });
 every(20000, loadLog);

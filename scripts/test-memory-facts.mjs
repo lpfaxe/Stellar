@@ -30,8 +30,8 @@ test.after(() => {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
 });
 
-test('fact 表建好了（SCHEMA_VERSION 3）', () => {
-  assert.equal(mod.SCHEMA_VERSION, 3);
+test('fact 表建好了（SCHEMA_VERSION 4）', () => {
+  assert.equal(mod.SCHEMA_VERSION, 4);
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
   assert.ok(names.includes('fact'), '缺少 fact 表');
 });

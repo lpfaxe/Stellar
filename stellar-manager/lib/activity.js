@@ -12,17 +12,17 @@ const CALL_FILE = path.join(REPO, 'state', 'tool-calls.jsonl')
 const KIND_RULES = [
   [/(^|__)qq_send_message$|(^|__)qq_send_image$|qq_get_message_images|qq_get_prompt|qq_mark_read|qq_close_conversation|qq_send_face|qq_send_poke/, 'chat', '回消息'],
   [/qq_wait_for_messages/, 'wait', '在等你说话'],
-  [/surfcore_qzone_post|surfcore_qzone_react|surfcore_qzone_delete_comment/, 'qzone', '在空间互动'],
-  [/surfcore_qzone_read|qzone/, 'qzone', '看 QQ 空间'],
-  [/surfcore_bili_post|dynamic_image|(^|__)dynamic$/, 'dynamic', '发 B 站动态'],
-  [/surfcore_bili_watch|surfcore_bili_comments|surfcore_bili_feed|surfcore_bili_my|surfcore_bili_history|surfcore_bili_comment|bili|debrief|feed/, 'bili', '逛 B 站'],
+  [/stellar_qzone_post|stellar_qzone_react|stellar_qzone_delete_comment/, 'qzone', '在空间互动'],
+  [/stellar_qzone_read|qzone/, 'qzone', '看 QQ 空间'],
+  [/stellar_bili_post|dynamic_image|(^|__)dynamic$/, 'dynamic', '发 B 站动态'],
+  [/stellar_bili_watch|stellar_bili_comments|stellar_bili_feed|stellar_bili_my|stellar_bili_history|stellar_bili_comment|bili|debrief|feed/, 'bili', '逛 B 站'],
   [/image_generate/, 'image', '画图'],
   [/report/, 'report', '写日报'],
-  [/surfcore_file_read|spill_read/, 'read', '读长文档'],
+  [/stellar_file_read|spill_read/, 'read', '读长文档'],
   [/web_search|web_fetch|read_page|x_search/, 'search', '查资料'],
-  [/surfcore_person_memory|surfcore_contacts|surfcore_memory_read/, 'memory', '翻记忆'],
-  [/surfcore_chat_history|surfcore_outbox|outbox/, 'audit', '查聊天记录'],
-  [/qq_set_wake_config|surfcore_set_wake|wake_config/, 'wake', '在安排下次醒来'],
+  [/stellar_person_memory|stellar_contacts|stellar_memory_read/, 'memory', '翻记忆'],
+  [/stellar_chat_history|stellar_outbox|outbox/, 'audit', '查聊天记录'],
+  [/qq_set_wake_config|stellar_set_wake|wake_config/, 'wake', '在安排下次醒来'],
 ]
 
 function kindOf(tool) {

@@ -37,7 +37,7 @@ function add(role, text, at, extra = {}) {
   return db.append({
     conversationKey: extra.key || 'private:111',
     ownerId: extra.ownerId || '111',
-    speakerId: role === 'self' ? '2601728971' : (extra.ownerId || '111'),
+    speakerId: role === 'self' ? '1000000002' : (extra.ownerId || '111'),
     speakerName: role === 'self' ? '' : '阿星',
     role,
     kind: 'text',

@@ -73,6 +73,7 @@ import {
   buildHandoffBlock, handoffIsUseful, normalizeRolloverConfig, shouldRollSession,
 } from './session-rollover.js';
 import { batchWindowFor, normalizeBatchWindows } from './wake-batch.js';
+import { shouldFollowupWake, shouldChimeIn } from './wake-followup.js';
 import { evaluateLocalFilter, normalizeLocalFilter, FILTER_LABELS } from './wake-filter.js';
 import { createTurnGuard } from './turn-guard.js';
 import { createGateEventStore } from './gate-events.js';
@@ -125,7 +126,7 @@ import { checkProfileMcp, presetMismatch } from './dsh-health.js';
 // 记忆库写入侧（旁路）：只动态 import 真库，失败不抛到消息链路（见 memory-cache.js 头注释）。
 import { cacheInbound, cacheOutbound } from './memory-cache.js';
 // 记忆库读取侧（同样只动态 import 真库）：唤醒注入目录与侧写，同步读缓存、后台刷新。
-import { catalogSnapshot, factSnapshot, personaSnapshot, styleRefBlockFor, styleSliceSnapshot, warmCatalog, warmFacts, warmPersona, warmStyleSlices } from './memory-read.js';
+import { awaitCatalog, catalogSnapshot, factSnapshot, personaSnapshot, styleRefBlockFor, styleSliceSnapshot, warmCatalog, warmFacts, warmPersona, warmStyleSlices } from './memory-read.js';
 import { detectStyleTags, nextStyleStreak } from './style-refs.js';
 import { createContextTelemetry } from './context-telemetry.js';
 import { createBiliDynamicsSync } from './bili-dynamics.js';
@@ -358,7 +359,7 @@ function memoryCacheEnabled() {
 /**
  * 模式拼写的**唯一**归一入口（输入边界）。
  *
- * `simulation` 是规范名（对用户只暴露 `closed-agent` / `simulation`），
+ * `simulation` 是规范名（Stellar_PLAN.md §2.1：对用户只暴露 `closed-agent` / `simulation`），
  * `chat` / `reserved` / `reserved2` 是历史拼写 —— 必须继续被**接受**（线上桥接持久化的全局值
  * 就是 `reserved2`），但进程内部一律用历史拼写存储与比较：`currentMode === 'reserved2'` 这类
  * 判断遍布发送闸门、定时器与 preset 解析，把规范名直接塞进 `currentMode` 会让它们全部变成假。
@@ -1101,7 +1102,7 @@ function alignmentBriefBlock() {
   }
 }
 
-// 读取角色/模式状态：{"role": "示例角色", "mode": "active"|"silent"}
+// 读取角色/模式状态：{"role": "傲娇助手", "mode": "active"|"silent"}
 // 角色人格系统激活时，角色名以当前角色为准；mode 仍由这里保存（与角色无关）。
 function readRoleState() {
   const base = readJsonSafe(ROLE_STATE_FILE, { role: null, mode: 'active' });
@@ -1234,9 +1235,7 @@ function loadConfig() {
       surrenderProbability: 0,        // 已弃用：桥接不再直接生成退让短句（避免割裂），保留字段兼容旧配置
       // 摘要与展示
       maxReplyChars: 500,             // 单条 QQ 消息安全长度上限（防 AI 出 bug；分句交给 AI 用空格控制）
-      // 出厂为空：角色名/自称呼由使用者自己定，桥接不预设任何具体人格（见 roles/README.md）。
-      // 想让「叫名字必回」生效，在控制台「人格与角色」或 config.json 里填自己的角色名。
-      mustReplyKeywords: [],
+      mustReplyKeywords: ['deepseek', '小鲸鱼', '大肥鱼', '鲸鱼', 'd指导', '在吗'],
       // 真人式多消息分条发送：按空格分句，AI 用空格表示“这里要分成下一条”
       burstEnabled: true,             // 总开关：是否允许按空格拆成多条 QQ 消息
       burstIntervalMinMs: 1000,       // 条间随机间隔下限（毫秒）
@@ -1296,8 +1295,7 @@ function loadConfig() {
         recommendedSleepMinMs: 300000,
         recommendedSleepMaxMs: 7200000,
         recommendedProbability: 0.05,
-        // 出厂为空：这里填「叫这个就唤醒我」的词，通常是角色名 + 常用称呼。
-        recommendedKeywords: [],
+        recommendedKeywords: ['小鲸鱼', 'DeepSeek', 'deepseek', 'DS', 'D老师', 'd老师', 'D指导', 'd指导', 'D师傅', 'd师傅', '深度求索', '大肥鱼', '鲸鱼', 'DeepSeek V3', 'DeepSeek R1', 'R1'],
         recommendedAtMention: true,
         recommendedNameMention: true,
         recommendedQuestion: true,
@@ -1408,7 +1406,7 @@ function loadConfig() {
         wakeMessageLimit: 12,
         wakeRecentLimit: 4,
         wakeMaxChars: 6000,
-        // 唤醒快照从"最近"往回取：更早的未读折叠成一条计数。
+        // 唤醒快照从"最近"往回取：更早的未读折叠成一条计数（PITFALLS #76）。
         // false = 恢复旧行为（从最早未读开始塞，积压时会先回老消息）。
         wakeFoldOld: true,
         // ── 会话滚动（2026-11-04）────────────────────────────────────────────
@@ -2172,7 +2170,8 @@ function filesNoteTextV2(files) {
   return [
     '【这轮有文件】主人发来的文档，正文我还没替你读：',
     ...lines,
-    '要看内容就调 stellar_file_read（key 用本会话的，messageId 用上面的；没有 messageId 就传 name），PDF/Word/PPT/Excel/WPS 都能读。工具不在这轮的工具列表里，就直说「文件工具还没装上，要重启 DSH」，别猜文件里写了什么。'
+    '要看内容就调 stellar_file_read（key 用本会话的，messageId 用上面的；没有 messageId 就传 name），PDF/Word/PPT/Excel/WPS 都能读。工具不在这轮的工具列表里，就直说「文件工具还没装上，要重启 DSH」，别猜文件里写了什么。',
+    '主人说「存下来 / 收好 / 放进文件柜」时调 stellar_file_save（key 一样，messageId 用上面的）：真存进去才说存好了，没调工具就说「收好了」是骗人。'
   ].join('\n');
 }
 
@@ -5205,7 +5204,7 @@ function maybeApproveImageRequest(text, key) {
           try {
             res.end(fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8'));
           } catch {
-            res.end('控制台页面缺失：public/console.html');
+            res.end('控制台页面缺失：Stellar/public/console.html');
           }
           return;
         }
@@ -6579,7 +6578,7 @@ function maybeApproveImageRequest(text, key) {
           // wake：数值与字符串数组归一化
           if (body.wake && typeof body.wake === 'object') {
             merged.wake = { ...(current.wake ?? {}), ...body.wake };
-            for (const k of ['sleepMinMs', 'sleepMaxMs', 'recommendedSleepMinMs', 'recommendedSleepMaxMs', 'recommendedProbability', 'batchWindowMs', 'batchWindowPrivateMs', 'batchWindowDirectMs', 'maxWakePerMinute', 'maxWakePerHour', 'noActionLimit', 'backlogMaxSessions', 'maxWakeConfigReminders', 'preSleepWaitMs']) {
+            for (const k of ['sleepMinMs', 'sleepMaxMs', 'recommendedSleepMinMs', 'recommendedSleepMaxMs', 'recommendedProbability', 'batchWindowMs', 'batchWindowPrivateMs', 'batchWindowDirectMs', 'maxWakePerMinute', 'maxWakePerHour', 'noActionLimit', 'backlogMaxSessions', 'maxWakeConfigReminders', 'preSleepWaitMs', 'groupFollowupWindowMs', 'groupChimeMinGapMs', 'smallGroupMaxMembers']) {
               if (merged.wake[k] !== undefined) {
                 const n = Number(merged.wake[k]);
                 merged.wake[k] = Number.isFinite(n) ? n : current.wake?.[k] ?? 0;
@@ -6588,6 +6587,10 @@ function maybeApproveImageRequest(text, key) {
               }
             }
             if (merged.wake.recommendedProbability !== undefined) merged.wake.recommendedProbability = Math.min(1, Math.max(0, Number(merged.wake.recommendedProbability) || 0));
+            // 群聊续聊/插话两个概率也要夹到 [0,1]：写 2 不该变成「每条必醒」，写负数也不该变成关闭。
+            for (const k of ['groupFollowupProbability', 'groupChimeProbability']) {
+              if (merged.wake[k] !== undefined) merged.wake[k] = Math.min(1, Math.max(0, Number(merged.wake[k]) || 0));
+            }
             if (merged.wake.preSleepWaitEnabled !== undefined) merged.wake.preSleepWaitEnabled = merged.wake.preSleepWaitEnabled === true;
             if (merged.wake.recommendedDefaultInfinite !== undefined) merged.wake.recommendedDefaultInfinite = merged.wake.recommendedDefaultInfinite === true;
             if (merged.wake.recommendedPoke !== undefined) merged.wake.recommendedPoke = merged.wake.recommendedPoke === true;
@@ -6932,9 +6935,11 @@ function maybeApproveImageRequest(text, key) {
                 : (personaInjectionMode() === 'split' ? 'tone' : 'full');
               return { name: roleState.role ?? null, mode: personaMode, hint: currentMode === 'reserved2' ? currentRoleHintV2(key, personaMode) : currentRoleHint(key, personaMode) };
             })(),
-            memoryCard: memoryMode() === 'vector' ? '' : memoryCardPromptBlock(key),
-            memoryMode: memoryMode(),
-            memoryHint: memoryModeHint(memoryMode()),
+            // engine='db' 之后旧卡不进任何提示词（含这个调试接口）；memoryDb 告诉调用方现在是哪套。
+            memoryCard: memoryDbEngine() ? '' : (memoryMode() === 'vector' ? '' : memoryCardPromptBlock(key)),
+            memoryDb: memoryDbEngine(),
+            memoryMode: memoryDbEngine() ? 'db' : memoryMode(),
+            memoryHint: memoryDbEngine() ? '新记忆库（memory.db）：目录 + 重要事实 + 侧写' : memoryModeHint(memoryMode()),
             recommended: cfg.socialV2?.provideRecommendations === false ? null : {
               wake: cfg.socialV2?.wake ?? {},
               send: cfg.socialV2?.send ?? {},
@@ -7056,7 +7061,7 @@ function maybeApproveImageRequest(text, key) {
           const snapshotFiles = collectSnapshotFilesV2({ messages });
           // 有合并转发就顺手把正文读出来（她手里只有 id 标签，不替她读就是「只有壳」）。
           const forwardBlock = await forwardDigestForResult(key, forwardIds);
-          sendJson({ ok: true, key, unreadCount: st.unread.length, ...(snapshotFiles.length ? { files: snapshotFiles, filesHint: '这里有文件（文档）。读正文调 stellar_file_read：key 用本会话的，messageId 用 files[0].messageId（没有就传 name）；PDF/Word/PPT/Excel/WPS 都能读。别猜文件里写了什么。' } : {}), ...(forwardBlock ? { forwardDigest: forwardBlock.text, forwardHint: '合并转发的正文在 forwardDigest 里，已经按聊天记录展开过；直接理解内容，不用再调 qq_get_forward_msg，也别再说「看不到内容」。' } : {}), ...(stickerMatch ? { stickerMatch } : {}), ...(douyinLinks.length ? { douyinLinks, douyinHint: '这里有抖音链接：工具列表里有 stellar_douyin_watch 就用它读（url 用 douyinLinks[0]，comments=5），文案和热评都在返回里；没有就直说要重启 DSH，别用 web_fetch。' } : {}), ...(forwardIds.length && !forwardBlock ? { forwardIds, forwardHint: '这里有合并转发（QQ 聊天记录）。正文用 qq_get_forward_msg 读：key/token 用本会话的，id 用 forwardIds[0]；唤醒时桥接也会自动贴一次正文。别猜内容，也别当成 B站 的东西。' } : (forwardIds.length ? { forwardIds } : {})), messages, readThroughSeq, ...(unreadNoticeV2(st) || {}) });
+          sendJson({ ok: true, key, unreadCount: st.unread.length, ...(snapshotFiles.length ? { files: snapshotFiles, filesHint: '这里有文件（文档）。读正文调 stellar_file_read：key 用本会话的，messageId 用 files[0].messageId（没有就传 name）；PDF/Word/PPT/Excel/WPS 都能读。别猜文件里写了什么。主人说「存下来/收好/放进文件柜」就调 stellar_file_save（key、messageId 同上），真存了再说存好，没存别说。' } : {}), ...(forwardBlock ? { forwardDigest: forwardBlock.text, forwardHint: '合并转发的正文在 forwardDigest 里，已经按聊天记录展开过；直接理解内容，不用再调 qq_get_forward_msg，也别再说「看不到内容」。' } : {}), ...(stickerMatch ? { stickerMatch } : {}), ...(douyinLinks.length ? { douyinLinks, douyinHint: '这里有抖音链接：工具列表里有 stellar_douyin_watch 就用它读（url 用 douyinLinks[0]，comments=5），文案和热评都在返回里；没有就直说要重启 DSH，别用 web_fetch。' } : {}), ...(forwardIds.length && !forwardBlock ? { forwardIds, forwardHint: '这里有合并转发（QQ 聊天记录）。正文用 qq_get_forward_msg 读：key/token 用本会话的，id 用 forwardIds[0]；唤醒时桥接也会自动贴一次正文。别猜内容，也别当成 B站 的东西。' } : (forwardIds.length ? { forwardIds } : {})), messages, readThroughSeq, ...(unreadNoticeV2(st) || {}) });
           return;
         }
         if (req.method === 'GET' && url.pathname === '/api/socialV2/recent') {
@@ -7937,18 +7942,13 @@ function maybeApproveImageRequest(text, key) {
           if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           if (req.headers['x-agent-token'] && !v2ToolEnabled('getSelfImage')) { sendJson({ ok: false, error: '工具未启用：qq_get_self_image' }, 403); return; }
-          // 形象图由使用者自己放（不随仓库分发）：config.json 的 socialV2.selfImage 指路径，
-          // 相对路径按仓库根解析；没配就找 assets/self-image.{png,jpg,jpeg,webp}。
-          const selfPath = resolveSelfImagePath();
+          const selfPath = path.join(ROOT, 'assets', 'deepseek娘.png');
           try {
             if (imageInputSupport === false) {
               sendJson({ ok: true, key, image: null, text: '当前模型不支持图片输入，无法查看 Q 版形象；可以用角色卡/设定里的文字描述自己。' });
               return;
             }
-            if (!selfPath || !fs.existsSync(selfPath)) {
-              sendJson({ ok: false, code: 'SELF_IMAGE_MISSING', error: '还没有形象图片', hint: '把自己的形象图放到 assets/self-image.png，或在 config.json 里配 socialV2.selfImage 指向图片路径；也可以用角色卡里的文字描述自己。' }, 404);
-              return;
-            }
+            if (!fs.existsSync(selfPath)) { sendJson({ ok: false, error: '未找到 AI 形象图片 assets/deepseek娘.png' }, 404); return; }
             const buf = fs.readFileSync(selfPath);
             const mimeType = mimeFromBuffer(buf) || 'image/png';
             sendJson({ ok: true, key, image: { mimeType, data: buf.toString('base64') } });
@@ -8655,7 +8655,7 @@ function maybeApproveImageRequest(text, key) {
             // the model should complete sleep observation before its first reply.
             ...(!replyWait ? { preSleepWaitMs, preSleepWaitRemainingMs: preSleepRemainingMs } : {}),
             ...(stickerMatch ? { stickerMatch } : {}),
-            ...(waitFiles.length ? { files: waitFiles, filesHint: '这段消息里有文件（文档）。读正文调 stellar_file_read：key 用本会话的，messageId 用 files[0].messageId（没有就传 name）；PDF/Word/PPT/Excel/WPS 都能读。别猜文件里写了什么。' } : {}),
+            ...(waitFiles.length ? { files: waitFiles, filesHint: '这段消息里有文件（文档）。读正文调 stellar_file_read：key 用本会话的，messageId 用 files[0].messageId（没有就传 name）；PDF/Word/PPT/Excel/WPS 都能读。别猜文件里写了什么。主人说「存下来/收好/放进文件柜」就调 stellar_file_save（key、messageId 同上），真存了再说存好，没存别说。' } : {}),
             ...(douyinLinks.length ? { douyinLinks, douyinHint: '主人发了抖音链接。工具列表里有 stellar_douyin_watch 就先调它（url 用 douyinLinks[0]，comments=5），文案和评论区热评都在它的返回里，跑 40-60 秒，拿到再回答；没有这个工具就直说「抖音工具还没装上，要重启 DSH 才能读」，别假装看过，也别用 web_fetch（只能抓到加密脚本）。' } : {}),
             ...(forwardBlock ? { forwardDigest: forwardBlock.text, forwardHint: '这段消息里的合并转发正文在 forwardDigest 里，已经按聊天记录展开过；直接理解内容，不用再调 qq_get_forward_msg，也别再说「看不到内容」。' } : (forwardIds.length ? { forwardIds, forwardHint: '这段消息里有合并转发（QQ 聊天记录）。正文用 qq_get_forward_msg 读：key/token 用本会话的，id 用 forwardIds[0]；别猜内容，也别当成 B站 的东西。' } : {})),
             ...(unreadNotice || {}),
@@ -9612,7 +9612,7 @@ function maybeApproveImageRequest(text, key) {
           let stoppedCount = 0;
           try {
             // 新版 DSH 不再提供 workspace.list；改为扫描本桥接创建的会话目录并归档。
-            // 只处理 cwd 位于本仓库 state/ 下的根会话；子代理会话由父会话管理，不能误归档。
+            // 只处理 cwd 位于 Stellar state/ 下的根会话；子代理会话由父会话管理，不能误归档。
             const list = unwrap(await withTimeout(api.sessions.list({}), DSH_CONTROL_TIMEOUT_MS, 'sessions.list'), 'session.list');
             const stateDir = path.resolve(STATE_DIR);
             const statePrefix = path.normalize(stateDir + path.sep);
@@ -10175,31 +10175,6 @@ function maybeApproveImageRequest(text, key) {
     sendGroupSegments: (id, segments) => onebotSendSegments('group', id, segments),
     log,
   });
-
-  /**
-   * 自己的形象图在哪：优先 config.json 的 socialV2.selfImage（相对路径按 ROOT 解析），
-   * 没配就按约定找 assets/self-image.<ext>。找不到回空串，调用方给可行动的提示。
-   * 刻意**不随仓库分发**任何默认形象图 —— 那是使用者自己的角色，不该由作者代填。
-   */
-  function resolveSelfImagePath() {
-    try {
-      const cfgFile = path.join(ROOT, 'config.json');
-      let cfg = {};
-      try { cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8')) || {}; } catch { cfg = {}; }
-      const custom = String(cfg?.socialV2?.selfImage ?? '').trim();
-      if (custom) {
-        const abs = path.isAbsolute(custom) ? custom : path.resolve(ROOT, custom);
-        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return abs;
-      }
-      for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
-        const candidate = path.join(ROOT, 'assets', 'self-image.' + ext);
-        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
-      }
-      return '';
-    } catch {
-      return '';
-    }
-  }
 
   // ── 图片/表情字节解析（供一代自动内联与二代按需工具） ────────────────────
   function mimeFromBuffer(buf) {
@@ -11660,7 +11635,7 @@ function maybeApproveImageRequest(text, key) {
     }
   }
 
-    /** 存盘用：丢掉超过一天没再提到的话题；没时间戳的老数据原样保留。 */
+  /** 存盘用：丢掉超过一天没再提到的话题；没时间戳的老数据原样保留。 */
 function trimTopicsForSave(list) {
   const now = Date.now();
   return (Array.isArray(list) ? list : [])
@@ -11706,6 +11681,8 @@ function saveSocialV2State() {
           preSleepWaitAccumMs: st.preSleepWaitAccumMs || 0,
           lastUnreadSeq: st.lastUnreadSeq || 0,
           lastReadThroughSeq: st.lastReadThroughSeq || 0,
+          // 2026-11-16：存盘时顺手把放了一整天没再提的话题剪掉，别让它无限长。
+          // 只剪文件里那份副本，内存里留着（她可能还要 qq_memory_query 回看）。
           activeTopics: Array.isArray(st.activeTopics) ? trimTopicsForSave(st.activeTopics) : [],
           pendingThoughts: Array.isArray(st.pendingThoughts) ? st.pendingThoughts.slice(-50) : [],
           memberImpressions: st.memberImpressions && typeof st.memberImpressions === 'object' ? st.memberImpressions : {},
@@ -12037,6 +12014,7 @@ function saveSocialV2State() {
     return readBudget(STELLAR_DIR, {
       qq: { cny, tokens: null },
       bili: { cny: null, tokens: null },
+      feed: { cny: null, tokens: null },
       other: { cny: null, tokens: null },
       total: { cny: null, tokens: null },
     });
@@ -12075,15 +12053,18 @@ function saveSocialV2State() {
     const qq = fresh ? mergeUsagePair(snapshot.qq, ledger?.qq) : (ledger?.qq ?? { cost: 0, tokens: 0 });
     const other = fresh ? mergeUsagePair(snapshot.other, ledger?.other) : (ledger?.other ?? { cost: 0, tokens: 0 });
     const bili = snapshot.day === day ? snapshot.bili : { cost: 0, tokens: 0 };
+    // 2026-11-20：好友爱看（刷空间公开流）单独一类，跟 bili 一样只在插件快照里有数。
+    const feed = snapshot.day === day ? snapshot.feed : { cost: 0, tokens: 0 };
     const merged = {
       day,
       at: snapshot.at,
       qq,
       bili,
+      feed: feed ?? { cost: 0, tokens: 0 },
       other,
       total: {
-        cost: (qq.cost ?? 0) + (bili.cost ?? 0) + (other.cost ?? 0),
-        tokens: (qq.tokens ?? 0) + (bili.tokens ?? 0) + (other.tokens ?? 0),
+        cost: (qq.cost ?? 0) + (bili.cost ?? 0) + (feed?.cost ?? 0) + (other.cost ?? 0),
+        tokens: (qq.tokens ?? 0) + (bili.tokens ?? 0) + (feed?.tokens ?? 0) + (other.tokens ?? 0),
       },
       source: fresh ? (snapshot.source ?? 'plugin') : 'bridge-ledger',
       stale: !fresh,
@@ -12658,8 +12639,30 @@ function saveSocialV2State() {
   }
 
   // 启动阶段的"明确与 AI 有关"：@ / 提到名字 / 必回关键词 / 管理员私聊
+  /**
+   * 这条消息里有没有 @ 到她（结构化判断，不看文本）。
+   *
+   * 为什么不能只靠文本里的 @昵称（2026-11-15 实测）：
+   *  · 群名片为空时 segmentsToText 会把 at 渲染成 @QQ号 而不是 @昵称；
+   *  · 昵称里带空格（「正在加载 脑细胞」）时 '@' + nickname 永远不相等；
+   *  · 有人把昵称改成和她一样的名字 → 文本匹配会误判成在叫她。
+   * 所以先按段判 qq，文本匹配只作补充。
+   */
+  function hasAtSelf(event) {
+    const selfId = String(event?.self_id ?? '');
+    if (!selfId) return false;
+    const segs = Array.isArray(event?.message) ? event.message : [];
+    for (const seg of segs) {
+      if (seg?.type !== 'at') continue;
+      const qq = String(seg?.data?.qq ?? '');
+      if (qq && qq === selfId) return true;
+    }
+    return false;
+  }
+
   function isDirectAddress(textContent, event, kind) {
     if (kind !== 'group') return true;
+    if (hasAtSelf(event)) return true;
     const lower = String(textContent ?? '').toLowerCase();
     const selfId = String(event?.self_id ?? '');
     if (selfId && lower.includes('@' + selfId)) return true;
@@ -12674,9 +12677,7 @@ function saveSocialV2State() {
   // 是否"直接针对 AI"的提问/挑战：提到 AI 相关词且带疑问/比较，或对"你"开火，或追问催促
   function isDirectedAtAi(textContent) {
     const lower = String(textContent ?? '').toLowerCase();
-    // 只列各家 AI 的通用叫法；具体人格名（角色名/自称）一律走 selfNickname 与 mustReplyKeywords，
-    // 出厂配置里不带任何使用者的人格词。
-    const aiMention = /deepseek|claude|chatgpt|gpt|通义|文心|豆包|kimi|\bds\b|ai|人工智障|机器人|模型/.test(lower);
+    const aiMention = /deepseek|claude|chatgpt|gpt|肥鱼|小鲸鱼|鲸鱼|d指导|d老师|d师傅|深度求索|\bds\b|ai|人工智障|机器人|模型/.test(lower);
     const challenge = /强|弱|行不行|能不能|会不会|是不是|一半|水平|垃圾|废物|白嫖|菜|不如|厉害|赢|输|比.*强|比.*弱/.test(lower);
     const question = /[?？吗呢吧]|怎么|为什么|哪|谁/.test(lower);
     if (aiMention && (question || challenge)) return true;
@@ -12701,11 +12702,13 @@ function saveSocialV2State() {
     return false;
   }
 
-  function appendRecentMessage(key, sender, textContent, plainText, quoteTargetIsSelf = false, isOwner = false, media = [], messageRef = '') {
+  function appendRecentMessage(key, sender, textContent, plainText, quoteTargetIsSelf = false, isOwner = false, media = [], messageRef = '', senderId = '') {
     if (!social.recentMessages.has(key)) social.recentMessages.set(key, []);
     const arr = social.recentMessages.get(key);
     arr.push({
       sender,
+      // QQ 号单独留着：群里同名很常见（都叫「小号」「空白」），只给名字她分不清谁是谁。
+      senderId: String(senderId || ''),
       text: truncateText(String(textContent), 200),
       plain: truncateText(String(plainText ?? textContent), 200),
       quoteTargetIsSelf: !!quoteTargetIsSelf,
@@ -12730,7 +12733,21 @@ function saveSocialV2State() {
 
   function buildContextBlock(key) {
     const ctx = (social.recentMessages.get(key) ?? []).slice(-Number(cfg.social?.contextWindow ?? 15));
-    return ctx.map((m) => `${m.isOwner ? ownerMessageTag() : ''}${m.sender}：${m.text}${mediaHintFor(key, m.messageId, m.media)}`).join('\n') || '（无）';
+    return ctx.map((m) => `${m.isOwner ? ownerMessageTag() : ''}${speakerLabel(key, m.sender, m.senderId)}：${m.text}${mediaHintFor(key, m.messageId, m.media)}`).join('\n') || '（无）';
+  }
+
+  /**
+   * 说话人标签：群聊一律「名字(QQ)」，私聊保持原样。
+   * 起因（2026-11-15 主人要求「确保她能分清对象」）：群里三个人里有两个昵称都叫「小号」过，
+   * 只靠名字时她把 A 说的话算到 B 头上，记忆跟着串。
+   */
+  function speakerLabel(key, sender, senderId) {
+    const name = String(sender || '').trim() || '未知';
+    const id = String(senderId || '').trim();
+    if (!String(key || '').startsWith('group:')) return name;
+    if (!id) return name;
+    if (name.includes(id)) return name;
+    return name + '(' + id + ')';
   }
 
   // 触发进入活跃（启动阶段 → 活跃阶段）
@@ -12931,15 +12948,17 @@ function saveSocialV2State() {
     const biliBrief = cfg.biliBridge?.enabled !== false && cfg.biliBridge?.memory?.enabled !== false
       ? biliMemory.briefBlock()
       : '';
-    // purpose 唤醒没有向量块兜底，必须用整卡：紧凑卡单独实测只有 4/12（整卡 8/12）。
-    const memoryCardText = memoryCardPromptBlock(key);
+    // purpose 唤醒没有向量块兜底：engine='db' 时用新库目录（标题 + 参与人），否则用整卡
+    // （紧凑卡单独实测只有 4/12，整卡 8/12，所以 card 模式下必须给整卡）。
+    const purposeMemoryDb = memoryDbEngine();
+    const memoryCardText = purposeMemoryDb ? memoryCatalogBlockV2(key) : memoryCardPromptBlock(key);
     return [
       roleLine,
       // 人格卡是动机的先验：她是什么样的人，决定她更容易被什么打动。
       personaText ? `【人格卡（你是这样的人）】\n${personaText.slice(0, 2200)}` : '',
       identityLine,
       adminText,
-      memoryCardText ? `【记忆卡】\n${memoryCardText.slice(0, 2400)}` : '',
+      memoryCardText ? `${purposeMemoryDb ? '【记忆目录】' : '【记忆卡】'}\n${memoryCardText.slice(0, 2400)}` : '',
       biliBrief ? `【B站记忆】\n${biliBrief.slice(0, 1800)}` : '',
     ].filter(Boolean);
   }
@@ -13129,6 +13148,9 @@ function saveSocialV2State() {
 
     if (!preview) maybeRollSessionV2(key, { forceRoll: true });
     const token = currentMode === 'reserved2' ? String(st.agentToken || '') : '';
+    // 目的唤醒也会读记忆（engine='db' 时是目录块）：先按同一套「有界等待」预热一次，
+    // 否则动机块里的记忆永远是上一轮的旧快照。失败/超时都不影响出发。
+    await primeMemoryForWake(`private:${owner}`);
     const prompt = buildPurposePrompt({
       now,
       config: cfg.purpose,
@@ -13779,6 +13801,11 @@ function saveSocialV2State() {
       const vectorBlock = typeof opts.vectorBlock === 'string'
         ? opts.vectorBlock
         : await vectorRecallBlockForWake(key).catch(() => '');
+      // 首轮目录补一把（2026-11-15）：scheduleWakeV2 已经提前预热过，但进程刚起、或
+      // 合并窗口内刚好撞上 warm 未完成时，这里仍可能拿到空快照 → 退回旧记忆卡。
+      // 给一个有限等待：sqlite 读一个目录通常 1~3ms，1.2 秒已经非常宽；超时就按现状继续，
+      // 绝不因为记忆库慢而让消息发不出去。
+      await primeMemoryForWake(key);
       promptText = buildWakePromptV2(key, opts.wakeReason, vectorBlock);
       wakeSnapshot = buildWakeSnapshotV2(key);
       wakeMedia = collectWakeMediaV2(wakeState, wakeSnapshot);
@@ -14301,6 +14328,10 @@ function saveSocialV2State() {
   let memoryCardPromptCache = { key: '', text: '' };
   let memoryCardGroupsCache = { key: '', blocks: null };
   function memoryCardPromptBlock(key = '') {
+    // engine='db' 时旧卡彻底退场（2026-11-15）：这里一关，唤醒、qq_get_prompt、
+    // roleHintForMode(v1)、purpose 动机块四个入口同时失效 —— 它们都调这一个函数。
+    // 数据文件不删（面板还能只读翻历史），只是不再进任何提示词。
+    try { if (readUnifiedMemorySettings().engine === 'db') return ''; } catch {}
     const target = String(key ?? '').trim();
     if (target) {
       let mapFound = false;
@@ -14362,9 +14393,7 @@ function saveSocialV2State() {
       //   'db'   = 注入新记忆库的目录 + 侧写（旧卡片不再进唤醒）
       //   'card' = 老行为（预渲染记忆卡 / 分层摘要 / 向量块）
       // 库不可读时调用方会退回 card，所以这里不做失败兜底，只做取值规范化。
-      // 缺省走新记忆库（'db'）：全新安装没有 memory 段时也要用新系统，只有显式写 'card' 才回旧卡片。
-      const engineRaw = String(memCfg.engine || '').trim().toLowerCase();
-      const engine = engineRaw === 'card' ? 'card' : 'db';
+      const engine = String(memCfg.engine || '').trim().toLowerCase() === 'db' ? 'db' : 'card';
       const catalogCfg = memCfg.catalog && typeof memCfg.catalog === 'object' ? memCfg.catalog : {};
       const profileCfg = memCfg.profile && typeof memCfg.profile === 'object' ? memCfg.profile : {};
       const styleCfg = memCfg.styleRef && typeof memCfg.styleRef === 'object' ? memCfg.styleRef : {};
@@ -14497,6 +14526,9 @@ function saveSocialV2State() {
       return '';
     }
     const ownerId = ownerIdForKey(key);
+    // 群聊要两份：本群目录（谁在群里说过什么）+ 当前说话人跟我的私聊目录。
+    // 主人 2026-11-15 的原话是「她被问『你记得我昨天说的话吗』时，要检索与 A 私聊的记忆与群内关于 A 的话题」，
+    // 这两份就是那两个来源；都空才轮到零碎。
     const snap = catalogSnapshot(ownerId);
     if (!snap || !snap.ready) {
       // 第一次唤醒（进程刚起 / 刚启用 db 引擎）本来就会落到这里，不算异常；
@@ -14508,9 +14540,32 @@ function saveSocialV2State() {
       return '';
     }
     const text = String(snap.text || '').trim();
-    if (text) return text + '\n\n';
-    // 库是空的（刚启用）：明确告诉她「还没记下」，否则会拿旧印象硬编。
-    return '［记忆·目录］这边刚启用新的记忆库，还没有切出任何话题；对方提过的旧事你确实不记得，别编，想确认就问。\n\n';
+    const groupPart = text || '［记忆·目录］这边刚启用新的记忆库，还没有切出任何话题；对方提过的旧事你确实不记得，别编，想确认就问。';
+    const body = groupPart + '\n\n';
+    if (!String(key).startsWith('group:')) return body;
+    // 群里再补一段「说话人跟我的私聊目录」：名字里带 QQ，避免和群里的话题混在一起。
+    const speakerKey = lastGroupSpeakerKey(key);
+    if (!speakerKey) return body;
+    const speakerSnap = catalogSnapshot(speakerKey);
+    const speakerText = String(speakerSnap?.text || '').trim();
+    if (!speakerText) return body;
+    return body + '［他跟你私聊的记忆］（和上面群里的话题分开看：这里是你们俩单独说过的话）' + '\n' + speakerText + '\n\n';
+  }
+
+  /** 群里最近一个不是她的人在哪个会话里 —— 用来顺手带上「他跟我私聊」的记忆目录。 */
+  function lastGroupSpeakerKey(key) {
+    const st = social.states.get(key);
+    const list = Array.isArray(st?.recentMessages) ? st.recentMessages : [];
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const sid = String(list[i]?.senderId || '').trim();
+      if (sid && sid !== String(selfUserId || '')) return 'private:' + sid;
+    }
+    const unread = Array.isArray(st?.unread) ? st.unread : [];
+    for (let i = unread.length - 1; i >= 0; i -= 1) {
+      const sid = String(unread[i]?.senderId ?? unread[i]?.userId ?? '').trim();
+      if (sid && sid !== String(selfUserId || '')) return 'private:' + sid;
+    }
+    return '';
   }
 
   /** 后台预热当前会话的目录与侧写（不 await）。失败只记日志，不影响本轮。 */
@@ -14519,7 +14574,10 @@ function saveSocialV2State() {
       const settings = readUnifiedMemorySettings();
       const ownerId = ownerIdForKey(key);
       if (settings.catalog?.enabled) {
-        warmCatalog(ownerId, { titles: settings.catalog.titles, maxChars: settings.catalog.maxChars, ttlMs: settings.catalog.ttlMs, log });
+        warmCatalog(ownerId, { titles: settings.catalog.titles, maxChars: settings.catalog.maxChars, ttlMs: settings.catalog.ttlMs, ownerQQ: cfg.ownerQQ, selfId: selfUserId, log });
+        // 群里还要预热「当前说话人跟我的私聊目录」，否则上面那段永远是空的。
+        const gk = String(key).startsWith('group:') ? lastGroupSpeakerKey(key) : '';
+        if (gk) warmCatalog(gk, { titles: settings.catalog.titles, maxChars: settings.catalog.maxChars, ttlMs: settings.catalog.ttlMs, ownerQQ: cfg.ownerQQ, selfId: selfUserId, log });
       }
       // 重要事实（生日/忌口/约定）单独预热：它不随话题走，也不该等切分跑完才出现。
       if (settings.engine === 'db') {
@@ -14536,6 +14594,32 @@ function saveSocialV2State() {
       if (settings.styleRef?.enabled) warmStyleSlices({ log });
     } catch (error) {
       logThrottled('memory-warm:' + String(key), 10 * 60_000, '[记忆库] 预热失败：' + (error?.message ?? error));
+    }
+  }
+
+  /**
+   * 唤醒前把目录预热「等到位」（有上限）。只等目录，不等侧写/事实/参考库 ——
+   * 那几样失败也不会让提示词缺关键内容，而目录为空会直接退回旧记忆卡（体感是"失忆"）。
+   */
+  async function primeMemoryForWake(key = '') {
+    try {
+      const settings = readUnifiedMemorySettings();
+      if (!(settings.engine === 'db' && settings.catalog?.enabled)) return;
+      const ownerId = ownerIdForKey(key);
+      const speakerKey = String(key).startsWith('group:') ? lastGroupSpeakerKey(key) : '';
+      const jobs = [ownerId];
+      // 群聊还要等「当前说话人跟我的私聊目录」：memoryCatalogBlockV2 会拼第二段。
+      if (speakerKey) jobs.push(ownerIdForKey(speakerKey));
+      const limitMs = 1200;
+      await Promise.race([
+        Promise.all(jobs.filter(Boolean).map((id) => awaitCatalog(id, {
+          titles: settings.catalog.titles, maxChars: settings.catalog.maxChars,
+          ttlMs: settings.catalog.ttlMs, ownerQQ: cfg.ownerQQ, selfId: selfUserId, log,
+        }))),
+        new Promise((resolve) => { const t = setTimeout(resolve, limitMs); t.unref?.(); }),
+      ]);
+    } catch (error) {
+      logThrottled('memory-prime:' + String(key), 10 * 60_000, '[记忆库] 唤醒前预热超时/失败：' + (error?.message ?? error));
     }
   }
 
@@ -15585,6 +15669,25 @@ function saveSocialV2State() {
         return `speaker:${senderLabel}`;
       }
     }
+    // 群聊「正在跟她说」：她最近在这个群说过话，且这条不是她在被点名或叫别人，
+    // 就给一个高得多的续聊概率。否则群里没人 @ 她时，冷概率 0.05 会让整段对话看起来像她装死。
+    // 冷场时仍走下面的 probability，不会在没人理她的时候乱开花。
+    if (shouldFollowupWake({
+      kind, large,
+      probability: Number(tr.probability),
+      lastReplyAt: Number(st.lastAiReplyAt) || 0,
+      now: Date.now(),
+      wakeCfg: cfg.socialV2?.wake ?? {},
+    })) return 'followup';
+    // 小群顺口接一句：不要求她刚说过话，但要求群小、距上次唤醒够久。
+    // 大群/明确把 probability 设成 0 的人不受影响（后者等于「别主动接话」）。
+    if (Number(tr.probability) > 0 && shouldChimeIn({
+      kind, large,
+      memberCount: Number(groupProfileNow.memberCount) || 0,
+      lastWakeAt: Number(st.wakeConfig?.lastWakeAt) || 0,
+      now: Date.now(),
+      wakeCfg: cfg.socialV2?.wake ?? {},
+    })) return 'chime';
     if (!large && Number(tr.probability) > 0 && Math.random() < Number(tr.probability)) return 'probability';
     return null;
   }
@@ -15720,7 +15823,7 @@ function saveSocialV2State() {
     const maxChars = bounded('wakeMaxChars', 6000, 500, 20000);
     const maxUnread = bounded('wakeMessageLimit', 12, 1, 100);
     const maxRecent = bounded('wakeRecentLimit', 4, 0, 20);
-    // 2026-10-26：**从最近往回看**。
+    // 2026-10-26：**从最近往回看**（PITFALLS #76）。
     // 旧版是 `st.unread.slice(0, maxUnread)`（最早的在前）：群里积压一多，被 @ 叫醒时
     // 她先看到的是十几条老消息、最新那条（也就是叫她的那条）反而进不了快照 ——
     // 表现就是"一进来先回老远的消息"。
@@ -15804,6 +15907,47 @@ function saveSocialV2State() {
   }
 
   // 每次唤醒都明确告诉模型“这是哪个群/私聊”，避免多群上下文混成一团。
+  /**
+   * 群参与者块（2026-11-15 主人要求「群里每个人都要标清楚 QQ 号与名称」）。
+   *
+   * 数据来源两处，取并集：
+   *  ① 最近发言的人（social.recentMessages，永远最新，新群也有）；
+   *  ② 记忆库名册（memory-db 的 groupRoster，历史发言人，唤醒目录里已带，这里不重复查库）。
+   * 主人的号来自 cfg.ownerQQ —— 不能靠昵称判断（群里有人昵称就叫「主人」）。
+   */
+  function groupParticipantsLineV2(key, st) {
+    if (!String(key || '').startsWith('group:')) return '';
+    const seen = new Map();
+    const add = (sid, name, isOwner, msgs) => {
+      const qq = String(sid || '').trim();
+      if (!qq) return;
+      const hit = seen.get(qq) || { qq, name: '', isOwner: false, msgs: 0 };
+      hit.msgs += Number(msgs) || 0;
+      if (name && !hit.name) hit.name = String(name).trim();
+      if (isOwner) hit.isOwner = true;
+      seen.set(qq, hit);
+    };
+    for (const m of (Array.isArray(st?.recentMessages) ? st.recentMessages : []).slice(-30)) {
+      if (!m || m.isSelf) continue;
+      add(m.senderId, m.sender, Boolean(m.isOwner), 1);
+    }
+    for (const m of (Array.isArray(st?.unread) ? st.unread : [])) {
+      if (!m || m.isSelf) continue;
+      add(m.senderId ?? m.userId, m.sender, Boolean(m.isOwner), 1);
+    }
+    if (!seen.size) return '';
+    const ownerQQ = String(cfg.ownerQQ || '');
+    const rows = [...seen.values()].sort((a, b) => b.msgs - a.msgs).slice(0, 8);
+    const parts = rows.map((one) => {
+      const raw = String(one.name || '').trim();
+      const name = raw && !raw.includes(one.qq) ? raw + '(' + one.qq + ')' : (raw || 'QQ' + one.qq);
+      const who = one.isOwner || one.qq === ownerQQ ? '主人' : '';
+      return who ? name + '·' + who : name;
+    });
+    const selfLine = selfUserId ? `你：${selfDisplayName || '我'}(${selfUserId})` : '';
+    return `【群里的人】${parts.join('、')}${selfLine ? '；' + selfLine : ''}。名字后面括号里是 QQ 号——同名不同人靠号区分，别把 A 说的话记到 B 头上。\n\n`;
+  }
+
   function conversationIdentityLineV2(key) {
     const target = String(key ?? '').trim();
     if (!target) return '';
@@ -15909,7 +16053,7 @@ function saveSocialV2State() {
     }, { platform: 'qq' });
     const identityLine = selfIdentityTextV2() + selfCardFallback;
     // 每次唤醒都交代「什么内容属于哪个平台」：2026-10-23 实测她把群里转发的
-    // 她在别的群的聊天记录说成「我在B站说过的话」。
+    // 她在别的群的聊天记录说成「我在B站说过的话」（PITFALLS #40）。
     const provenanceLine = buildProvenanceBlock();
     // 管理员规则：reserved2 不常驻完整人格卡，只靠 qq_get_prompt 带出会让
     // 「对管理员温柔/不许回嘴」变成看运气 ✗ → 每次醒来第一屏都放一条（compact）。
@@ -15999,6 +16143,9 @@ function saveSocialV2State() {
     // 后续唤醒不再带它 —— 那时它已经在这条 DSH 会话的上下文里了。
     const initialPromptText = reason === 'bootstrap' ? formatInitialPromptV2(key) : '';
     const initialPromptLine = initialPromptText ? `${initialPromptText}\n\n` : '';
+    // 人格卡正文由 personaWakeBlockV2 在最前统一注入（2026-11-01 改：以前只给指针，
+    // 模型基本不调 qq_get_prompt，等于不知道自己是谁）；这里仍保证 B 站记忆每轮都在：
+    // 否则群友问起「B站那个号」时，它会把自己当成另一个人。
     // B 站记忆不再逐条注入（2026-11-16 用户要求：「b站记忆麻烦一条都别给她，让她需要就自己去查」）。
     // 简报块实测 979 字符、且绝大多数唤醒与 B 站无关；但身份锚点必须留 ——
     // 少了它她会把 B 站那个号当成别人、或说「我认识她」（PITFALLS #40）。
@@ -16022,8 +16169,13 @@ function saveSocialV2State() {
     const memoryFactBlock = memoryFactBlockV2(key, lastMsg);
     const memoryFactLine = memoryFactBlock ? memoryFactBlock : '';
     const dbCatalogOn = Boolean(memoryCatalogLine);
-    // 目录接管后不再拼旧卡，也不再拼向量块：否则同一份记忆会在唤醒里出现两遍，且旧卡正文很贵。
-    const withCard = memorySettings.mode !== 'vector' && !dbCatalogOn;
+    // 旧记忆卡的总开关（2026-11-15 用户要求「完全剔除旧卡」）：
+    // engine='db' 就是「新库接管」，此时**无论目录是否为空**都不再注入旧卡 ——
+    // 以前的条件是 !dbCatalogOn，于是目录一空就悄悄退回旧卡（用户看到的现象是「记忆卡怎么还在」）。
+    // 目录空就是空，她会说「不记得」，而不是拿一份过时的卡冒充记忆。
+    // engine='card' 仍是明确的回退开关（配置里改一下就回到老行为）。
+    const cardRetired = memorySettings.engine === 'db';
+    const withCard = !cardRetired && memorySettings.mode !== 'vector' && !dbCatalogOn;
     const tierMemoryText = withCard ? tierMemoryBlock(key, lastMsg) : '';
     // 叙事侧：分层检索命中优先，否则预渲染记忆卡；向量侧：本轮按消息检索到的旧事。
     const narrativeText = withCard ? (tierMemoryText || memoryCardPromptBlock(key)) : '';
@@ -16031,12 +16183,12 @@ function saveSocialV2State() {
     // 硬前提：必须有向量块兜底。实测（12 条查询）全卡 8/12、紧凑卡单独 4/12（丢掉「最近记得的」里的
     // 花费/抖音/表情包），而紧凑卡 + 向量 = 10/12、字数省 77%。所以只在 hybrid 且真有向量命中时才压，
     // 否则原样注入整卡——压缩不能以丢事实为代价。
-    const hasVector = !dbCatalogOn && Boolean(String(vectorBlock || '').trim());
-    const useCompact = !dbCatalogOn && memorySettings.mode === 'hybrid' && hasVector;
+    const hasVector = !cardRetired && !dbCatalogOn && Boolean(String(vectorBlock || '').trim());
+    const useCompact = !cardRetired && !dbCatalogOn && memorySettings.mode === 'hybrid' && hasVector;
     const compactedNarrative = useCompact
       ? buildMemoryPromptText({ cardText: narrativeText, vectorText: '', compact: memorySettings.compact })
       : narrativeText;
-    const memoryCardText = dbCatalogOn ? '' : blendMemoryBlocks({
+    const memoryCardText = (cardRetired || dbCatalogOn) ? '' : blendMemoryBlocks({
       mode: memorySettings.mode,
       narrative: compactedNarrative,
       vector: String(vectorBlock || '').trim(),
@@ -16046,20 +16198,22 @@ function saveSocialV2State() {
     // 紧凑记忆只留摘要和 id（2026-11-10）：她遇到「只记得有这么件事、细节对不上」时
     // 要按 id/关键词回原文查，别拿摘要硬编。只在压过卡的分支加，别的模式不多花字。
     // 新库的目录块自带「查法」一行（含三个工具名），这里就不再补一遍。
-    const memoryDetailLine = dbCatalogOn
+    const memoryDetailLine = (cardRetired || dbCatalogOn)
       ? ''
       : (useCompact
         ? '［记忆］上面只是摘要和 id。要细节就用 stellar_memory_read 按 id 或关键词查原文——查过再说，别照摘要硬编。\n\n'
         : '');
     const profileLineText = memoryProfileLineV2(key, lastMsg);
     const conversationLine = conversationIdentityLineV2(key);
+    const groupPeopleLine = groupParticipantsLineV2(key, st);
     // 侧写放最前（设计 §7.2）：一句话定调「对方是谁、该怎么说话」，比长记忆卡更省也更有效。
-    const base = profileLineText + roleLine + identityLine + conversationLine + provenanceLine + adminLine + styleRefLine + biliLine + memoryCardLine + memoryFactLine + memoryCatalogLine + memoryDetailLine + tokenLine + imageQuotaText + initialPromptLine + antiAiLine + proactiveLine + closureLine + stickerLine + stickerMatchLine + replyLine + replyPlanText + statusLine + wakeLine + memoryLine + participationLine + fishGuardLine + tokenGuardLine + preSleepLine;
+    const base = profileLineText + roleLine + identityLine + conversationLine + groupPeopleLine + provenanceLine + adminLine + styleRefLine + biliLine + memoryCardLine + memoryFactLine + memoryCatalogLine + memoryDetailLine + tokenLine + imageQuotaText + initialPromptLine + antiAiLine + proactiveLine + closureLine + stickerLine + stickerMatchLine + replyLine + replyPlanText + statusLine + wakeLine + memoryLine + participationLine + fishGuardLine + tokenGuardLine + preSleepLine;
     lastWakePromptMeta = {
       profile: profileLineText.length,
       role: roleLine.length,
       identity: identityLine.length,
       conversation: conversationLine.length,
+      groupPeople: groupPeopleLine.length,
       provenance: provenanceLine.length,
       admin: adminLine.length,
       styleRef: styleRefLine.length,
@@ -16104,6 +16258,18 @@ function saveSocialV2State() {
       return `${base}【启动补唤醒】${key}
 原因：桥接重启后，这个会话还积压着重启前的未读消息（之前没人唤醒它们）。
 先调用 qq_get_context_snapshot(include=["unread"]) 看一遍，判断是否还需要回应；如果只是旧话题，用 qq_mark_read 清掉即可，不用逐条回应。`;
+    }
+    if (reason === 'chime') {
+      return `${base}【顺口接一句】${key}
+原因：这个群人不多，刚才这几条你都没接 —— 现在给你一次参与的机会，不是被点名，可以自由决定说不说。
+看一眼【群聊上下文】：如果话题你能接、或者有话想补充，就自然说一句（别像客服，也别硬找存在感）；如果他们在聊跟你无关的事，就只看不说。
+想潜水就安静收尾（qq_mark_read 或 qq_set_wake_config）；真要潜水前按【沉睡前强制等待】等够观察窗口。`;
+    }
+    if (reason === 'followup') {
+      return `${base}【接下话】${key}
+原因：你刚在这个群里说过话，这几条是接着那个话题来的 —— 不是冷启动，别当没看见。
+先看【群聊上下文】最近几条：如果他们还在聊你刚才说的那件事，就自然接一句（可以短、可以带态度、可以只回应其中一个人）；如果话题已经转到跟你无关的事，你可以插一句也可以只看不说。
+不要重复自我介绍，也不要一上来就问「有什么可以帮你」。不想接就安静收尾（qq_mark_read 或 qq_set_wake_config）；决定潜水前仍要按上面的【沉睡前强制等待】先等够观察窗口。`;
     }
     if (reason === 'poke') {
       return `${base}【唤醒】${key}\n原因：有人拍了一拍（可能拍了你，也可能拍了别人）。\n先看未读/最近消息里的 [拍一拍] 事件：如果是拍你，可以自然回应一句，也可以用 qq_send_poke 回一个拍一拍；如果是拍别人，觉得有趣也可以接梗。除了回应，偶尔也可以主动戳一下正在聊的人/熟人，像真人手贱/提醒/逗一下，但别频繁。不想接就安静收尾（qq_mark_read 或 qq_set_wake_config）。`;
@@ -16493,6 +16659,8 @@ function saveSocialV2State() {
     nameMention: 70,
     keyword: 60,
     anyMessage: 50,
+    followup: 45,
+    chime: 42,
     replyCheck: 40,
     timeout: 30,
     // 上线补历史：比主动机会重要，但低于任何“有人正在说话”的原因；
@@ -16502,7 +16670,7 @@ function saveSocialV2State() {
     proactiveCheck: 20
   };
 
-  // 唤醒原因可能带子类型（如 keyword:<角色名>、speaker:昵称），取冒号前的基名计算优先级。
+  // 唤醒原因可能带子类型（如 keyword:小鲸鱼、speaker:昵称），取冒号前的基名计算优先级。
   function wakePriorityV2(reason) {
     const base = String(reason ?? '').split(':')[0];
     return WAKE_PRIORITY[base] ?? 0;
@@ -16550,6 +16718,14 @@ function saveSocialV2State() {
       st.sleepTimer = null;
     }
     st.pendingWakeReason = reason;
+    // 记忆预热要抢在「拼提示词」之前（2026-11-15 实测）：warmMemoryFor 是 fire-and-forget，
+    // 原来只在 buildWakePromptV2 开头调一次，紧接着同一次同步调用里就 catalogSnapshot 读快照 ——
+    // 首轮必然是空，于是 11-15 的 22 次唤醒里仍有 8 次（36%）退回旧记忆卡。
+    // 这里调度时就先热一把：合并窗口 3~6 秒足够 sqlite 读完一个目录，等到定时器触发时快照已就绪。
+    try {
+      const warmMsg = [...(Array.isArray(st.recentMessages) ? st.recentMessages : [])].reverse().find((m) => m && !m.isSelf) || null;
+      warmMemoryFor(key, warmMsg);
+    } catch {}
     // 合并窗口分场景（2026-11-04）：@/叫名字/拍一拍 3 秒、私聊 4 秒、群聊 6 秒。
     // 原来一律 8 秒 —— 被点名也要干等 8 秒，体感上就是"明明在线却装死"。
     const batchMs = batchWindowFor(key, reason, st.wakeConfig ?? {});
@@ -17267,9 +17443,12 @@ function saveSocialV2State() {
     }
     if (!plainContent && !quoteTargetIsSelf) return;
     const isOwner = String(event.user_id) === String(cfg.ownerQQ ?? '');
+    // 私聊也优先用昵称：记忆、上下文、审批记录里只写「私聊」时，多个人看下来分不清是谁。
+    // 拿不到昵称才退回「私聊」（旧行为），不影响任何依赖这个词的判断。
+    const senderNick = String(event.sender?.card || event.sender?.nickname || '').trim();
     const displayName = kind === 'group'
-      ? (event.sender?.card || event.sender?.nickname || String(event.user_id))
-      : '私聊';
+      ? (senderNick || String(event.user_id))
+      : (senderNick || '私聊');
     // 身份快照：MCP 只有看到这份「这条消息来自哪个会话、是不是主人」才敢判审批。
     writeTurnContext({
       key,
@@ -17430,7 +17609,7 @@ function saveSocialV2State() {
         } else {
           const roleFile = path.join(ROOT, 'roles', name + '.md');
           if (!fs.existsSync(roleFile)) {
-            await sendToQQ(key, `角色「${name}」不存在。角色文件放 roles/ 目录。`);
+            await sendToQQ(key, `角色「${name}」不存在。角色文件放 Stellar/roles/ 目录。`);
           } else {
             writeRoleState(name, roleState.mode);
             auditOwner('role.switch', {
@@ -17645,8 +17824,8 @@ function saveSocialV2State() {
 
     // 仿真群友模式：reserved 走状态机（观望/活跃/试探/退场）
     if (isSocialEnabled()) {
-      const sender = kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : '私聊';
-      appendRecentMessage(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, mediaList, messageRef); // AI 始终感知
+      const sender = kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : (String(event.sender?.card || event.sender?.nickname || '').trim() || '私聊');
+      appendRecentMessage(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, mediaList, messageRef, String(event.user_id ?? '')); // AI 始终感知
       const st = socialState(key);
 
       // 退场中：收尾发言发出前不再接话，新消息进入摘要
@@ -17702,7 +17881,9 @@ function saveSocialV2State() {
       // 触发成功：进入活跃，贴最近上下文 + 当前消息 + 人格（仅此一次），让 AI 回复
       enterActive(key);
       const roleHint = currentRoleHint(key);
-      const currentLine = (isOwner && kind === 'private') ? `${ownerMessageTag()}${sender}：${textContent}` : `${sender}：${textContent}`;
+      const currentLine = (isOwner && kind === 'private')
+        ? `${ownerMessageTag()}${sender}：${textContent}`
+        : `${speakerLabel(key, sender, String(event.user_id ?? ''))}：${textContent}`;
       const directionHint = textContent.includes('[引用') ? DIRECTION_HINT + '\n' : '';
       const replyInstruction = direct
         ? `请回复消息。\n${directionHint}${SPACE_SPLIT_HINT}`

@@ -12,13 +12,17 @@ import {
   totalTokensOf,
 } from '../../../src/model-prices.js';
 
-export const CATEGORY_KEYS = ['qq', 'bili', 'other'];
+// 2026-11-20：加 'feed'（好友爱看 / QQ 空间公开推荐流）。
+// 以前刷动态跑在 B站 会话里，花费全算进 bili，控制台上看着像「免费」；拆成独立会话后要单独记账。
+export const CATEGORY_KEYS = ['qq', 'bili', 'feed', 'other'];
 export const isPlainObject = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 export const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
 export const clamp0 = (v) => Math.max(0, Number(v) || 0);
 
 export function emptyCategories() {
-  return { qq: { cost: 0, tokens: 0 }, bili: { cost: 0, tokens: 0 }, other: { cost: 0, tokens: 0 } };
+  const out = {};
+  for (const key of CATEGORY_KEYS) out[key] = { cost: 0, tokens: 0 };
+  return out;
 }
 
 export function normalizeCategories(input) {

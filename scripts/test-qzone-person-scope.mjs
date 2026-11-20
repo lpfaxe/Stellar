@@ -33,9 +33,16 @@ const OWNER_TOKEN = 'owner-token-fixture';
 const OWNER_IDENTITIES = { [OWNER_TOKEN]: { key: OWNER_KEY, token: OWNER_TOKEN, kind: 'private', isOwner: true } };
 
 const fixtureRoots = [];
+let savedEnv = null; // 第一个 fixture 建立前的 USERPROFILE/HOME，收尾时还原
 test.after(() => {
   for (const dir of fixtureRoots) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
+  if (savedEnv) {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
   }
 });
 
@@ -61,22 +68,22 @@ function makeFixture() {
     consoleToken: 'fixture-console-token-0001',
     allow: { groups: [], private: [OWNER] }
   }), 'utf8');
-  // 通讯录 fixture：主人、一个朋友、一个测试号（stranger）。
-  // 两份都要写：桥接/插件从 <root>/state 读，MCP 的 contactsStateFile 从 <DSH_HOME>/stellar/state 读。
-  const book = JSON.stringify({
+  // 通讯录 fixture：主人、一个朋友、一个测试号（stranger）
+  // 注意：src/mcp-snowluma-safe.js 的 contactsStateFile() 读的是 %USERPROFILE%/.dsh/stellar/state/friends.json，
+  // 不是仓库里的 state/ —— 所以 fixture 必须挪到这个路径，并把 USERPROFILE 指到 root，
+  // 否则白名单会去读真实机器上的通讯录（会随环境变红）。2026-11-20 修。
+  fs.mkdirSync(path.join(root, '.dsh', 'stellar', 'state'), { recursive: true });
+  if (savedEnv === null) savedEnv = { USERPROFILE: process.env.USERPROFILE, HOME: process.env.HOME };
+  process.env.USERPROFILE = root;
+  process.env.HOME = root;
+  fs.writeFileSync(path.join(root, '.dsh', 'stellar', 'state', 'friends.json'), JSON.stringify({
     people: [
       { uin: OWNER, nickname: '主人', type: 'owner' },
       { uin: FRIEND, nickname: '朋友', type: 'friend' },
       { uin: TESTER, nickname: '测试员A', type: 'stranger' }
     ],
     groups: []
-  }, null, 2);
-  fs.writeFileSync(path.join(root, 'state', 'friends.json'), book, 'utf8');
-  fs.mkdirSync(path.join(root, 'stellar', 'state'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'stellar', 'state', 'friends.json'), book, 'utf8');
-  // MCP 侧读 <DSH_HOME>/stellar/state/friends.json，不设它就会用本机真实通讯录
-  // （干净机器上读不到 → 白名单只剩主人和自己，这组用例会假失败）。
-  process.env.DSH_HOME = root;
+  }), 'utf8');
   return root;
 }
 

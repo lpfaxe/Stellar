@@ -30,6 +30,15 @@ const WINDOW_HOUR = 6;
 const WINDOW_MINUTE = 30;
 const WINDOW_DAYS = 2;                    // D-2
 
+// 群聊「旁观话题」门槛（2026-11-15 主人要求：群里跟她无关的内容也按话题存）。
+// 为什么不用「有 self 就建」那一套：群里她常常整段不插话，但那段对话对别人是记忆。
+// 门槛定得太低会把「哈哈哈」「在吗」也切成话题，太高又会漏掉真事。
+// 实测校准：群里一句话普遍 10~20 字，「周末去爬山吗」这类四五个来回只凑到 60 多字 ——
+// 最初定的 80 字会把真实对话全挡在外面。改成 4 条 / 40 字：4 条 × 平均 10 字才算数，
+// 「哈哈哈」「在吗」那种四连发只有十几个字，仍然留在零碎里。
+const AMBIENT_MIN_MSGS = 4;
+const AMBIENT_MIN_CHARS = 40;
+
 function ymd(at) {
   const d = new Date(at);
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -54,7 +63,7 @@ function autoSummary(rows) {
  * 切一段（已确认可建话题）。
  * 返回 { ok, id } 或 { ok:false, reason }。
  */
-function buildTopic(seg, db, { importance = 0, tier } = {}) {
+function buildTopic(seg, db, { importance = 0, tier, scope = 'direct' } = {}) {
   const rows = seg.rows;
   const topic = {
     ownerId: seg.oid,
@@ -66,8 +75,19 @@ function buildTopic(seg, db, { importance = 0, tier } = {}) {
     endedAt: seg.endedAt,
     importance,
     tier,
+    scope,
   };
   return insertTopic({ topic, rows, db });
+}
+
+/**
+ * 这段群聊她没参与，但内容够一段话 → 建一个 ambient 话题（只存不注入）。
+ *
+ * 注意：ambient 永远 importance=0、tier='daily'，不进 important 晋升链 ——
+ * 否则两天后的复核会把「群里别人随口说的话」捧成长期记忆，污染她自己的判断。
+ */
+function buildAmbientTopic(seg, db) {
+  return buildTopic(seg, db, { scope: 'ambient', importance: 0, tier: 'daily' });
 }
 
 /**
@@ -120,7 +140,7 @@ export function extractFactsFromRows(rows = [], { db: conn, log } = {}) {
 /**
  * 一次性回填：把库里已有的 user 行重新抽一遍事实。
  *
- * 为什么需要它：事实抽取是后加的能力，而「生日是1月1日」那条消息早就被切分标成
+ * 为什么需要它：事实抽取是后加的能力，而「生日是6月29日」那条消息早就被切分标成
  * fragment/dropped 了 —— 等新消息重新提到生日，可能是一年后。只写 fact 表，
  * 不动 cache_msg 的 process_state、不建话题，跑几次都幂等（upsertFact 按 owner+kind+label 去重）。
  */
@@ -182,8 +202,20 @@ export function runSplit(opts = {}) {
       continue;
     }
     if (!both) {
-      // 单边段：够长就是独白（零碎记忆），不够长就 held 等下一轮
+      const isGroup = String(seg.ck || '').startsWith('group:');
+      const hasUser = roles.has('user');
       const text = seg.rows.map((r) => String(r.text || '').trim()).filter(Boolean).join(' ');
+      // 群聊里她没插话的一段（2026-11-15）：按话题存下来，标题也要，方便日后「A 昨天说了啥」。
+      // 只认 user 发言（她一句没说才叫旁观）；她自己独白仍走下面的 fragment 逻辑。
+      if (isGroup && hasUser && !roles.has('self') && seg.rows.length >= AMBIENT_MIN_MSGS && text.length >= AMBIENT_MIN_CHARS) {
+        try {
+          const res = buildAmbientTopic(seg, db);
+          if (res.ok) { out.topics.push(res.id); out.ambient = (out.ambient || 0) + 1; continue; }
+          out.errors.push('ambient ' + seg.ck + ': ' + (res.reason || 'unknown'));
+        } catch (error) {
+          out.errors.push('ambient ' + seg.ck + ': ' + (error?.message ?? error));
+        }
+      }
       try {
         if (text.length >= MONOLOGUE_MIN_CHARS) {
           const facet = roles.has('self') ? 'self-monologue' : 'user-monologue';
@@ -231,8 +263,11 @@ export function reviewCandidates({ targetDay, db: conn, perOwner = 12, maxChars 
     const s = String(v || '').replace(/\s+/g, ' ').trim();
     return s.length > maxChars ? s.slice(0, maxChars) + '…' : s;
   };
+  // 只把「她参与过的」话题交给复核模型。旁观话题（scope='ambient'）不进来：
+  // 复核的目标是「哪些关于她的事值得长期留着」，而旁听到的别人对话一晋升成 important 就永远删不掉
+  // （pruneWindow 不删 important），两天后整个库会被群友的闲聊塞满。
   const topics = db.prepare(
-    "SELECT id, owner_id, title, summary, importance FROM topic WHERE day_key = ? AND tier = 'daily' ORDER BY owner_id, ended_at",
+    "SELECT id, owner_id, title, summary, importance FROM topic WHERE day_key = ? AND tier = 'daily' AND COALESCE(scope, 'direct') = 'direct' ORDER BY owner_id, ended_at",
   ).all(day).slice(0, perOwner * 6).map((r) => ({
     id: r.id, ownerId: r.owner_id, title: clip(r.title), summary: clip(r.summary), importance: Number(r.importance) || 0,
   }));

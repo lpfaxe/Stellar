@@ -11,12 +11,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  ALERT_RATIO, DEFAULT_LIMITS, SCOPES, allRatios, collectAlerts, collectHits,
+  ALERT_RATIO, CATEGORY_SCOPES, DEFAULT_LIMITS, SCOPES, allRatios, collectAlerts, collectHits,
   describeHit, evaluateBudget, formatLimit, formatMoney, formatTokens, formatUsed,
   localDayKey, localDayStart, normalizeLimitPair, normalizeLimits, normalizeUsage,
   parseCnyText, parseTokenText, ratioOf, readAlert, readBudget, readDailyUsage,
   takeAlert, totalsOf, writeBudget, writeDailyUsage,
 } from '../src/token-budget.js';
+import { CATEGORY_KEYS, normalizeCategories } from '../plugins/stellar/lib/token-usage-pure.js';
 
 let failed = 0;
 let passed = 0;
@@ -168,7 +169,12 @@ try {
 
   // totalsOf / normalizeUsage 的幂等性
   check(totalsOf(usage).tokens === usage.total.tokens, 'totalsOf 与 normalizeUsage 一致');
-  check(SCOPES.length === 4 && DEFAULT_LIMITS.qq.cny === 8, '导出常量稳定');
+  // 2026-11-20：多了 'feed'（好友爱看）→ 5 个 scope；额度默认值不变。
+  check(SCOPES.length === 5 && SCOPES.includes('feed') && DEFAULT_LIMITS.qq.cny === 8, '导出常量稳定');
+  check(CATEGORY_SCOPES.includes('feed'), '好友爱看是独立类别');
+  const feedOnly = normalizeUsage({ feed: { cost: 0.4, tokens: 4000 } });
+  check(feedOnly.total.cost === 0.4 && feedOnly.total.tokens === 4000, 'feed 计入总额');
+  check(CATEGORY_KEYS.includes('feed') && normalizeCategories(feedOnly).feed.tokens === 4000, 'normalizeCategories 认 feed');
 
   // 接线：宿主路由 / 插件服务 / 桥接 endpoint 三处必须都在，否则「额度页能改但不生效」
   const host = fs.readFileSync(path.join(import.meta.dirname, '..', 'plugins', 'stellar', 'lib', 'index.js'), 'utf8');

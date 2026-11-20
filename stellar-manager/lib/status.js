@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { AUDIT_FILE, BILI, BRIDGE, CFG_FILE, KEEPALIVE, LOGS, NODE, PORT, REPO, REPORT_REQ, SNOW, SURF } from './paths.js'
+import { AUDIT_FILE, BILI, BRIDGE, CFG_FILE, DSH_EXE, KEEPALIVE, LOGS, NODE, PORT, REPO, REPORT_REQ, SNOW, SURF } from './paths.js'
 import { clampNum, findWhale, logLine, maskText, portOpen, readJson, readTail, run, todayKey } from './util.js'
 import { qzoneStats, readReports } from './report.js'
 import { buildHerStatus } from './her.js'
@@ -120,7 +120,7 @@ async function collectStatus() {
     ports,
     snowluma: ports[5099], bridge: ports[3100], onebot: ports[3000] || ports[3001],
     dshRunning: dshUp,
-    dsh: { running: dshUp, supported: dshAvailable(), exe: 'D:/dsh/DeepSeek Harness.exe', restart: readRestartState() },
+    dsh: { running: dshUp, supported: dshAvailable(), exe: DSH_EXE, restart: readRestartState() },
     // 重启时机建议：重启 DSH = 会话重新 seed，整段上下文按未命中重算（见 lib/restart-advice.js）
     restartAdvice: buildRestartAdvice({ dshRunning: dshUp }),
     keepalive: { configured: fs.existsSync(KEEPALIVE), lastRun: lastRun.trim(), lastResult: lastResult.trim() },

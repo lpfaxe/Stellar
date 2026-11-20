@@ -29,6 +29,21 @@ import {
 const EMPTY_CONFIG = normalizeMemoryCardConfig({});
 const TICK_MS = 10 * 60 * 1000;
 
+/**
+ * 旧记忆卡是否已退役（config.json 的 memory.engine === 'db'）。
+ * 2026-11-15 用户要求「完全剔除旧卡」：engine=db 时新记忆库（memory.db）是唯一真相，
+ * 旧卡不再渲染提示词、不再发容量告警；但**归档不停**（inbox 仍要被消费、
+ * memory-card-full.jsonl 仍要 append），否则原料会无限堆积、历史也补不回来。
+ */
+function cardRetiredNow() {
+  try {
+    const unified = readUnified().config ?? {};
+    return String(unified?.memory?.engine || '').trim().toLowerCase() === 'db';
+  } catch {
+    return false;
+  }
+}
+
 /** 分层记忆配置：读合体层 config.json 的 memory.tiers（缺省用内置默认值）。 */
 /** 分层维护的日志出口：memory-card 模块不持有 pluginLog，这里退到 console（插件把 console 转进 plugin.log）。 */
 function logMemoryCardTier(message) {
@@ -346,6 +361,9 @@ export function runMemoryCardMaintenance({ forceDecay = false, config = memoryCa
         backupFile(pathsNow().fullStats, 'memory-card-full-stats');
       }
     } catch {}
+    // engine='db'：旧卡已退役，但归档要继续（见 cardRetiredNow 注释）。
+    // 传空 runtimeSharing 让渲染不再跨会话共享；渲染产物在下面被清空，等于不进提示词。
+    const retired = cardRetiredNow();
     const result = maintainMemoryCard({
       paths: pathsNow(),
       config,
@@ -355,8 +373,18 @@ export function runMemoryCardMaintenance({ forceDecay = false, config = memoryCa
       forceDecay,
       fullPaths: pathsNow(),
       fullConfig: config,
-      runtimeSharing,
+      runtimeSharing: retired ? {} : runtimeSharing,
     });
+    if (retired) {
+      // 把三份注入产物清空：桥接与 B站调度器读的都是文件，留着旧文件等于「退役了但提示词还在」。
+      try { writeTextAtomic(pathsNow().promptQq, ''); } catch {}
+      try { writeTextAtomic(pathsNow().promptBili, ''); } catch {}
+      try {
+        writeTextAtomic(path.join(pathsNow().dir, 'memory-card-prompt-qq-groups.json'),
+          `${JSON.stringify({ version: 1, updatedAt: new Date(now).toISOString(), retired: true, blocks: {} }, null, 2)}\n`);
+      } catch {}
+      promptCache = new Map();
+    }
     // 分层记忆维护：三级每日清、二级每 l2Days 天（默认 3）；清空前先归档原文、先判晋升（不直接丢）。
     // 2026-11-11：以前这里把异常吞进返回值、不写日志，结果 lastTierMaintenanceAt 停在 11-09
     // 也没人发现。现在无论跑没跑、清了几条都落一行日志，失败带原文。
@@ -502,6 +530,8 @@ export function restoreMemoryCardBackup(name, { config = memoryCardConfig(), now
 
 /** B站调度器 / 调试用：读现成的 B站 注入块（mtime 缓存，避免每次重复读盘）。 */
 export function memoryCardPromptBlock(platform = 'bili') {
+  // engine='db'：旧卡退役，B站调度器与调试接口都不再拿到内容（文件已在上面的维护里清空，这里再挡一次）。
+  if (cardRetiredNow()) return '';
   const paths = pathsNow();
   const file = platform === 'bili' ? paths.promptBili : paths.promptQq;
   const cacheKey = `${platform}:${paths.dir}`;
@@ -564,7 +594,8 @@ export function startMemoryCardTimer({ log = () => {}, callBridge } = {}) {
       if (result.changed) {
         log(`记忆卡已整理：新增 B站 ${result.addedBili ?? 0} 条 / QQ ${result.addedQq ?? 0} 条${result.addedPet ? ` / 桌宠 ${result.addedPet} 条` : ''}，当前 ${result.status.percent}%（${result.status.chars}/${result.status.maxChars} 字）`);
       }
-      await notifyOwnerIfNeeded({ callBridge, log });
+      // 退役后不再发容量告警：旧卡已经不参与提示词，报警只会让人以为还得去压缩。
+      if (!cardRetiredNow()) await notifyOwnerIfNeeded({ callBridge, log });
     } catch (error) {
       log('记忆卡整理失败：', error?.message ?? error);
     }

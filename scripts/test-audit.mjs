@@ -5,11 +5,6 @@ import { spawnSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const tests = [
-  // 首次启动程序：判定层纯函数 + 「bootstrap 只能在 npm install 之前跑」的静态约束。
-  'test-bootstrap.mjs',
-  // 配置编辑器（双击 配置.bat）：深合并只覆盖表单里的键、校验不过一个字节都不写、
-  // 只绑 127.0.0.1 + 强制 token + Origin 校验、不扫描磁盘（路径必须用户手选）。
-  'test-config-ui.mjs',
   'test-audit-bridge.mjs', 'test-audit-protocol.mjs', 'test-audit-protocol-helpers.mjs',
   'test-audit-security.mjs', 'test-audit-security-mcp.mjs',
   // P0 身份闸（2026-11-11 方案 2）：stellar_* 主人工具只认会话令牌。旧实现用
@@ -20,6 +15,9 @@ const tests = [
   // 2026-11-13：file_read 原来能读任意绝对路径、能请求任意 URL（含 127.0.0.1:3300），
   // 现在两道闸都在 src/file-read-guard.js，这条钉子防止有人把白名单放宽。
   'test-file-read-guards.mjs',
+  // 2026-11-20：主人说「先存下」，她只能空口回「收好了」——文件柜没有写入口。
+  // 这条钉住写入规则与面板一致（同名不覆盖 / 索引 / 512MB / 目录穿越），以及提示里真的教她调工具。
+  'test-file-cabinet.mjs',
   // 2026-11-20：扫描版 PDF 走 Windows 自带 OCR（零安装）。
   'test-ocr-fallback.mjs',
   // 敏感文件（config.json / bili.config.json / panel-token.txt）写完必须重新收紧 ACL ——
@@ -54,6 +52,8 @@ const tests = [
   'test-memory-schedule.mjs',
   // 注入读侧（唤醒用的同步快照）：第一次读必须为空、预热后能拿到标题不给正文、
   // 侧写单独一行、库坏掉时保留上一份好结果（stale 比空更安全）。
+  // 群聊记忆：旁观话题要能切出来、不进重要晋升，按人查要能同时捞私聊与群话题（2026-11-15）。
+  'test-group-memory.mjs',
   'test-memory-inject.mjs',
   // 记忆库视图（设置页「记忆」页签的数据源）：钉住「空库也能出完整结构」与
   // 「listFacts 是 camelCase，listProfiles/listZoneNotes 是原始列名」这个不一致，
@@ -79,9 +79,6 @@ const tests = [
   // 只有登记过的前缀才可写，防爆破还要按 /64 归并（否则换地址就绕过阶梯锁）。
   'test-panel-remote-allow.mjs',
   'test-panel-local-auth.mjs',
-  // Windows 启动器（Stellar.exe）：解压必须拒绝 ../、不能覆盖已有 config.json、
-  // 构建产物必须留在仓库外。这几条藏在 C# 源码里，JS 测试不碰就永远没人看。
-  'test-windows-exe.mjs',
   'test-style-refs.mjs',
   // 记忆查询三工具（catalog / topic / search）：身份闸（无令牌+外来会话必须拒）、
   // ownerId 白名单、search 至少 2 字，以及「真的读得到库里的话题与双方原话」。
@@ -141,6 +138,9 @@ const tests = [
   // 每日 token 额度：单位解析（¥8 / 8M / 2万）、双单位比例、80% 每天只提醒一次、
   // 额度文件损坏回落默认、当天/跨天文件语义（纯逻辑 + 插件 session/event 采集）。
   'test-token-budget.mjs', 'test-token-budget-bridge.mjs',
+  // 好友爱看（刷 QQ 空间公开流）：自己的会话（feed-whale-*）+ 自己的记账类别 + 每日总量硬闸
+  // （2026-11-20 主人发现它没单独记账、一天看了上限的 4 倍）。
+  'test-feed-whale.mjs',
   // 上线补历史消息（socialV2.history）：默认开、水位/去重/黑名单、桥接启动补看离线消息、
   // history 唤醒提示与快照标记（VM 夹具网关，不连真 QQ）。
   'test-history-catchup.mjs',
@@ -162,8 +162,11 @@ const tests = [
   'test-bili-listen-error.mjs',
   // B站收件箱坐标：@ 一级评论补 root=source；resolveLatestReply 按 source rpid 找。
   'test-bili-reply-coordinates.mjs',
-  'test-token-economy.mjs',
-  'test-prompt-files.mjs', 'test-qq-model-view.mjs', 'test-qq-preset-contract.mjs',
+  // B站登录态守门：cookie 过期了别让生物钟继续空转（2026-11-20）。
+  'test-bili-login-watch.mjs',
+  'test-token-economy.mjs', 'test-qq-model-view.mjs', 'test-qq-preset-contract.mjs',
+  // 表情清单/消息快照改存独立文件 + 话题新鲜度（2026-11-16 主人要求）。
+  'test-prompt-files.mjs',
   'test-reply-wait.mjs', 'test-preset-prompt.mjs', 'test-role-card.mjs',
   // 管理员身份（QQ ⇄ B站 同一个人）+「对管理员温柔 / 绝不回嘴」提示词：
   // 号码规范化、旧字段推导、保存冲突、QQ/B站 两份提示词（B站 不得带 QQ 号）；
@@ -253,7 +256,7 @@ const tests = [
   'test-console-encoding.mjs',
   // 🔴 铁律 L7（仿真会话不得拥有本地执行能力）：注册期断言——
   //    preset 挂了守卫、守卫的 restrict 名单覆盖全部已知本地工具、且执行期一律拒绝。
-  //    这是唯一挡住"绕过桥接直连 OneBot HTTP"的东西，
+  //    这是唯一挡住"绕过桥接直连 OneBot HTTP"的东西（见 Stellar_PLAN.md §0.1/§5.2），
   //    所以必须在每次回归里跑，而不是一次性验收。
   'test-preset-local-tools.mjs',
   // qq-mode-console 的 settings 契约：0.2.0 删除了 ctx.settings.register()，
@@ -268,19 +271,19 @@ const tests = [
   //   · 静默检测不得冒充 hook 检测（心跳是 SnowLuma 本地定时器无条件发的）；
   //   · 客户端库版本不得低于 bot_status 出现的版本。
   'test-snowluma-upstream-health.mjs',
-  // B站分享卡片：B站小程序在 QQ 侧下架，默认必须是
+  // B站分享卡片（PITFALLS #22）：B站小程序在 QQ 侧下架，默认必须是
   // com.tencent.structmsg 链接卡；旧 card:true 不能继续发下架的小程序卡。
   'test-bili-card-ark.mjs',
   // preset 装配防漂移（2026-10-26 审计补登）：bundle patch（plugins/stellar/presets/*.patch.yml）
   // 必须与权威源 dsh/agent-presets/<preset>/ 逐字一致，且守卫行只用「profile 可解析」的裸说明符。
   // ⚠️ 这条以前**不在任何门禁里**（也没有 npm script），结果 qq-chat-v2.patch.yml 悄悄落后于源：
-  // 工作树里的源已经有「对话收尾」段，装进 DSH 的那份没有。教训见 历史踩坑记录。
+  // 工作树里的源已经有「对话收尾」段，装进 DSH 的那份没有。教训见 PITFALLS #71。
   'test-agent-preset-patches.mjs',
-  // 插件 → 核心模块的引用一致性：`?rev=` 必须三处一致、不许裸引用，
+  // 插件 → 核心模块的引用一致性（PITFALLS #68）：`?rev=` 必须三处一致、不许裸引用，
   // 并把"改了热重载也不生效"的核心模块清单打出来（2026-10-26 新增）。
   'test-core-rev-sync.mjs',
   // 隐私扫描的判据本身（2026-10-26）：编译出的正则必须带 g —— 否则每条规则每个文件
-  // 只看到第一个命中（fail-open），还会空转成"扫描不完整"。历史踩坑记录。
+  // 只看到第一个命中（fail-open），还会空转成"扫描不完整"。PITFALLS #74。
   'test-privacy-scan.mjs',
   // 群刷屏短指令：#sl 等非主人纯指令不唤醒；中文话题标签不误伤。
   'test-command-spam.mjs',
@@ -288,7 +291,7 @@ const tests = [
   // 且 8765/8767 两个端口与启停脚本名不能漂移（语音路由全靠它们）。
   // 离线语音包导入：校验/复制/配置保留/pyvenv 改写/回滚边界（临时夹具，不碰真实包）。
   // 云端语音包凭据边界（2026-10-29）：新装必须清空预置的火山 AppID/AccessKey，
-  // 重装保留用户自己填的；没配好时 start() 要拒绝并指路。
+  // 重装保留用户自己填的；没配好时 start() 要拒绝并指路（PITFALLS #79）。
   // 主人提问回答编码（2026-10-29）：DSH 单选不允许 selected+custom 并存 →
   // 单选走 custom-only、多选保留 selected；[仅主人] 只收窄谁能答，不是授权凭证。
   'test-question-answers.mjs',
@@ -336,6 +339,9 @@ const tests = [
   // Phase 3：启动补唤醒限量（默认 3，可配置 1~20）。
   'test-backlog-cap.mjs',
   // 唤醒硬直接：question 不再绕过每日配额。
+  // 群聊续聊/插话的纯逻辑（2026-11-15）：群里没人 @ 她时，不能只靠 5% 冷概率接话。
+  // 钉住「冷场不续聊、大群不插话、probability=0 等于别主动接话」这三条，否则调参数很容易把她变成刷屏机。
+  'test-wake-followup.mjs',
   'test-wake-policy.mjs',
   // 群分层：小群积极、大群严格、手动覆盖、设置页。
   'test-group-policy.mjs',

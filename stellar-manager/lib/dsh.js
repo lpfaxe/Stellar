@@ -13,7 +13,7 @@ const STATE_DIR = path.join(SURF, 'state')
 const STATE_FILE = path.join(STATE_DIR, 'dsh-restart.json')
 const LOG_FILE = path.join(STATE_DIR, 'dsh-restart.log')
 const SCRIPT_FILE = path.join(STATE_DIR, 'restart-dsh.ps1')
-// 面板自己的目录（解包后是 surfcore-manager/lib），用来定位 cookie-guard.js
+// 面板自己的目录（解包后是 stellar-manager/lib），用来定位 cookie-guard.js
 const LIB_DIR = path.dirname(fileURLToPath(import.meta.url))
 const GUARD_SCRIPT = path.join(LIB_DIR, 'cookie-guard.js')
 const MIN_GAP_MS = 25 * 1000          // 连点保护：正在重启时 25 秒内不再受理

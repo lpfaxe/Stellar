@@ -18,7 +18,7 @@ process.env.DSH_HOME = root;
 
 const dbFile = path.join(root, 'fixture', 'memory.db');
 const mod = await import('../src/memory-db.js');
-const { openDb, append, appendSelf, safeAppendSelf, pendingRows, segmentRows, insertTopic, insertFragment, readTopic, formatTopicForModel, catalog, formatCatalogForModel, search, formatSearchForModel, upsertProfile, listProfiles, insertStyleSlice, listStyleSlices, saveJobState, jobState, stats, pruneWindow, promoteTopic, dayKey, ownerIdForKey, bigramsOf } = mod;
+const { openDb, listTopicParticipants, topicsForPerson, groupRoster, append, appendSelf, safeAppendSelf, pendingRows, segmentRows, insertTopic, insertFragment, readTopic, formatTopicForModel, catalog, formatCatalogForModel, search, formatSearchForModel, upsertProfile, listProfiles, insertStyleSlice, listStyleSlices, saveJobState, jobState, stats, pruneWindow, promoteTopic, dayKey, ownerIdForKey, bigramsOf } = mod;
 
 const DAY = '2026-11-13';
 const T0 = new Date('2026-11-13T10:00:00+08:00').getTime();
@@ -118,7 +118,9 @@ test('读话题：双方都在，时间与身份都对', () => {
   const data = readTopic(id, { full: true, db });
   const text = formatTopicForModel(data);
   assert.match(text, /【话题】改口叫哥/);
-  assert.match(text, /主人: 以后叫我哥/); // 有昵称就用昵称，没有才显示「对方」
+  // 群聊与私聊一律「名字(QQ)」—— 同名的人太多，光靠昵称分不清谁是谁。
+  assert.match(text, /主人\(1000000001\): 以后叫我哥/);
+  assert.match(text, /参与人：主人\(1000000001\)、她\(1000000002\)/);
   assert.match(text, /她\(你\): 哥？行吧/);
   assert.equal(data.total, 2);
   assert.equal(readTopic('tp_nope', { db }), null);
@@ -257,4 +259,42 @@ test('见闻区：删一条 / 清空一个区', () => {
   assert.equal(out.deleted, 1);
   assert.equal(mod.listZoneNotes({ zone: 'qzone', db }).length, 0);
   assert.equal(mod.zoneStats({ db }).qzone.total, 0);
+});
+
+test('旁观话题：群里她没插话也要存下来，但绝不进重要晋升', () => {
+  const rows = [
+    { id: 201, ck: 'group:1132808329', oid: 'group:1132808329', role: 'user', speaker_id: '1000000003', speaker_name: '测试员A', text: '周末去爬山吗？', at: T0 + 5 * 3600 * 1000, day_key: DAY },
+    { id: 202, ck: 'group:1132808329', oid: 'group:1132808329', role: 'user', speaker_id: '1000000001', speaker_name: '示例主人', text: '我周六有空', at: T0 + 5 * 3600 * 1000 + 20000, day_key: DAY },
+  ];
+  for (const r of rows) {
+    db.prepare('INSERT INTO cache_msg (id, conversation_key, owner_id, speaker_id, speaker_name, role, kind, text, at, day_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(r.id, r.ck, r.oid, r.speaker_id, r.speaker_name, r.role, 'text', r.text, r.at, r.day_key);
+  }
+  // 不显式要求旁观 → 仍然拒绝（别人在她不在场时说话，不该冒充成她的经历）
+  const refuse = insertTopic({ db, rows, topic: { ownerId: 'group:1132808329', conversationKey: 'group:1132808329', dayKey: DAY, title: '爬山' } });
+  assert.equal(refuse.ok, false);
+  // 显式 scope=ambient → 存下来，importance 被压到 0、tier 是 daily
+  const ok = insertTopic({ db, rows, topic: { scope: 'ambient', ownerId: 'group:1132808329', conversationKey: 'group:1132808329', dayKey: DAY, title: '爬山', importance: 90 } });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.scope, 'ambient');
+  const saved = db.prepare('SELECT scope, tier FROM topic WHERE id = ?').get(ok.id);
+  assert.equal(saved.scope, 'ambient');
+  assert.equal(saved.tier, 'daily');
+
+  // 参与人索引：按人查得到这条旁观话题，群里也有名册
+  const people = listTopicParticipants(ok.id, { db });
+  assert.deepEqual(people.map((x) => x.qq).sort(), ['1000000001', '1000000003']); // 换成假号后字典序变了，按 new 排序写
+  const forA = topicsForPerson('1000000003', { db });
+  assert.ok(forA.some((t) => t.id === ok.id), '按人查应该能查到他在群里参与过的旁观话题');
+  assert.ok(groupRoster('group:1132808329', { db }).some((r) => r.qq === '1000000003'));
+
+  // 目录里必须带参与人与 [旁观] 标记，否则她分不清这是自己经历还是旁听
+  const cat = catalog({ ownerId: 'group:1132808329', db });
+  const hit = cat.rows.find((r) => r.id === ok.id);
+  assert.ok(hit && hit.scope === 'ambient');
+  assert.ok(Array.isArray(hit.participants) && hit.participants.length === 2);
+  const text = formatCatalogForModel(cat, { titles: 8, maxChars: 600 });
+  assert.match(text, /［群里的人］/);
+  assert.match(text, /1000000003/);
+  assert.match(text, /\[旁观\]/);
 });

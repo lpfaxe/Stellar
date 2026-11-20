@@ -1,5 +1,5 @@
 /**
-Stellar —— 客户端半边：DSH 设置里的「Stellar」窗口。
+ * stellar —— 客户端半边：DSH 设置里的「Stellar」窗口。
  *
  * 这是合体后唯一的设置入口。它按标签页装下：
  *   概览 / 她 / QQ / B站 / 记忆 / 角色 / 高级（扩展 · 全部参数 · 诊断）
@@ -919,7 +919,7 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
     //   groups  → 按群拦：整个群不响应（即使它在白名单里）；
     //   private → 按私聊对象拦。
     // 以前 deny.private / deny.groups 藏在「黑名单（高级）」折叠组里，和白名单隔着好几屏；
-    // 现在统一收到这张卡，和 allow.* 一一对应，同一份数据只留一处可改（历史踩坑记录 的教训）。
+    // 现在统一收到这张卡，和 allow.* 一一对应，同一份数据只留一处可改（PITFALLS #27 的教训）。
     function BlacklistCard({ deny = {}, ownerQQ = "", onDenyChange }) {
       const people = Array.isArray(deny?.users) ? deny.users.map(String) : [];
       const groups = Array.isArray(deny?.groups) ? deny.groups.map(String) : [];
@@ -1169,10 +1169,10 @@ F("sessionCwd", "会话工作目录", "留空用 stellar 根目录", "text", { b
         F("socialV2.provideRecommendations", "提供推荐值", "", "switch"),
         F("socialV2.initialPromptMaxChars", "初始提示词上限（字符）", "100~8000", "number", { min: 100, max: 8000 }),
       ]},
-      { group: "鱼群判定关键词（QQ）", note: "开头 / 中间 / 结尾任一命中即算鱼；**出厂为空**（不识别任何名字，避免误伤真人）；群名关键词只收紧鱼窝阈值，不把人算鱼", fields: [
+      { group: "鱼群判定关键词（QQ）", note: "开头 / 中间 / 结尾任一命中即算鱼；默认 肥鱼 + 结尾 fish/鱼；群名关键词只收紧鱼窝阈值，不把人算鱼", fields: [
         F("fishGuard.namePrefixes", "鱼名开头词", "逗号分隔；名字以这些词开头就算鱼（默认空，例如 DSH）", "list", { placeholder: "点击输入，例如 DSH（逗号分隔）" }),
-        F("fishGuard.nameContains", "鱼名包含词", "逗号分隔；名字里只要包含这些词就算鱼（出厂为空，例如填「吃白饭」）", "list"),
-        F("fishGuard.nameSuffixes", "鱼名结尾词", "逗号分隔；名字以这些词结尾就算鱼（出厂为空；最后一个字是字也算会误伤真人，慎填）", "list"),
+        F("fishGuard.nameContains", "鱼名包含词", "逗号分隔；名字里只要包含这些词就算鱼（默认 肥鱼，例如 吃白饭）", "list"),
+        F("fishGuard.nameSuffixes", "鱼名结尾词", "逗号分隔；默认 肥鱼,fish,鱼（最后一个字是鱼也算；接受极小概率误伤真人）", "list"),
         F("fishGuard.groupNameSuffixes", "鱼窝群名包含词", "逗号分隔；群名包含这些词时收紧阈值（不把人算成鱼）", "list"),
         F("fishGuard.fishIds", "额外认定的鱼 QQ", "逗号分隔；名字不像但确认是鱼时填这里", "list"),
         F("fishGuard.exemptNames", "豁免昵称", "逗号分隔；人类用鱼名时不误伤", "list"),
@@ -1446,10 +1446,10 @@ F("sessionCwd", "会话工作目录", "留空用 stellar 根目录", "text", { b
           F(`dynamics.kinds.${key}.prefix`, `${label} · 固定开头`, "留空 = 不加前缀", "text", { wide: true }),
         ]),
       ]},
-      { group: "鱼群判定关键词（B站）", note: "开头 / 中间 / 结尾任一命中即算鱼；**出厂为空**；只要评论者昵称命中就算，不涉及视频/UP 名", fields: [
+      { group: "鱼群判定关键词（B站）", note: "开头 / 中间 / 结尾任一命中即算鱼；默认 肥鱼 + 结尾 fish/鱼；只要评论者昵称命中就算，不涉及视频/UP 名", fields: [
         F("fishGuard.namePrefixes", "鱼名开头词", "逗号分隔；名字以这些词开头就算鱼（默认空，例如 DSH）", "list", { placeholder: "点击输入，例如 DSH（逗号分隔）" }),
-        F("fishGuard.nameContains", "鱼名包含词", "逗号分隔；名字里只要包含这些词就算鱼（出厂为空，例如填「吃白饭」）", "list"),
-        F("fishGuard.nameSuffixes", "鱼名结尾词", "逗号分隔；名字以这些词结尾就算鱼（出厂为空；最后一个字是字也算会误伤真人，慎填）", "list"),
+        F("fishGuard.nameContains", "鱼名包含词", "逗号分隔；名字里只要包含这些词就算鱼（默认 肥鱼，例如 吃白饭）", "list"),
+        F("fishGuard.nameSuffixes", "鱼名结尾词", "逗号分隔；默认 肥鱼,fish,鱼（最后一个字是鱼也算；接受极小概率误伤真人）", "list"),
         F("fishGuard.extraFishMids", "额外认定的鱼 mid", "逗号分隔；改名了也能认出来（B站 mid）", "list"),
         F("fishGuard.exemptNames", "豁免昵称", "逗号分隔", "list"),
         F("fishGuard.exemptMids", "豁免 mid", "逗号分隔；主人/自己会被代码强制排除", "list"),
@@ -1479,7 +1479,7 @@ F("sessionCwd", "会话工作目录", "留空用 stellar 根目录", "text", { b
         F("fishGuard.failCooldownMinutes", "风控失败冷却（分钟）", "默认 60；遇到 -509/12015 等码自动停手", "number", { min: 1 }),
       ]},
       { group: "B站 会话权限", note: "只影响她自己的 DSH 会话（bili-whale-*），不影响 QQ 桥接；改完下一次 tick 生效", fields: [
-        F("agent.sandbox", "会话权限", "danger-full-access = 定时醒来能跑 bili.mjs（推荐；C:\\Users\\<用户名> 用 workspace-write 会因 WRITE_OWNER 起不了命令）；workspace-write = 更安全但可能什么都跑不了", "select", {
+        F("agent.sandbox", "会话权限", "danger-full-access = 定时醒来能跑 bili.mjs（推荐；%USERPROFILE% 用 workspace-write 会因 WRITE_OWNER 起不了命令）；workspace-write = 更安全但可能什么都跑不了", "select", {
           options: [["danger-full-access", "完全访问（推荐，能跑工具）"], ["workspace-write", "仅工作区（更安全，可能跑不了命令）"]],
         }),
       ]},
@@ -2567,7 +2567,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
                 h(Browse, { mode: "dir", title: "选择 SnowLuma2 解压出来的根目录（里面有 app）", onPick: (picked) => detectSnowLuma(picked) }),
                 h(Btn, { kind: "qbw-btn2", onClick: () => act("start-snowluma"), disabled: !!busy }, "只打开 SnowLuma"),
                 h(Btn, { kind: "qbw-btn3", onClick: () => act("stop-snowluma"), disabled: !!busy }, "关闭 SnowLuma")),
-              h("div", { className: "qbw-hint" }, "检测只会在常见位置里猜。装在别处（例如 C:\Program Files\SnowLuma2）就点「手动选择已安装的 SnowLuma」，选 SnowLuma.exe 或 app\launcher.bat（也可以直接选解压根目录）。"),
+              h("div", { className: "qbw-hint" }, "检测只会在常见位置里猜。装在别处（例如 C:\软件\SnowLuma2）就点「手动选择已安装的 SnowLuma」，选 SnowLuma.exe 或 app\launcher.bat（也可以直接选解压根目录）。"),
               h("div", { className: "qbw-hint" }, "「手动选择」只是告诉插件你装好的 SnowLuma 在哪：不下载、不安装、不移动、不删除任何文件。"),
               h("div", { className: "qbw-hint" }, "Stellar 只负责检测、打开和查看连接状态；SnowLuma2 本体按 EULA 不随插件分发，安装与扫码仍需你完成。")),
             h("div", { className: "qbw-card" },
@@ -3690,16 +3690,16 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
             h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, `四类动态：${kindLine || "—"}`),
             h("div", { className: "qbw-hint" }, `下一类：${data.dynamics?.next ? `${data.dynamics.next.label} ${data.dynamics.next.slotText}` : "—"}`),
             h("div", { className: "qbw-hint" },
-              `QQ 分享：${data.qqShare?.enabled ? `下一班 ${data.qqShare.nextText ?? "—"} → ${(data.qqShare.groupsEffective ?? []).length} 个群` : "已关"}`))
+              `QQ 分享：${data.qStellarare?.enabled ? `下一班 ${data.qStellarare.nextText ?? "—"} → ${(data.qStellarare.groupsEffective ?? []).length} 个群` : "已关"}`))
           : h("div", { className: "qbw-hint" }, "读取中…"));
     }
 
     // ── B站 → QQ 自动分享（写根 config.json 的 biliBridge，保存后需重启桥接）──
     // 放在 B站 页最上面 + 默认展开：以前埋在页面最底部、还是折叠的，
-    // 用户找了半天都找不到。
-    function QqShareSection({ qq, set, data, busy, setBusy, toast }) {
+    // 用户找了半天都找不到（见 PITFALLS #21）。
+    function QStellarareSection({ qq, set, data, busy, setBusy, toast }) {
       const fields = QQ_BILI_SHARE_FIELDS;
-      const share = data?.qqShare;
+      const share = data?.qStellarare;
       const [shareMsg, setShareMsg] = useState("");
       const shareNow = async () => {
         if (!confirm("现在就让角色往白名单群分享一条 B站 视频？这会真的发到群里，并占用今天的一个分享名额。")) return;
@@ -4363,7 +4363,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           h("p", null, "推荐扫码登录示例账号（用 B站 App 扫一扫）；手动粘贴 cookie 和待审核队列在「高级设置」里。"),
           h("div", { className: "qbw-actions", style: { borderTop: "none", marginTop: "6px", paddingTop: "0" } },
             h(Btn, { onClick: () => setQrFish(true), disabled: !!busy }, "扫码登录示例账号"))),
-        h(QqShareSection, { qq, set: setQqPath, data: automation, busy, setBusy, toast }),
+        h(QStellarareSection, { qq, set: setQqPath, data: automation, busy, setBusy, toast }),
         h(Section, { title: "作息窗口", note: "C 模式：每个窗口至少 1 次；全天上限见「每天最多醒来」，剩余次数按该时段最近评分分配，相邻两次至少隔「最小间隔」", defaultOpen: true },
           h("div", { style: { padding: "6px 0" } }, h(WindowsEditor, { value: cfg?.night?.windows, onChange: (v) => set(["night", "windows"], v) }))),
         h(AdvancedSettings, { note: "凭据 / 鱼群状态 / 口味权重 / 待审核 / 全部 B站 参数：展开后同样可改" },
@@ -4669,6 +4669,8 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       };
       const level = Math.max(Number(status.level) || 0, Number(status.alertLevel) || 0);
       const memoryMode = unified?.memory?.mode === "vector" ? "vector" : "narrative";
+      // engine='db' 时新记忆库接管：旧记忆卡只作只读归档，不再注入、也不再受「记忆方式」控制。
+      const dbEngine = unified?.memory?.engine === "db";
       const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
       const meterClass = "qbw-meter" + (level >= 2 ? " bad" : level >= 1 ? " warn" : "");
       const needsAttention = level > 0 && level > (Number(status.acknowledgedLevel) || 0);
@@ -5730,7 +5732,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       const vectorServiceOk = vector?.service?.ok !== false;
       const biliToQq = qq?.biliBridge?.memory?.enabled !== false && qq?.biliBridge?.enabled !== false;
       // 开关必须绑“可编辑草稿”，不能直接绑服务端快照 qq.biliBridge：
-      // 旧写法点了只改 unified.__biliToQqToggle，checked 却读 qq 快照 → 点完立刻弹回。
+      // 旧写法点了只改 unified.__biliToQqToggle，checked 却读 qq 快照 → 点完立刻弹回（PITFALLS #16）。
       const biliToQqDraft = typeof unified?.__biliToQqToggle === "boolean" ? unified.__biliToQqToggle : biliToQq;
       const qqToBili = unified?.memory?.qqToBili ?? {};
       const setQqToBili = (key, value) => setUnified(["memory", "qqToBili", key], value);
@@ -5754,7 +5756,9 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       const usageProvider = CLOUD_PROVIDER_BY_ID[usageCloudProvider] || CLOUD_PROVIDER_BY_ID.siliconflow;
       return h("div", null,
         h(MemoryDbPanel, {}),
-        h(Section, { title: "记忆方式", note: "读取哪一套；两套存储都继续写入" },
+        dbEngine ? h("div", { className: "qbw-warnbox" },
+          "现在用新记忆库（memory.db）：唤醒只注入话题目录、重要事实与侧写，旧记忆卡与向量记忆都不再进提示词。下面这些是只读归档，留着方便你翻历史；想回到旧卡，把 config.json 的 memory.engine 改成 card 再重启。")
+        : h(Section, { title: "记忆方式", note: "读取哪一套；两套存储都继续写入" },
           h(Row, { label: "当前使用", hint: "切换只影响读取/注入；不会停止任何一边的存储" },
             h("select", {
               className: "qbw-input",
@@ -5768,13 +5772,13 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
             h("option", { value: "narrative" }, "叙事记忆（衰减卡 + 全量卡）"),
             h("option", { value: "vector" }, "向量记忆（按当前消息检索）"))),
           h("div", { className: "qbw-hint" }, "叙事记忆与向量记忆是两套独立存储；切换只改读取/注入，不会停止任何一边的写入。")),
-        h("div", { className: "qbw-tabs", style: { marginTop: "8px" } },
+        dbEngine ? null : h("div", { className: "qbw-tabs", style: { marginTop: "8px" } },
           memoryPanes.map(([id, label]) => h("button", {
             key: id,
             className: "qbw-tab" + (pane === id ? " on" : ""),
             onClick: () => setPane(id),
           }, label))),
-        pane === "vector"
+        pane === "vector" && !dbEngine
           ? h("div", null,
           h(Btn, { kind: "qbw-btn2", onClick: () => setUsageOpen(true) },
             "使用说明",
@@ -5830,7 +5834,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           vectorErr ? h("div", { className: "qbw-warnbox" }, `向量状态读取失败：${vectorErr}`) : null),
                       h(EmbeddingPackPanel, { unified, setUnified, toast, busy, setBusy }),)
           : h("div", null,
-        h(MemoryCardPanel, { view: "summary", data: card, reload: loadCard, busy, setBusy, toast, unified, setUnified, onChanged: () => setFullVersion((v) => v + 1) }),
+        dbEngine ? h("div", { className: "qbw-hint" }, "旧记忆卡的正文在磁盘上（characters/<角色>/memory/memory-card.json），这里不再显示 —— 要看就把 memory.engine 改回 card 再重启。") : h(MemoryCardPanel, { view: "summary", data: card, reload: loadCard, busy, setBusy, toast, unified, setUnified, onChanged: () => setFullVersion((v) => v + 1) }),
         h("div", { className: "qbw-group" }, "双向脱敏同步（QQ ⇄ B站）", h("small", null, "只搬运公开、脱敏后的近况；和上面的记忆卡不是一回事")),
         h("div", { className: "qbw-dangerbox" },
           h("b", null, "隐私红线（锁定，不可关）："),
@@ -5864,9 +5868,9 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
             h("div", { className: "qbw-actions" },
               h(Btn, { onClick: syncNow, disabled: !!busy || qqToBili.enabled !== true }, busy === "sync" ? "同步中…" : "立即同步"),
                             h(Btn, { kind: "qbw-btn2", onClick: purge, disabled: !!busy }, busy === "purge" ? "清理中…" : "清空 QQ→B站 记忆")))),
-        h(AdvancedSettings, { note: "记忆卡规则 / 最近记忆 / 全量卡 / 同步范围 / 注入预览 / 审计：展开后同样可改" },
-          h(MemoryCardPanel, { view: "details", data: card, reload: loadCard, busy, setBusy, toast, unified, setUnified, onChanged: () => setFullVersion((v) => v + 1) }),
-          h(FullMemoryCardPanel, { reloadKey: fullVersion, busy, toast }),
+        h(AdvancedSettings, { note: dbEngine ? "同步范围 / 注入预览 / 审计：展开后同样可改" : "记忆卡规则 / 最近记忆 / 全量卡 / 同步范围 / 注入预览 / 审计：展开后同样可改" },
+          dbEngine ? null : h(MemoryCardPanel, { view: "details", data: card, reload: loadCard, busy, setBusy, toast, unified, setUnified, onChanged: () => setFullVersion((v) => v + 1) }),
+          dbEngine ? null : h(FullMemoryCardPanel, { reloadKey: fullVersion, busy, toast }),
           h(Section, { title: "同步范围与隐私参数", note: "QQ → B站", collapsible: false },
             h(Row, { label: "回看天数", hint: "只读最近 N 天的公开群消息" },
               h("input", { className: "qbw-input", type: "number", min: 1, max: 90, value: qqToBili.lookbackDays ?? 7, onChange: (e) => setQqToBili("lookbackDays", Number(e.target.value)) })),

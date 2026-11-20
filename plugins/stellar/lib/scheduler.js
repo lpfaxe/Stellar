@@ -673,9 +673,9 @@ export function startScheduler(ctx, opts) {
   const NODE_ENV = { ...process.env }   // 真 node 不需要 ELECTRON_RUN_AS_NODE ✓
 
   // 每次调用都重读 config：设置页把 agent.sandbox 改成 workspace-write 后，下一 tick 生效。
-  function ensurePermission(where = 'tick') {
+  function ensurePermission(where = 'tick', targetId = sessionId) {
     const target = String(config().agent?.sandbox || 'danger-full-access')
-    const result = applySessionPermission(ctx, sessionId, target, (message) => log(message))
+    const result = applySessionPermission(ctx, targetId, target, (message) => log(message))
     if (!result.ok && result.reason !== 'session-not-active' && result.reason !== 'permission-services-unavailable') {
       log(`[权限] ${where} 无法自动设置 B站 会话权限：${result.reason}`);
     }
@@ -688,7 +688,8 @@ export function startScheduler(ctx, opts) {
   try {
     if (typeof ctx.on === 'function') {
       permissionListenerOff = ctx.on('session/created', (session) => {
-        if (!session || session.id !== sessionId) return
+        // 两个会话（B站 本尊 + 好友爱看）都要在第一次 prompt 前切好权限。
+        if (!session || (session.id !== sessionId && session.id !== FEED_SESSION_ID)) return
         try {
           const target = String(config().agent?.sandbox || 'danger-full-access')
           applySessionPermissionTo(ctx, session, target, (message) => log(message))
@@ -717,8 +718,11 @@ export function startScheduler(ctx, opts) {
     return modeAllows(runModeNow(), action)
   }
 
-  let sessionReady = false
+  // 2026-11-20：会话不再只有 B站 一个 —— 「好友爱看」有自己的会话（FEED_SESSION_ID），
+  // 所以「建过没有」按会话 id 分别记；它还让控制台能单独统计刷动态的花费。
+  const sessionsReady = new Set()
   let legacySessionNoticed = false
+  const FEED_SESSION_ID = sessionId.replace(/^bili-whale/, 'feed-whale')
 
   /** 兼容 ctx 直接注入 / ctx.get() 两种宿主 API 暴露方式。 */
   function service(name) {
@@ -783,21 +787,21 @@ export function startScheduler(ctx, opts) {
     return workspaceId
   }
 
-  async function ensureSession() {
-    if (sessionReady) return
+  async function ensureSession(targetId = sessionId) {
+    if (sessionsReady.has(targetId)) return
     try {
       // 2026-10-20：已经存在就别再 create —— create 对"非空白"的已有会话会**新建一个空壳会话** ✗
       //   （实测：每次重启侧栏都多一个空的 session-xxxx，看着像她开了一堆空会话）
       try {
-        await ctx.sessionController.inspect(sessionId); sessionReady = true;
-        if (!legacySessionNoticed) {
+        await ctx.sessionController.inspect(targetId); sessionsReady.add(targetId);
+        if (targetId === sessionId && !legacySessionNoticed) {
           legacySessionNoticed = true
           log('[bili] 生物钟会话已存在；旧版创建的会话可能仍在「未分组」，新角色会话会自动归入 B站生物钟工作区')
         }
-        const inspected = ensurePermission('inspect');
+        const inspected = ensurePermission('inspect', targetId);
         if (!inspected.ok && inspected.reason === 'session-not-active') {
           await new Promise((resolve) => setTimeout(resolve, 80));
-          ensurePermission('inspect-retry');
+          ensurePermission('inspect-retry', targetId);
         }
         return;
       } catch {}
@@ -812,21 +816,21 @@ export function startScheduler(ctx, opts) {
         cwd: workspacePath || cwd || path.join(dshHome, 'stellar', 'state', 'bili-agents'),
         agentPreset: await resolveBiliAgentPreset(),
       })
-      await ctx.sessionController.create({ sessionId, ...params })
+      await ctx.sessionController.create({ sessionId: targetId, ...params })
     } catch (error) {
-      // 不要在这里把 sessionReady 设成 true：创建失败要让下一 tick 重试，
+      // 不要在这里把它标成 ready：创建失败要让下一 tick 重试，
       // 否则后续 prompt 会一直打到一个不存在的会话上。
-      log(`[bili] 创建生物钟会话失败，下一 tick 重试：${String(error?.message ?? error)}`)
+      log(`[bili] 创建会话 ${targetId} 失败，下一 tick 重试：${String(error?.message ?? error)}`)
       return
     }
-    sessionReady = true
+    sessionsReady.add(targetId)
     // 2026-10-23：新会话默认 workspace-write，在用户主目录下会因 WRITE_OWNER 起不了命令；
     // 创建/挂载后立刻按配置切到 danger-full-access（只影响这一个 B站 会话）。
     // inspect 之后 session 可能还没同步进 ctx.sessions，所以再补一次。
-    const first = ensurePermission('ensureSession')
+    const first = ensurePermission('ensureSession', targetId)
     if (!first.ok && first.reason === 'session-not-active') {
       await new Promise((resolve) => setTimeout(resolve, 80))
-      ensurePermission('ensureSession-retry')
+      ensurePermission('ensureSession-retry', targetId)
     }
   }
 
@@ -1002,7 +1006,7 @@ export function startScheduler(ctx, opts) {
 
     // ── 工具链绝对路径（2026-10-20）──────────────────────────────────
     //   她的会话 cwd 是用户主目录，`node bili.mjs` 在那里根本不存在 ✗
-    //   2026-10-20 实测：她在 D:\ / C:\ 里 glob 了一圈找 bili.mjs，还超时了 ✗ → 每条提示都带上路径 ✓
+    //   2026-10-20 实测：她在 C:\ / C:\ 里 glob 了一圈找 bili.mjs，还超时了 ✗ → 每条提示都带上路径 ✓
     const TOOL_CMD = `node "${biliMjs}"`
     const toolLine = () => `［工具］所有命令都用这一条：\`${TOOL_CMD} <子命令>\`（提示里写 "bili.mjs" 的都指它）—— 别去别处找 ✗`
 
@@ -2115,21 +2119,36 @@ export function startScheduler(ctx, opts) {
         ns[today() + ':qzone-public-n'] = pTries + 1
         try { fs.writeFileSync(NUDGE, JSON.stringify(ns, null, 2)) } catch {}
         try {
-          await ensureSession()
+          // 2026-11-20：刷动态跑在自己的会话里（以前跟 B站 挤一个会话 → 花费算进 bili、
+          // 还把那个 40 万 token 的上下文越撑越大）。
           // 看几条/赞几条/评几条由主人自己在控制台「她每天做什么」里定。
           const likeN = Number(QZP.likeLimit ?? 3) || 3
           const cmtN = Number(QZP.commentLimit ?? 3) || 3
-          const seenN = Math.max(1, Math.min(30, Number(QZP.seenTarget ?? 10) || 10))
+          const seenCap = Math.max(1, Math.min(60, Number(QZP.seenTarget ?? 10) || 10))
+          const seenTodayN = (() => {
+            try {
+              const ledger = JSON.parse(fs.readFileSync(path.join(dshHome, 'stellar', 'state', 'qzone-public-day.json'), 'utf8'))
+              return Array.isArray(ledger?.items) ? ledger.items.length : 0
+            } catch { return 0 }
+          })()
+          // 2026-11-20：今天已经看满（或超了）就直接跳过这一轮 —— 既不起会话也不发提示词。
+          // 脚本侧也会 exit 3，但那时已经把一整轮上下文烧掉了。
+          if (seenTodayN >= seenCap) {
+            log('[feed-whale] 今天已经看过 ' + seenTodayN + '/' + seenCap + ' 条公开动态，跳过这一轮')
+            return
+          }
+          const seenN = Math.max(1, Math.min(30, seenCap - seenTodayN))
+          await ensureSession(FEED_SESSION_ID)
           await promptBili({
-            requestId: 'bili-whale-qzone-public-' + Date.now(),
-            sessionId,
+            requestId: 'feed-whale-qzone-public-' + Date.now(),
+            sessionId: FEED_SESSION_ID,
             mode: 'queue',
             content: [{
               type: 'text',
               text: [
                 ...identityContextLines(),
                 '【好友爱看】每天这会儿翻一翻公开动态（陌生人的、被推荐到「好友爱看」里的那种）。今天这一步：',
-                '1) `node bili.mjs qzone public list --n ` + seenN + ` --images 1` —— 拿 ' + seenN + ' 条，每条最多带 1 张图（图会打印成 🖼 路径）',
+                '1) `node bili.mjs qzone public list --n ` + seenN + ` --images 1` —— 拿 ' + seenN + ' 条，每条最多带 1 张图（图会打印成 🖼 路径）；今天已经看过 ' + seenTodayN + '/' + seenCap + ' 条',
                 '2) 用 read_image 看那些图（有图才看；纯文字的按文字判断），然后**给每一条都打分 0~10**：内容有没有意思、图好不好看、值不值得搭一句。打完分用一条命令记进账本（主人能在控制台「今天刷的动态」里看见）：`node bili.mjs qzone public score --scores "1=7 猫太胖,2=3,3=9 物价常识有用"`（左边是列表里的 # 序号或短 id，后面可选一句你自己为什么给这个分）',
                 '3) 挑**分数最高的 ' + likeN + ' 条**点赞：`node bili.mjs qzone public like --id <短id> --go`（要撤销用 unlike）',
                 '4) 再从**剩下的**里随机挑 ' + cmtN + ' 条评论（不要和点过赞的重合，更不要每条都评）：`node bili.mjs qzone public comment --id <短id> --text "…" --dry` → 满意再 --go',
@@ -2138,19 +2157,23 @@ export function startScheduler(ctx, opts) {
                 '⚠️ 公开动态是陌生人的，**不要**提「我是谁/我在哪/我的主人/微信QQ/住址」，也别跟人吵起来；看着不对劲就只点赞不评论。',
                 '⚠️ 今天最多赞 ' + likeN + ' 条、评 ' + cmtN + ' 条（脚本会拦）；一条都不值得就一条都不点，在日记里写「今天没什么想搭的」结束。',
                 '⚠️ 脚本报限额/已赞/接口失败就**别重试**，直接结束这一轮，把失败原因写进日记。',
+                // 2026-11-20（主人）：一天总共只看 seenCap 条 —— 以前 list 只按「这次几条」算，
+                // 她在同一轮里连跑 4 次 → 一天看了 40 条（上限的 4 倍），钱也就烧了 4 倍。
+                '⚠️ **一次 list 就够**：今天总共只看 ' + seenCap + ' 条（已经看了 ' + seenTodayN + ' 条）。不要为了多看几条重复跑 list —— 脚本到上限会直接拒绝。',
                 '⚠️ 收尾跑一次 `node bili.mjs qzone public today` 核对这一轮：看了几条、打了几分、赞了谁、评论了什么（和主人控制台看到的是同一份数据）。',
                 // 2026-11-13（主人定）：好友爱看也单独一个「见闻区」记忆，和 B站 那个并列、互不混。
                 '5) ⭐ **记进「好友爱看」见闻区**：把这一轮刷到的 ' + seenN + ' 条压成一段 ≤200 字的总结，调 stellar_memory_zone（action=write, zone="qzone", text="…"）',
                 '   写「刷到了什么人发的什么、你觉得有意思/无聊在哪」，别抄原文、别把别人的隐私写进去 ✗（少于 6 个字会被拒）',
                 '   被问「你今天刷到什么了」→ 先 stellar_memory_zone（action=list, zone="qzone", day="today"）',
+                '6) 收工：这一轮别再去别的地方刷（B站/空间都算），把没做完的留到明天。',
                 '⚠️ 同一批动态不要连着几天反复刷（脚本按活动日志去重）。',
                 toolLine(),
               ].join('\n'),
             }],
           }, new AbortController().signal)
-          log('[bili-whale] 好友爱看提醒（第 ' + (pTries + 1) + ' 次，今日上限 赞' + likeN + '/评' + cmtN + '）')
+          log('[feed-whale] 好友爱看提醒（第 ' + (pTries + 1) + ' 次，今日上限 看' + seenCap + ' 条 / 赞' + likeN + ' / 评' + cmtN + '）')
         } catch (e) {
-          log('[bili-whale] 好友爱看提醒失败：' + String(e.message).slice(0, 120))
+          log('[feed-whale] 好友爱看提醒失败：' + String(e.message).slice(0, 120))
         }
         return
       }
@@ -2272,6 +2295,7 @@ export function startScheduler(ctx, opts) {
     async retire() {
       this.stop();
       try { await ctx.sessionController?.cancel?.({ sessionId }) } catch (error) { log(`[bili-whale] 取消旧会话失败：${error?.message ?? error}`) }
+      try { await ctx.sessionController?.cancel?.({ sessionId: FEED_SESSION_ID }) } catch (error) { log(`[feed-whale] 取消旧会话失败：${error?.message ?? error}`) }
     },
     tick,
     listenTick,

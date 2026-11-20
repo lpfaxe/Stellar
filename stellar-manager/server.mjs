@@ -1,6 +1,7 @@
 /* Stellar 控制台入口：路由 + 启动。业务逻辑都在 lib/ 里。 */
 import fs from 'node:fs'
 import http from 'node:http'
+import path from 'node:path'
 import { BRIDGE_CFG, CFG_FILE, HOST, PORT } from './lib/paths.js'
 import { appendAudit, atomicWriteJson, clampNum, logLine, maskText, readBody, readJson, sendJson } from './lib/util.js'
 import { applySecurity, clientIp, crossSite, currentToken, gate, handleLogin, handleLogout, isAuthed, isLoopback, issueLoginCode, lanAddresses, publicV6Addresses, requestScope, requireWrite, rotateToken, securitySnapshot, sessionInfo, setPassphrase } from './lib/auth.js'
@@ -28,6 +29,7 @@ import { contactIndex, nameForKey, relationFor } from './lib/people.js'
 import { readTaskState, sendOwnerCommand, setPaused, wakeOwner } from './lib/task.js'
 import { readRunMode, saveRunMode } from './lib/run-mode.js'
 import { buildWebImages, clearWebImages, deleteWebImage, webImageFile } from './lib/web-images.js'
+import { deleteFile as deleteCabinetFile, filePath as cabinetFilePath, listFiles as listCabinetFiles, saveFile as saveCabinetFile, saveStream as saveCabinetStream } from './lib/files.js'
 import { buildMemoryDb, clearZoneNotes, deleteFact, deleteZoneNote, forgetMemory, listFacts, listFragments, listProfiles, listStyleRefs, listTopics, listZoneNotes, readTopicDetail, requestMemoryJob, runMemoryJob, saveFact, saveProfile, setMemoryTier, setStyleRefEnabled } from './lib/memory-db.js'
 import { MANIFEST, servePublic } from './lib/static.js'
 import { logEvent, metricsSnapshot, recordRequest } from './lib/metrics.js'
@@ -125,7 +127,7 @@ const server = http.createServer(async (req, res) => {
         ...metricsSnapshot(),
         statusCache: statusCacheStats(),
         sessions: sessionInfo(),
-        tunnel: process.env.STELLAR_NO_TUNNEL !== '1' && process.env.SURFCORE_NO_TUNNEL !== '1',
+        tunnel: process.env.STELLAR_NO_TUNNEL !== '1',
       })
     }
     if (url.pathname === '/api/cost') {
@@ -482,7 +484,85 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ── 新记忆库（SQLite）：概览 / 话题 / 零碎 / 侧写 / 参考库（owner 2026-11-13）──
+    // ── 主人的文件柜：她和我聊天要用的文档/图片放一处（owner 2026-11-20）──
+// 目录 ~/.dsh/stellar/files/，跨天保留。她不主动读；需要时用 stellar_file_list 现查、
+// 用 stellar_file_read(path=...) 读单个文件，所以这里不需要往提示词里灌清单。
+if (url.pathname === '/api/files' && req.method === 'GET') {
+  const scope = requestScope(req)
+  try {
+    return sendJson(res, 200, { ...listCabinetFiles(), canWrite: scope !== 'public' })
+  } catch (e) {
+    return sendJson(res, 500, { ok: false, message: '读取文件柜失败：' + String(e && e.message || e) })
+  }
+}
+if (url.pathname === '/api/files/download') {
+  const file = cabinetFilePath(url.searchParams.get('name') || '')
+  if (!file) return sendJson(res, 404, { ok: false, message: '这个文件已经不在了' })
+  const ext = path.extname(file).toLowerCase()
+  const TYPE = {
+    '.pdf': 'application/pdf',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
+    '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8',
+    '.zip': 'application/zip',
+  }
+  const type = TYPE[ext] || 'application/octet-stream'
+  const stat = fs.statSync(file)
+  const inline = /^image\//.test(type) || /^text\//.test(type) || type === 'application/pdf'
+  res.writeHead(200, {
+    'content-type': type,
+    'content-length': stat.size,
+    'cache-control': 'no-store',
+    'content-disposition': (inline ? 'inline' : 'attachment') + "; filename*=UTF-8''" + encodeURIComponent(path.basename(file)),
+  })
+  return fs.createReadStream(file).pipe(res)
+}
+if (url.pathname === '/api/files/upload' && req.method === 'POST') {
+  if (!requireWrite(req, res)) return
+  const by = 'panel:' + clientIp(req)
+  // 大文件走原始字节体（2026-11-20，上限 512 MB）：base64 JSON 会把内存翻一倍多，
+  // 几百 MB 的文件在面板进程里直接吃满。非 JSON 请求一律按流式收。
+  const isJson = /application\/json/i.test(String(req.headers['content-type'] || ''))
+  if (!isJson) {
+    const name = String(url.searchParams.get('name') || req.headers['x-file-name'] || '')
+    try {
+      const r = await saveCabinetStream(name, req, { by })
+      if (!r.ok) return sendJson(res, 400, r)
+      appendAudit('file-upload', { name: r.name, bytes: r.bytes, by })
+      logLine('file upload ' + r.name + ' (' + r.bytes + ' B)')
+      return sendJson(res, 200, r)
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+    }
+  }
+  const body = await readJsonBody(req)
+  try {
+    const r = saveCabinetFile(String(body.name || ''), String(body.base64 || ''), { by })
+    if (!r.ok) return sendJson(res, 400, r)
+    appendAudit('file-upload', { name: r.name, bytes: r.bytes, by })
+    logLine('file upload ' + r.name + ' (' + r.bytes + ' B)')
+    return sendJson(res, 200, r)
+  } catch (e) {
+    return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+  }
+}
+if (url.pathname === '/api/files/delete' && req.method === 'POST') {
+  if (!requireWrite(req, res)) return
+  const by = 'panel:' + clientIp(req)
+  const body = await readBody(req)
+  try {
+    const r = deleteCabinetFile(String(body.name || ''), { by })
+    if (!r.ok) return sendJson(res, 404, r)
+    appendAudit('file-delete', { name: r.name, by })
+    logLine('file delete ' + r.name)
+    return sendJson(res, 200, r)
+  } catch (e) {
+    return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+  }
+}
+// ── 新记忆库（SQLite）：概览 / 话题 / 零碎 / 侧写 / 参考库（owner 2026-11-13）──
     // 库文件与桥接共用一份（characters/<角色>/memory/memory.db）；这里只读 + 三个写操作，
     // 判定逻辑全在 stellar/src/memory-db.js 与 memory-worker.js，面板不重写规则。
     if (url.pathname === '/api/memory-db' && req.method === 'GET') {
@@ -890,10 +970,27 @@ server.listen(PORT, HOST, () => {
   logLine('panel started on ' + PORT + ' host=' + HOST + ' lan=' + lan.join(','))
   resumeRestartPolling()
   reconcileRestartState()
-  if (process.env.STELLAR_NO_TUNNEL !== '1' && process.env.SURFCORE_NO_TUNNEL !== '1') {
+  if (process.env.STELLAR_NO_TUNNEL !== '1') {
     resumeTunnel()
     setInterval(ensureTunnel, 20000).unref()
   } else {
     logLine('tunnel disabled by STELLAR_NO_TUNNEL=1')
   }
 })
+// 上传文件走 base64 JSON，2 MB 的 readBody 装不下；只给 /api/files/upload 用。
+async function readJsonBody(req, maxBytes = 60 * 1024 * 1024) {
+  return new Promise((resolve) => {
+    const chunks = []
+    let size = 0
+    let overflow = false
+    req.on('data', (c) => {
+      size += c.length
+      if (size > maxBytes) { overflow = true; return }
+      chunks.push(c)
+    })
+    req.on('end', () => {
+      if (overflow) return resolve({})
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')) } catch { resolve({}) }
+    })
+  })
+}

@@ -25,10 +25,12 @@ import path from 'node:path';
 export const BUDGET_VERSION = 1;
 /** 80% 触发提醒；100% 才拦截。 */
 export const ALERT_RATIO = 0.8;
-export const SCOPES = Object.freeze(['qq', 'bili', 'other', 'total']);
-export const CATEGORY_SCOPES = Object.freeze(['qq', 'bili', 'other']);
+// 2026-11-20：加 'feed'（好友爱看）。它只用于**分类显示与总额**，
+// 默认不限额度；用户在设置页给 feed 单独设了额度时也会走同一套闸门。
+export const SCOPES = Object.freeze(['qq', 'bili', 'feed', 'other', 'total']);
+export const CATEGORY_SCOPES = Object.freeze(['qq', 'bili', 'feed', 'other']);
 export const UNIT_KEYS = Object.freeze(['cny', 'tokens']);
-export const SCOPE_LABELS = Object.freeze({ qq: 'QQ', bili: 'B站', other: '其他', total: '总额' });
+export const SCOPE_LABELS = Object.freeze({ qq: 'QQ', bili: 'B站', feed: '好友爱看', other: '其他', total: '总额' });
 export const UNIT_LABELS = Object.freeze({ cny: '元', tokens: 'token' });
 export const BUDGET_FILES = Object.freeze({
   budget: 'token-budget.json',
@@ -44,6 +46,7 @@ export const BUDGET_FILES = Object.freeze({
 export const DEFAULT_LIMITS = Object.freeze({
   qq: Object.freeze({ cny: 8, tokens: null }),
   bili: Object.freeze({ cny: null, tokens: null }),
+  feed: Object.freeze({ cny: null, tokens: null }),
   other: Object.freeze({ cny: null, tokens: null }),
   total: Object.freeze({ cny: null, tokens: null })
 });
@@ -171,18 +174,19 @@ export function normalizeUsagePair(input) {
   };
 }
 
-/** 三类之和 = 总额。 */
+/** 各类之和 = 总额（按 CATEGORY_SCOPES 循环，以后再加类不用改这里）。 */
 export function totalsOf(usage) {
-  const qq = normalizeUsagePair(usage?.qq);
-  const bili = normalizeUsagePair(usage?.bili);
-  const other = normalizeUsagePair(usage?.other);
-  return {
-    cost: qq.cost + bili.cost + other.cost,
-    tokens: qq.tokens + bili.tokens + other.tokens
-  };
+  let cost = 0;
+  let tokens = 0;
+  for (const scope of CATEGORY_SCOPES) {
+    const pair = normalizeUsagePair(usage?.[scope]);
+    cost += pair.cost;
+    tokens += pair.tokens;
+  }
+  return { cost, tokens };
 }
 
-/** 统一成 `{qq,bili,other,total}`（每个都带 cost/tokens）。 */
+/** 统一成 `{qq,bili,feed,other,total}`（每个都带 cost/tokens）。 */
 export function normalizeUsage(input) {
   const out = {};
   for (const scope of CATEGORY_SCOPES) out[scope] = normalizeUsagePair(input?.[scope]);
@@ -287,9 +291,8 @@ export function writeDailyUsage(dir, usage, { day = localDayKey(), at = Date.now
     day,
     at: Number(at),
     source,
-    qq: normalized.qq,
-    bili: normalized.bili,
-    other: normalized.other,
+    // 按 CATEGORY_SCOPES 落盘（qq/bili/feed/other），加新类别时不会漏字段。
+    ...Object.fromEntries(CATEGORY_SCOPES.map((scope) => [scope, normalized[scope]])),
     total: normalized.total,
     sessions: isPlainObject(sessions) ? sessions : {}
   };

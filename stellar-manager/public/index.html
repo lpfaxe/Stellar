@@ -229,7 +229,25 @@
     </details>
     <p class="muted small">她自己在外面找的图和 B站封面分开放。图片每天清空，第二天这里只剩文字记录；点图上的 ✕ 删单张，删掉之后会记进上面的「删除记录」。</p>
   </section>
-  <section class="card" id="bvCard" data-tab="her">
+  <section class="card" id="filesCard" data-tab="her">
+    <h2>主人的文件柜 <span class="hint">放一次，她反复用 · 她不主动读</span></h2>
+    <div class="row wrap">
+      <b id="fcSummary" class="dyn-summary">读取中…</b>
+      <button id="fcRefresh" class="ghost small">刷新</button>
+      <label class="ghost small" for="fcInput" style="cursor:pointer">添加文件</label>
+      <input id="fcInput" type="file" multiple hidden>
+      <span id="fcMsg" class="msg"></span>
+    </div>
+    <div id="fcList"><p class="muted">加载中…</p></div>
+    <details class="fold" id="fcLogFold">
+      <summary>最近操作</summary>
+      <div id="fcLog" class="wi-log"></div>
+    </details>
+    <p class="muted small">这里放你懒得反复上传的东西（Word / Excel / PPT / PDF / 图片都行）。
+      文件<b>不会被自动塞进她的上下文</b>——你用不着担心白花 token；只有你提到某个文件、或她要答复时，
+      她自己用 <code>stellar_file_list</code> 查名字、<code>stellar_file_read</code> 读那一份。单个文件最大 512 MB。</p>
+  </section>
+<section class="card" id="bvCard" data-tab="her">
     <h2>今天刷的 B站视频 <span class="hint">她看了什么 · 封面和标题原样留在这里</span></h2>
     <div class="row wrap">
       <b id="bvSummary" class="dyn-summary">读取中…</b>
@@ -697,6 +715,7 @@
 <script src="/js/clock.js"></script>
 <script src="/js/log.js"></script>
 <script src="/js/ops.js"></script>
+<script src="/js/files.js"></script>
 <script src="/js/boot.js"></script>
 </body>
 </html>

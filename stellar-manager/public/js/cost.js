@@ -67,6 +67,7 @@ function renderCost(c) {
   var COLORS = {
     qq: 'linear-gradient(90deg,#7aa2ff,#4f7cff)',
     bili: 'linear-gradient(90deg,#48d18a,#2fae74)',
+    feed: 'linear-gradient(90deg,#f0b24a,#e0952f)',
     other: 'linear-gradient(90deg,#8b93a5,#6c7489)'
   };
   var catBox = el('costCats');
@@ -172,7 +173,7 @@ function renderCost(c) {
     chart.appendChild(col);
   });
   var seriesHint = el('costSeriesHint');
-  seriesHint.textContent = 'QQ 聊天分时（桥接账本，30 分钟一格）；B站花费没有分时明细';
+  seriesHint.textContent = 'QQ 聊天分时（桥接账本，30 分钟一格）；B站 / 好友爱看花费没有分时明细';
   var note = '账本 ' + (c.ledger && c.ledger.at ? fmtTime(c.ledger.at) : '未更新') + ' 更新 · 价目表 ' + ((c.prices && c.prices.version) || '—') + ' · 现在' + ((c.prices && c.prices.tierLabel) || '空闲时段') + '（高峰周一至周五 9:00–12:00 / 14:00–18:00 单价 ×2）';
   if (c.busiest) note += ' · 最贵的一小时 ' + ('0' + c.busiest.h).slice(-2) + ':00，' + fmtMoney(c.busiest.cost, sym);
   el('costNote').textContent = note;

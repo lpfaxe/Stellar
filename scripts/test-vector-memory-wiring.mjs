@@ -16,14 +16,17 @@ test('桥接：读 mode / 检索块 / 只在 vector 模式注入，不写向量�
   // 2026-11-13 改：记忆卡拼装下沉到 blendMemoryBlocks（新库目录 / 叙事 / 向量三路二选一）。
   // 原断言直接匹配 buildWakePromptV2 里那行三元表达式，函数重构后就失配了 ——
   // 这里改为断言「向量块仍然是二选一的输入」，语义不变、抗重构。
-  assert.match(bridge, /const memoryCardText = dbCatalogOn \? '' : blendMemoryBlocks\(\{/);
+  // 2026-11-15 改：旧卡在 engine='db' 时整个退役（cardRetired），条件从 dbCatalogOn 变成 (cardRetired || dbCatalogOn)。
+  assert.match(bridge, /const memoryCardText = \(cardRetired \|\| dbCatalogOn\) \? '' : blendMemoryBlocks\(\{/);
+  assert.match(bridge, /const cardRetired = memorySettings\.engine === 'db'/);
   assert.match(bridge, /vector: String\(vectorBlock \|\| ''\)\.trim\(\)/);
   assert.match(bridge, /await vectorRecallBlockForWake\(key\)/);
   assert.match(bridge, /function vectorEntryVisibleForKey\(key, entry\)/);
   assert.match(bridge, /entryFilter: \(entry\) => vectorEntryVisibleForKey\(key, entry\)/);
   assert.match(bridge, /buildWakePromptV2\(key, opts\.wakeReason, vectorBlock\)/);
-  assert.match(bridge, /memoryCard: memoryMode\(\) === 'vector' \? '' : memoryCardPromptBlock\(key\)/);
-  assert.match(bridge, /memoryHint: memoryModeHint\(memoryMode\(\)\)/);
+  assert.match(bridge, /memoryCard: memoryDbEngine\(\) \? '' : \(memoryMode\(\) === 'vector' \? '' : memoryCardPromptBlock\(key\)\)/);
+  // 2026-11-15 改：engine='db' 时提示语换成新记忆库口径，只有在非 db 分支才走 memoryModeHint。
+  assert.match(bridge, /memoryHint: memoryDbEngine\(\) \? '新记忆库（memory\.db）：目录 \+ 重要事实 \+ 侧写' : memoryModeHint\(memoryMode\(\)\)/);
   assert.doesNotMatch(bridge, /appendFileSync\([^)]*vector-memory/);
   assert.doesNotMatch(bridge, /writeVectorIndex\(/);
 });
@@ -75,7 +78,7 @@ test('B站：vector 模式注入检索块，narrative 才注入记忆卡', () =>
 });
 
 // 桌宠（pet-chat.js）已在 2026-11-11 迁 stellar 时整体剥离：仓库里没有这个文件，
-// 对应断言随之下线，别让基线失败指向一个不存在的模块（历史踩坑记录 的 A 类）。
+// 对应断言随之下线，别让基线失败指向一个不存在的模块（PITFALLS #129 的 A 类）。
 
 test('核心：检索排除 sensitive、bili 平台过滤、渲染有硬上限', () => {
   const core = read('src/vector-memory.js');

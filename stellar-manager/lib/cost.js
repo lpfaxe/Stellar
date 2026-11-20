@@ -14,6 +14,9 @@ import { contactIndex, labelForKey, nameForKey, relationFor, personOf } from './
 export const COST_CATEGORIES = [
   { key: 'qq', label: 'QQ 聊天', hint: '跟你说话、发图、看空间' },
   { key: 'bili', label: 'B站', hint: '刷视频 / 发动态 / 写日报' },
+  // 2026-11-20：好友爱看（QQ 空间公开推荐流）以前跑在 B站 会话里，花费混进 bili，
+  // 控制台上等于看不见。现在它有自己的会话（feed-whale-*）和自己的账。
+  { key: 'feed', label: '好友爱看', hint: '刷 QQ 空间公开动态、点赞评论' },
   { key: 'other', label: '其他', hint: '人格卡拆分等杂项' }
 ]
 
@@ -92,6 +95,7 @@ export async function buildCost() {
     sessions: usageSrc.sessions || {},
     qq: { cost: costAmount(usageSrc.qq && usageSrc.qq.cost), tokens: Number(usageSrc.qq && usageSrc.qq.tokens) || 0 },
     bili: { cost: costAmount(usageSrc.bili && usageSrc.bili.cost), tokens: Number(usageSrc.bili && usageSrc.bili.tokens) || 0 },
+    feed: { cost: costAmount(usageSrc.feed && usageSrc.feed.cost), tokens: Number(usageSrc.feed && usageSrc.feed.tokens) || 0 },
     other: { cost: costAmount(usageSrc.other && usageSrc.other.cost), tokens: Number(usageSrc.other && usageSrc.other.tokens) || 0 }
   } : null
 
@@ -139,13 +143,19 @@ export async function buildCost() {
   const stSessions = state.sessions && typeof state.sessions === 'object' ? state.sessions : {}
   for (const [sid, s] of Object.entries(stSessions)) {
     if (!s || s.category === 'qq') continue
-    const isBili = s.category === 'bili'
+    const cat = COST_CATEGORIES.some((c) => c.key === s.category) ? s.category : 'other'
+    const isBili = cat === 'bili'
+    const isFeed = cat === 'feed'
     sessions.push({
       id: sid,
-      kind: isBili ? 'bili' : 'other',
-      category: isBili ? 'bili' : 'other',
-      label: isBili ? 'B站 · ' + (s.preset || '鲸鱼会话') : (s.title || sid),
-      hint: isBili ? '看视频、发动态、写日报都在这个会话里' : '人格卡拆分等后台任务',
+      kind: cat,
+      category: cat,
+      label: isBili
+        ? 'B站 · ' + (s.preset || '鲸鱼会话')
+        : (isFeed ? '好友爱看 · ' + (s.title || '刷空间动态') : (s.title || sid)),
+      hint: isBili
+        ? '看视频、发动态、写日报都在这个会话里'
+        : (isFeed ? '刷 QQ 空间公开推荐流、点赞评论' : '人格卡拆分等后台任务'),
       cost: costAmount(s.dayCost),
       tokens: Number(s.dayTokens) || bucketsTotal(s.seen),
       turns: 0,
