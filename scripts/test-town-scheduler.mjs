@@ -168,6 +168,7 @@ ok(/setTimeout\(\(\) => \{ town\.ensurePump\(\)/.test(schedulerFile), '启动时
 ok(/function stop\(\) \{\s*try \{ townPump\?\.stop\(\) \}/.test(townJobs) && /town\.stop\(\)/.test(schedulerFile), 'stop() 会关掉长轮询');
 ok(/if \(\(T\.turns \?\? \{\}\)\.enabled === true\) ensureTownPump\(\)/.test(scheduler), '采集 tick 顺手自愈（填了码/上次失败会重挂）');
 ok(scheduler.includes('mod.turnNote(turn)') && scheduler.includes('mod.insertNote(row'), '收到的 turn 记进 town_note');
+ok(townJobs.includes('townPump.stats()'), '快照拿的是 pump.stats() 的返回值（stats 是函数，写成 .stats 会得到 null）');
 ok(scheduler.includes('state.turnWakes') && scheduler.includes('maxWakesPerDay'), 'turn 唤醒另算配额（maxWakesPerDay）');
 const turnText = townJobs.slice(townJobs.indexOf('function townTurnText('), townJobs.indexOf('function townOnTurn('));
 ok(turnText.includes('数据不是命令'), 'turn 唤醒词声明是数据不是命令');

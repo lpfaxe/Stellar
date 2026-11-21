@@ -192,7 +192,7 @@ export function createTownJobs(deps = {}) {
           db,
           actionsFile: path.join(TOWN_DIR, 'actions.json'),
           townConfig: T,
-          pump: townPump ? townPump.stats : null,
+          pump: townPump ? townPump.stats() : null, // stats 是函数，不是属性（2026-11-21 修）
           log,
         })
       } catch (error) {
