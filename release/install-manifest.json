@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.8",
   "source": "git:HEAD",
-  "generatedAt": "2026-11-21T13:10:03.952Z",
+  "generatedAt": "2026-11-21T13:11:48.804Z",
   "files": {
     ".gitattributes": "651ca90b38ff7d94fb771f222a3a1c63e1a2ab836dce5fde9229525c2f0abbac",
     ".gitignore": "8b9f29ff92a9fe879ea6aca909e2e3500d443e8f64eda067164fa5b78340e3be",
@@ -243,7 +243,7 @@
     "plugins/stellar/tools/lib/watch-actions.mjs": "150b2c9c317b1dd5fe3824b4326c42e2df808f7c6caf3b1786b0c186d15e3123",
     "plugins/stellar/tools/lib/watch-history.mjs": "b17074774c23a5b99cf26034bd7107d4539fb91999038c8846fac0b349c92487",
     "plugins/stellar/tools/lib/web-images.mjs": "def0cecb8ccc93c810bdeb7d1ce2c977eed5bec43c4bd838582160ae4b65133e",
-    "plugins/stellar/tools/rules/bili.md": "d56f7b9949714d2d45be86636b41292f5514251845629ceb1328b4fe0220b129",
+    "plugins/stellar/tools/rules/bili.md": "5fec3437e801f7e37d0a607340d3f9c89ef3d88aa4200bb949a157ecd71b8fed",
     "plugins/stellar/tools/rules/cost.md": "57f208956da3d22c59ba75a3ef05e87fe892e980095cf4bc37cd070e7ed0e21e",
     "plugins/stellar/tools/rules/douyin.md": "485aff531900ae88715f9d2ff2308247649abdde652c405ce3c8380b84b7a932",
     "plugins/stellar/tools/rules/file.md": "36bde076496f5e4f1f7f8cb0ad650185d26a482b3769e7e36e692181987fe6f7",
