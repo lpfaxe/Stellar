@@ -31,6 +31,8 @@
 
 ### 修复
 
+- **她一进小镇就报 `os is not defined`**：浅耦合重构把小镇工具搬进 `src/town-tools.js` 时漏了 `import os from 'node:os'`，而 6 处 `os.homedir()` 都在读工具入口上——`stellar_town_status` / `_lobby` / `_recall` / `_bonds` / `_day` 一调就 `ReferenceError`。补上 import；`scripts/test-town-tools.mjs` 加了「运行时冒烟」段（假 server 抓 handler、Proxy 顶替 zod、临时 `DSH_HOME`，真调一次 recall 与 status），只读源码的静态断言挡不住这类错。
+- **「插件在答题」不再把她的主动动作一起挡死**：`townActionPreflight` 原来在插件 `takesTurns` 时直接回「这次不用我们动手」，可插件接的只是牌局回合（长轮询 `/turns`），去不去、坐不坐是她的动作——短路之后她站在镇上什么也干不了。现在两边各管一段：插件答回合，动作工具过三道闸后真去动手。
 - **官方插件在场时，我们的长轮询泵真的停了**：原来只是不再新建，已在跑的还留着；同一个接入码只允许一个长轮询，它会跟插件抢回合。现在 `ensureTownPump()` 发现插件在答题就先 `townPump.stop()` 再让位，快照 `pump` 记 `null`，控制台显示「进镇通道：官方插件在挂着」。
 
 -
@@ -48,14 +50,15 @@
 ### 说明
 
 - **不开就完全不动**：`town.enabled` 默认 `false`，两处守卫都写成 `!== true` 才返回；没有访问码也一律安静跳过。启用需要自己改配置 + 在 `%DSH_HOME%/fishbowl-town/settings.json` 填 `fbo_…`，仓库里没有任何真实凭据。
-- **动作默认关**：`town.actions` 出厂 `false`，三个动作工具不注册、端点也不会被调用，一分钱不花；想让她自己拿主意就改成 `true`（同时把 `town.enabled` 打开），代价受三道闸与 ¥1 日预算约束。
+- **动作默认关**：`town.actions` 出厂 `false`，三个动作工具照样注册，但一调就回「动作没开」、端点不会被调用，一分钱不花；想让她自己拿主意就改成 `true`（同时把 `town.enabled` 打开），代价受三道闸与 ¥1 日预算约束。
 - **指令句不进印象**：转述来的指令（`quoted`）不会写进 30 天的人物印象，只当事件留着（3 天后自然过期）。
 - **QQ 链路零改动**：唤醒提示只在启用时多一行指针，不注入小镇正文。
 - 测试：新增 9 个 `test-town-*.mjs`（`test-town-actions.mjs` 16 条：三道闸 / 跨天重置 / 坏文件 / `town.cost` 真被读到；`test-town-snapshot.mjs` 7 条：打码 / 缺块不抛 / 502 留旧快照），已登记进 `scripts/test-audit.mjs`。
 
 - **官方插件在场时我们让位**（2026-11-21）。小镇的牌局回合是 25 秒硬时限，我们的唤醒链赶不上，
   官方 `dsh-fishbowl-town` 专门干这活。新增 `src/town-plugin.js`（只读它的 settings 与 profiles，不 import 它）：
-  插件在答题时我们不挂 `/turns` 泵、不叫醒影子会话、动作工具直接拒绝，只留只读采集/快照/面板/`stellar_town_recall`。
+  插件在答题时我们不挂 `/turns` 泵、不叫醒影子会话，只留只读采集/快照/面板/`stellar_town_recall`；
+  她的三个主动动作照旧可用（插件答的是牌局回合，去不去/坐不坐仍由她拿主意，见「修复」）。
   人设**不手写**：`scripts/town-plugin-sync.mjs` 从 `roles/*.md` 派生 `persona`（只用「你是谁」+「说话方式」，
   去掉群聊与工具相关的句子），只改这一个字段，写前备份、原子替换，`--check` 可挂门禁。
   面板「进小镇」开关改成一次写两处（我们的 `town.enabled` + 插件那条鱼的 `enabled`），并显示「答题：官方插件 / 我们自己」。
@@ -79,14 +82,6 @@
 
 ### 变更
 
-- **官方插件在场时我们让位**（2026-11-21）。小镇的牌局回合是 25 秒硬时限，我们的唤醒链赶不上，
-  官方 `dsh-fishbowl-town` 专门干这活。新增 `src/town-plugin.js`（只读它的 settings 与 profiles，不 import 它）：
-  插件在答题时我们不挂 `/turns` 泵、不叫醒影子会话、动作工具直接拒绝，只留只读采集/快照/面板/`stellar_town_recall`。
-  人设**不手写**：`scripts/town-plugin-sync.mjs` 从 `roles/*.md` 派生 `persona`（只用「你是谁」+「说话方式」，
-  去掉群聊与工具相关的句子），只改这一个字段，写前备份、原子替换，`--check` 可挂门禁。
-  面板「进小镇」开关改成一次写两处（我们的 `town.enabled` + 插件那条鱼的 `enabled`），并显示「答题：官方插件 / 我们自己」。
-  插件那三个「嘴」（`townBrief` / `tellMe` / `decideInChat`）装的时候要关掉，否则 QQ 会多一个声音。
-  发布版 `town.enabled` 与 `town.actions` 仍然默认关。测试 `scripts/test-town-plugin.mjs`（29 项）已进 `test-audit`。
 - **控制台上传走流式**：`/api/files/upload` 支持原始字节流（`content-type` 不是 JSON 时），前端按 `File` 直接 `fetch`，不再 base64 塞进 JSON——60 MB 的文件以前会被 2 MB 的请求体上限卡死。声明长度与实际长度不符、上传中断、超出上限都会清掉临时文件并明确回「没存」。
 - **面板文件柜上限同步 512 MB**，并把 `fs.rmSync({force:true})` 改成「删完再 `existsSync` 复查 + `unlinkSync` 补刀」——本机上它偶尔返回成功但文件还在。
 

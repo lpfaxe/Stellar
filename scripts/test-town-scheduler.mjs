@@ -187,7 +187,9 @@ ok(townJobs.includes('townPump.stop()'), '让位是显式 stop()，不只是不�
 ok(/pump: townPluginActive\(\) \? null :/.test(townJobs), '快照里插件答题时通道归插件，不把旧泵画成没连上');
 ok((townJobs.match(/if \(townPluginActive\(\)\)/g) || []).length >= 2, '叫醒（townTick）也一并让位');
 ok(townJobs.includes('plugin: mod.pluginStatus'), '快照里带上插件状态（谁在答题）');
-ok(toolsSrc.includes('townPluginModule') && /status\.installed && status\.takesTurns/.test(toolsSrc), '动作工具在插件答题时拒绝执行');
+// 2026-11-21 改：插件只接牌局回合，主动动作不能跟着被拒（真机她站在镇上什么也干不了）。
+ok(!/takesTurns[\s\S]{0,120}return \{ ok: false/.test(toolsSrc), '动作工具不再因为「插件在答题」就拒绝（它只答回合）');
+ok(/actionGate\(\{[\s\S]{0,300}budget/.test(toolsSrc), '主动动作仍然过三道闸（次数/间隔/预算）');
 ok(/plugin: plugin && typeof plugin === 'object'/.test(snapSrc), '快照结构里有 plugin 块');
 ok(pluginSrc.includes('dsh-fishbowl-town'), '检测的是官方插件包名');
 ok(pluginSrc.includes("path.join(home, PROFILE_ROOT)") || pluginSrc.includes("'profiles'"), '按 profiles/*/node_modules 找插件');

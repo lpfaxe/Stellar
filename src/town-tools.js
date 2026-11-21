@@ -9,6 +9,7 @@
 //   5. 删 src/town-*.js、scripts/test-town-*.mjs、scripts/town-remove.mjs。
 //
 // 依赖全部从参数进来（dshHome / z / ownerOnlyError），本文件不碰 mcp 服务端的内部状态。
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -293,14 +294,10 @@ export function registerTownTools(server, { dshHome, z, ownerOnlyError, log = ()
     if (T.enabled !== true) return { ok: false, text: '小镇现在是关着的（town.enabled 不是 true），不做动作。' };
     if (T.actions !== true) return { ok: false, text: '动作没开（town.actions 不是 true）：这一版只能看，不能坐下、不能串门。' };
     const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
-    // 官方插件在场并答题时，这一局由它出手：我们这边再动一次就是同一个她动两回。
-    try {
-      const plugin = await townPluginModule();
-      const status = plugin.pluginStatus({ dshHome, fishId: T.fishId });
-      if (status.installed && status.takesTurns) {
-        return { ok: false, text: '小镇这局是官方插件在答（它自己挂长轮询），这次不用我们动手；想自己动手，把插件那条鱼关掉再重启。' };
-      }
-    } catch {}
+    // 2026-11-21 修：这里**不再**因为「官方插件在答题」就一律拒绝。
+    // 插件接的是**牌局回合**（长轮询 /turns），而「去不去、坐不坐、出不出门」是她自己的主动动作：
+    // 卡在这条短路里，她会得到「这次不用我们动手」然后站在镇上什么也干不了（真机踩过）。
+    // 现在两边各管一段：插件答回合，这三个工具过三道闸（次数/间隔/预算）后真去动手。
     const acts = await townActionsModule();
     const budgetMod = await townBudgetModule();
     const pure = await townPureModule();

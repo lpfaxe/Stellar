@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 let passed = 0;
 let failed = 0;
@@ -117,6 +118,42 @@ ok(/return mod\.config\(\)\?\.town \?\? townConfigNow\(\)/.test(mcp), '配置层
 const sched = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'scheduler.js'), 'utf8')
   + '\n' + fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'town-jobs.js'), 'utf8');
 ok(/\[town\] 已进镇[\s\S]{0,120}动作' \+ \(townCfg\(\)\.actions === true \? '已开' : '没开'\)/.test(sched) || /(townCfg\(\)\.actions === true \? '已开' : '没开')/.test(sched), '进镇日志按配置说「动作已开/没开」而不是写死');
+
+// 3.7 运行时冒烟（2026-11-21 真机踩到：静态断言全绿，但 handler 里 `os` 没 import）
+// 教训：这个文件以前只「读源码 + includes」，能证明字符串在，不能证明代码跑得起来。
+// 所以这里真的把 handler 拿出来调一次 —— 查不到记忆也要返回一句话，而不是 ReferenceError。
+{
+  const { registerTownTools } = await import(pathToFileURL(path.join(root, 'src', 'town-tools.js')).href);
+  const handlers = new Map();
+  const fakeServer = { tool(name, _desc, _schema, fn) { handlers.set(name, fn); } };
+  const zStub = new Proxy(function () {}, { get: () => zStub, apply: () => zStub });
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'town-tools-'));
+  fs.mkdirSync(path.join(tmpHome, 'stellar', 'state', 'town'), { recursive: true });
+  const prevHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = tmpHome;
+  try {
+    registerTownTools(fakeServer, { dshHome: tmpHome, z: zStub, ownerOnlyError: () => new Error('owner only') });
+    ok(handlers.size >= 8, '运行时注册了 ' + handlers.size + ' 个小镇工具');
+    const recall = handlers.get('stellar_town_recall');
+    const res = await recall({});
+    const text = (res && res.content ? res.content : []).map((c) => c.text || '').join('');
+    ok(text.length > 0, 'stellar_town_recall 真调一次不抛（返回 ' + text.length + ' 字）');
+    const status = handlers.get('stellar_town_status');
+    const res2 = status ? await status({}) : null;
+    const text2 = (res2 && res2.content ? res2.content : []).map((c) => c.text || '').join('');
+    ok(text2.length > 0, 'stellar_town_status 在没有访问码时也返回人话（' + text2.length + ' 字）');
+  } catch (error) {
+    ok(false, '运行时调 handler 抛错：' + (error && error.message ? error.message : error));
+  } finally {
+    if (prevHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevHome;
+    // Windows 上 sqlite 还握着句柄时 rmSync 会 EPERM，先关连接；实在删不掉也不该让契约变红。
+    try {
+      const store = await import(pathToFileURL(path.join(root, 'src', 'town-store.js')).href);
+      store.closeTownDb({});
+    } catch {}
+    try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch {}
+  }
+}
 
 console.log(failed ? '\n❌ 小镇工具契约：' + passed + ' 通过 / ' + failed + ' 失败' : '\n🎉 小镇工具契约：' + passed + ' 项通过');
 process.exit(failed ? 1 : 0);
