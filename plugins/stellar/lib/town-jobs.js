@@ -35,7 +35,7 @@ export function createTownJobs(deps = {}) {
   /** 小镇相关模块按需加载：town-store 依赖 node:sqlite，不能被插件静态 import 连带拖死。 */
   async function townRuntime() {
     if (townRuntimeCache) return townRuntimeCache
-    const [clientMod, storeMod, collectMod, pureMod, turnsMod, snapMod, pluginMod] = await Promise.all([
+    const [clientMod, storeMod, collectMod, pureMod, turnsMod, snapMod, pluginMod, guardMod] = await Promise.all([
       import('../../../src/town-client.js'),
       import('../../../src/town-store.js'),
       import('../../../src/town-collector.js'),
@@ -43,6 +43,7 @@ export function createTownJobs(deps = {}) {
       import('../../../src/town-turns.js'),
       import('../../../src/town-snapshot.js'),
       import('../../../src/town-plugin.js'),
+      import('../../../src/town-guard.js'),
     ])
     townRuntimeCache = {
       readTownSettings: clientMod.readTownSettings,
@@ -56,6 +57,14 @@ export function createTownJobs(deps = {}) {
       turnNote: turnsMod.turnNote,
       writeTownSnapshot: snapMod.writeTownSnapshot,
       pluginStatus: pluginMod.pluginStatus,
+      setPluginEnabled: pluginMod.setPluginEnabled,
+      // 超支熔断（2026-11-21）：判的钱来自小镇 /spending，不是我们自己的 token 账。
+      evaluateGuard: guardMod.evaluateGuard,
+      buildGuardRecord: guardMod.buildGuardRecord,
+      guardFilePath: guardMod.guardFilePath,
+      readGuard: guardMod.readGuard,
+      writeGuard: guardMod.writeGuard,
+      shouldAlert: guardMod.shouldAlert,
       dayKey: pureMod.dayKey,
     }
     return townRuntimeCache
@@ -207,6 +216,8 @@ export function createTownJobs(deps = {}) {
       const db = mod.openTownDb({ dir: TOWN_DIR })
       const collector = mod.createTownCollector({ client: made.client, db, log })
       await collector.runOnce()
+      // 先判熔断再写快照：这样面板看到的那一份就带着横幅（不用等下一轮）。
+      const guard = await townGuardCheck({ mod, client: made.client, T })
       // 顺手写一份快照给控制台（只读、不含访问码）：面板是另一个进程，不该自己去连小镇。
       try {
         await mod.writeTownSnapshot({
@@ -218,6 +229,7 @@ export function createTownJobs(deps = {}) {
           // stats 是函数不是属性（2026-11-21 修）；插件答题时通道归它，别把我们的旧泵画成「没连上」
           pump: townPluginActive() ? null : (townPump ? townPump.stats() : null),
           plugin: mod.pluginStatus ? mod.pluginStatus({ dshHome, fishId: T.fishId }) : null,
+          guard,
           log,
         })
       } catch (error) {
@@ -226,6 +238,45 @@ export function createTownJobs(deps = {}) {
     } catch (error) {
       log('[town] 采集失败：' + redactTownText(error).slice(0, 140))
     }
+  }
+
+  /**
+   * 小镇超支熔断：读一次 /spending，超线就把官方插件那条鱼停掉（只动插件设置，不改主人配置）。
+   * 只停「接下来进镇」：已经花掉的钱不会回来，停掉之后我们也不替她动，等她本人决定要不要重开。
+   */
+  async function townGuardCheck({ mod, client, T }) {
+    const file = mod.guardFilePath(TOWN_DIR)
+    const prev = mod.readGuard(file)
+    let spending = null
+    try {
+      spending = await client.read('spending')
+    } catch (error) {
+      // 小镇 502 / 网络抖一下不判：宁可这轮不判，也不要凭一个失败就说她超支
+      log('[town] 熔断这轮读不到花费，跳过：' + redactTownText(error).slice(0, 100))
+      return prev
+    }
+    const verdict = mod.evaluateGuard({ spending, config: T })
+    const paused = verdict.ok === false && verdict.action === 'pause-fish'
+    const rec = mod.buildGuardRecord({ verdict, day: today(), fishId: T.fishId, paused })
+    const changed = rec.code !== String(prev?.code || '') || rec.day !== String(prev?.day || '')
+    if (paused) {
+      const off = mod.setPluginEnabled(dshHome, false, { fishId: T.fishId })
+      if (off && off.ok) {
+        log('[town] 小镇超支：' + verdict.reason + ' 已经把那条鱼停掉（面板「进小镇」开关可以重新打开）')
+      } else {
+        log('[town] 小镇超支：' + verdict.reason + ' 想停掉那条鱼但没成功：' + String((off && off.reason) || '').slice(0, 100))
+      }
+    } else if (!verdict.ok && changed) {
+      log('[town] 小镇花费到了警戒线：' + verdict.reason + '（按配置只记一条，没停她）')
+    } else if (verdict.ok && prev && prev.code && prev.code !== 'ok') {
+      log('[town] 小镇花费回到警戒线内了，不再告警')
+    }
+    if (changed && (rec.code !== 'ok' || (prev && prev.code))) {
+      const written = mod.writeGuard(file, rec)
+      if (!written.ok) log('[town] 熔断记录写不进去：' + String(written.error || '').slice(0, 100))
+      return rec
+    }
+    return prev
   }
 
   /** 错误文本一律过一遍打码：小镇访问码绝不许进 plugin.log。 */

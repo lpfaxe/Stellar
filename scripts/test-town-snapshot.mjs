@@ -149,6 +149,25 @@ await check('没有插件时 plugin 是 null（面板据此说「我们自己答
   assert.equal(res.snapshot.plugin, null);
 });
 
+await check('熔断记录进快照：面板要能画出那条横幅', async () => {
+  const dir = path.join(TMP, 'guard-snap', 'stellar', 'state', 'town');
+  fs.mkdirSync(dir, { recursive: true });
+  const fake = { read: (name) => Promise.resolve(name === 'status' ? { ...status } : {}) };
+  const guard = { at: 1, day, paused: true, code: 'daily', today: 1.7, d7: 1.7, cap: 1.5, banner: '⚠ 小镇超支熔断', fishId: 'whale' };
+  const res = await writeTownSnapshot({ dir, client: fake, now: Date.now(), townConfig: {}, guard });
+  const snap = res.snapshot;
+  assert.equal(snap.guard.code, 'daily');
+  assert.equal(snap.guard.paused, true);
+  assert.equal(snap.guard.today, 1.7);
+  assert.equal(snap.guard.cap, 1.5);
+  assert.match(snap.guard.banner, /熔断/);
+  assert.equal(/fbo_/.test(JSON.stringify(snap)), false, '横幅里也不许出现访问码');
+});
+
+await check('没有熔断记录时 guard 是 null（面板就不画横幅）', () => {
+  assert.equal(buildSnapshot({ status }).guard, null);
+});
+
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
 console.log(fail ? '\n❌ 小镇快照：' + pass + ' 通过 / ' + fail + ' 失败' : '\n🎉 小镇快照：' + pass + ' 项通过');
 process.exit(fail ? 1 : 0);

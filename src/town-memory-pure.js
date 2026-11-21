@@ -251,8 +251,9 @@ export function renderRecall({ notes = [], impressions = [], days = [], today = 
     if (seg.length) lines.push('印象：' + seg.join('；'));
   }
 
-  const head = `【小镇记忆 · ${NOTE_TTL_DAYS} 天内】`;
-  if (!lines.length) return `${head}这三天没有留下记录，记不清了。别编。`;
+  // 「存档」口径（2026-11-21）：她知道这是游戏，这是 Fugu 的存档，不是现实记忆。
+  const head = `【小镇存档 · 这三天玩到（游戏）】`;
+  if (!lines.length) return `${head}这三天没有存档，记不清了。别编。`;
 
   let out = head + '\n' + lines.join('\n');
   while (out.length > maxChars && lines.length > 1) {

@@ -71,7 +71,7 @@ function pickSpending(s) {
 /**
  * 组装快照（纯函数，好测）。任何一块缺了都不抛，缺的留空。
  */
-export function buildSnapshot({ now = Date.now(), status = null, bonds = null, spending = null, lobby = null, stats = null, actions = null, budget = null, errors = [], pump = null, plugin = null } = {}) {
+export function buildSnapshot({ now = Date.now(), status = null, bonds = null, spending = null, lobby = null, stats = null, actions = null, budget = null, errors = [], pump = null, plugin = null, guard = null } = {}) {
   const day = localDayKey(new Date(Number(now) || Date.now()));
   const st = pickStatus(status);
   const lob = lobby && typeof lobby === 'object' ? lobby : {};
@@ -115,6 +115,16 @@ export function buildSnapshot({ now = Date.now(), status = null, bonds = null, s
       personaChars: num(plugin.personaChars, 0),
       takesTurns: Boolean(plugin.takesTurns),
     } : null,
+    // 小镇超支熔断（src/town-guard.js 判的）：面板把它画成一条横幅，不画成数字。
+    guard: guard && typeof guard === 'object' ? {
+      at: num(guard.at, 0),
+      code: String(guard.code || ''),
+      paused: Boolean(guard.paused),
+      today: num(guard.today, 0),
+      d7: num(guard.d7, 0),
+      cap: num(guard.cap, 0),
+      banner: String(guard.banner || ''),
+    } : null,
     recall: '',
   };
 }
@@ -127,7 +137,7 @@ export function redactSnapshot(obj) {
 /**
  * 采一轮快照并落盘。绝不抛：小镇 502 时旧快照留着，只把错误记进 errors。
  */
-export async function writeTownSnapshot({ dir, client, db, now = Date.now(), actionsFile, townConfig = {}, pump = null, plugin = null, log } = {}) {
+export async function writeTownSnapshot({ dir, client, db, now = Date.now(), actionsFile, townConfig = {}, pump = null, plugin = null, guard = null, log } = {}) {
   const errors = [];
   const reader = makeReader(client);
   const pull = async (name, fn) => {
@@ -147,7 +157,7 @@ export async function writeTownSnapshot({ dir, client, db, now = Date.now(), act
   // 入参是「数据目录」（state/town 往上两级），townSpendToday 那套会再拼一次 stellar，永远读到 0（2026-11-21 修）
   const budget = townBudgetStateFromDataDir(path.dirname(path.dirname(dir)), townConfig);
 
-  const snap = redactSnapshot(buildSnapshot({ now, status, bonds, spending, lobby, stats, actions, budget, errors, pump, plugin }));
+  const snap = redactSnapshot(buildSnapshot({ now, status, bonds, spending, lobby, stats, actions, budget, errors, pump, plugin, guard }));
   // 顺手给面板一句「她现在记得什么」，免得面板自己拼（也就 400 字上限那套）。
   try {
     if (db) snap.recall = String(redactSnapshot({ t: snapshotRecall(db, now) }).t).slice(0, 400);

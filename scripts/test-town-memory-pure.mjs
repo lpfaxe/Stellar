@@ -107,7 +107,8 @@ const out = renderRecall({ notes, today: '2026-11-21' });
 check(out.includes('今天') && out.includes('阿鲸'), '今天段的记录出现');
 check(out.includes('昨天') && out.includes('小柚'), '昨天段的记录出现');
 check(!out.includes('老鱼'), '3 天外的记录一条都不出现');
-check(out.startsWith('【小镇记忆'), '带来源/范围标签');
+check(out.startsWith('【小镇存档'), '带来源/范围标签（游戏存档口径）');
+check(out.includes('游戏'), '标签里写明这是游戏，不是现实记忆');
 
 const long = renderRecall({
   today: '2026-11-21',

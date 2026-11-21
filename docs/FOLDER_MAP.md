@@ -34,14 +34,14 @@
 | B站 | `bili-api.js` / `bili-memory.js` / `bili-dynamics.js` / `bili-card.js` / `bili-share-scheduler.js` | 网络、记忆简报、卡片、分享排期 |
 | 额度 | `token-budget.js` / `token-ledger.js` / `token-guard.js` / `model-prices.js` / `billing-report.js` / `cost-estimate.js` | 每日额度、账本、价目、报表 |
 | 安全 | `identity-guard.js` / `access-audit.js` / `owner-audit.js` / `file-read-guard.js` / `safe-fetch.js` / `safe-text.js` / `state-acl.mjs` | 身份、审计、文件与 URL 白名单、ACL |
-| 鱼缸小镇（可选） | `town-memory-pure.js` / `town-client.js` / `town-store.js` / `town-collector.js` / `town-turns.js` / `town-actions.js` / `town-budget.js` / `town-snapshot.js` / `town-tools.js` / `town-prompt.js` | 只读采集、3 天 TTL、独立 `town.db`、`/turns` 长轮询（进镇 + 叫醒）、动作三道闸（默认关）/ 日预算 / 控制台快照；工具注册收在 `town-tools.js`、唤醒提示收在 `town-prompt.js`、调度收在 `plugins/stellar/lib/town-jobs.js`，整块可删（判据 `scripts/test-town-decoupling.mjs`）；默认不启用，见 subsystems/SUBSYSTEM-TOWN.md |
+| 鱼缸小镇（可选） | `town-memory-pure.js` / `town-client.js` / `town-store.js` / `town-collector.js` / `town-turns.js` / `town-actions.js` / `town-budget.js` / `town-snapshot.js` / `town-tools.js` / `town-prompt.js` / `town-guard.js` | 只读采集、3 天 TTL、独立 `town.db`、`/turns` 长轮询（进镇 + 叫醒）、动作三道闸（默认关）/ 日预算 / 控制台快照；工具注册收在 `town-tools.js`、唤醒提示收在 `town-prompt.js`、调度收在 `plugins/stellar/lib/town-jobs.js`，整块可删（判据 `scripts/test-town-decoupling.mjs`）；默认不启用，见 subsystems/SUBSYSTEM-TOWN.md |
 | 其他 | `todos.js` / `approvals.js` / `sticker-*.js` / `slang-learner.js` / `outbox.js` / `self-test.js` | 待办、审批、表情、黑话、发件箱、自检 |
 
 ## 三、`scripts/`：命名约定
 
 | 前缀 | 意思 | 举例 |
 | --- | --- | --- |
-| `test-*.mjs` | 回归（**208 个**，`test:audit` 跑其中 178 个） | `test-memory-db.mjs` |
+| `test-*.mjs` | 回归（**209 个**，`test:audit` 跑其中 179 个） | `test-memory-db.mjs` |
 | `probe-*.mjs` | 手工探针（要真环境，不进回归） | `probe-events.mjs` |
 | `verify-*.mjs` | 断言某件事仍然成立 | `verify-dsh-020-adaptation.mjs` |
 | `bootstrap*` | 首次启动引导（幂等，绝不覆盖已有配置） | `bootstrap.mjs` |
@@ -57,7 +57,7 @@
 | --- | --- |
 | `state/` | 控制台令牌、桥接锁、临时请求 |
 | `~/.dsh/stellar/state/` | 未读、额度账本、审计、日志、待办、运行模式 |
-| `~/.dsh/stellar/state/town/` | 小镇唤醒计划 `wake.json`、动作账本 `actions.json`、控制台快照 `status.json`、独立记忆库 `town.db`（默认不启用；不进备份、不进清单） |
+| `~/.dsh/stellar/state/town/` | 小镇唤醒计划 `wake.json`、动作账本 `actions.json`、控制台快照 `status.json`、超支熔断记录 `guard.json`、独立记忆库 `town.db`（默认不启用；不进备份、不进清单） |
 | `%DSH_HOME%/fishbowl-town/settings.json` | 小镇访问码（`fbo_…`，只存在这一处，不进仓库、不进日志） |
 | `~/.dsh/stellar/characters/<角色>/` | 角色卡、B站凭据、`memory/memory.db` |
 | `stellar-manager/panel-token.txt` | 面板口令（自动生成） |

@@ -199,5 +199,19 @@ ok(syncScript.includes('deriveTownPersona') && syncScript.includes('syncPersona'
 ok(syncScript.includes('--check') && syncScript.includes('--dry'), '同步脚本能只看不写、能给门禁用');
 ok(/角色卡/.test(syncScript) && /唯一真相/.test(fs.readFileSync(path.join(root, 'src', 'town-plugin.js'), 'utf8')), '人设只有一份真相（角色卡）');
 
+// 8.10 超支熔断（P2 watchdog）：钱从 /spending 判；超了只停插件那条鱼，不改主人配置
+const guardSrc = fs.readFileSync(path.join(root, 'src', 'town-guard.js'), 'utf8');
+ok(townJobs.includes("import('../../../src/town-guard.js')"), '熔断模块是动态 import（可以整个删掉）');
+ok(townJobs.includes('townGuardCheck({ mod, client: made.client, T })'), '采集 tick 里真的跑一次熔断判定');
+ok(townJobs.indexOf('townGuardCheck({ mod, client') < townJobs.indexOf('await mod.writeTownSnapshot('), '先判熔断再写快照（面板这一轮就能看到横幅）');
+ok(/guard,\n\s*log,/.test(townJobs), '判定结果进了快照');
+ok(townJobs.includes('client.read(\'spending\')'), '判的钱来自小镇 /spending，不是我们自己的 token 账');
+ok(/mod\.setPluginEnabled\(dshHome, false, \{ fishId: T\.fishId \}\)/.test(townJobs), '超线时把插件那条鱼停掉');
+ok(!/writeFileSync\([^)]*bili\.config/.test(townJobs), '熔断不替主人改配置文件（停的是插件那条鱼）');
+ok(/catch \(error\) \{[\s\S]{0,200}熔断这轮读不到花费/.test(townJobs), '读不到花费不判（502 不能被当成超支）');
+ok(guardSrc.includes("dailyCNY: 1.5"), '默认日线 ¥1.5（小镇侧本来就有 1 元上限，到 1.5 说明闸没生效）');
+ok(/if \(v == null \|\| v === ''\) return dflt/.test(guardSrc), 'null/空串当「没写」，不会变成不设限');
+ok(snapSrc.includes('guard: guard && typeof guard === \'object\''), '快照结构里有 guard 块');
+
 console.log(failed ? '\n❌ 小镇调度契约：' + passed + ' 通过 / ' + failed + ' 失败' : '\n🎉 小镇调度契约：' + passed + ' 项通过');
 process.exit(failed ? 1 : 0);

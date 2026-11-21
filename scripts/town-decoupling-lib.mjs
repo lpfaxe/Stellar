@@ -77,6 +77,7 @@ export const CORE_TOWN_ALLOW = {
     "'test-town-memory-pure.mjs', 'test-town-client.mjs', 'test-town-store.mjs',",
     "'test-town-collector.mjs', 'test-town-scheduler.mjs', 'test-town-tools.mjs', 'test-town-turns.mjs',",
     "'test-town-actions.mjs', 'test-town-snapshot.mjs',",
+    "'test-town-guard.mjs',",
     // 官方插件（dsh-fishbowl-town）那一层：让位 + 人设同步
     '官方插件（dsh-fishbowl-town）',
     "'test-town-plugin.mjs',",

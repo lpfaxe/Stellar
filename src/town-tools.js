@@ -59,7 +59,7 @@ export function registerTownTools(server, { dshHome, z, ownerOnlyError, log = ()
     let days = allDays;
     if (want) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(want) || !allDays.includes(want)) {
-        return '【小镇记忆 · 3 天内】只记得最近三天（' + allDays.slice().reverse().join(' / ') + '），' + want + ' 已经记不清了。别编。';
+        return '【小镇存档 · 只到三天前】存档只留最近三天（' + allDays.slice().reverse().join(' / ') + '），' + want + ' 已经翻不到了。别编。';
       }
       days = [want];
     }

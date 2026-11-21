@@ -153,6 +153,8 @@ const tests = [
   // 自主参与（2026-11-21）：动作三道闸（日上限/冷却/预算）+ 只读快照（面板那一页的数据源）。
   'test-town-actions.mjs', 'test-town-decoupling.mjs',
   'test-town-snapshot.mjs',
+  // 超支熔断（P2 watchdog，2026-11-21）：/spending 超线停插件那条鱼 + 面板横幅。
+  'test-town-guard.mjs',
   // 官方插件（dsh-fishbowl-town）在场时让位：检测/人设派生/设置文件读改写（2026-11-21）。
   'test-town-plugin.mjs',
   // 上线补历史消息（socialV2.history）：默认开、水位/去重/黑名单、桥接启动补看离线消息、

@@ -52,13 +52,26 @@
 - **影子会话真的能起来了**：`plugins/stellar/package.json` 的 `exports` 漏登记 `./town-tool-restrict.mjs`（`files` 也漏），preset 子行写的是裸说明符 `stellar/town-tool-restrict.mjs`，Node 解析时抛 `ERR_PACKAGE_PATH_NOT_EXPORTED`，DSH 只报一句 `town-tool-restrict (stellar/town-tool-restrict.mjs): never started` —— 文件在磁盘上、看着都对，就是装不上。已补登记，并在 `scripts/test-agent-preset-patches.mjs` 加了一组「每个 preset 的守卫模块都必须在 `exports`/`files` 里」的断言。
 - **唤醒词告诉影子会话用哪个身份**：影子会话没有 QQ 会话令牌，只有 `promptBili` 前置的 operator token。唤醒词原来抄了一行 B站 命令行（对它没用），现在换成「key 写 `owner:internal`、token 用【会话令牌】那一行」，否则五个小镇工具会被身份闸全部拒掉。
 
+- **小镇超支会自己踩刹车**（P2 watchdog，2026-11-21）。新增 `src/town-guard.js`：每轮采集读一次小镇 `/spending`
+  （金额是字符串），日线 ¥1.5、周线 ¥6（`town.guard` 可改，写 0 = 那一档不设限；`action: 'alert'` 只告警不停）。
+  超线就把官方插件那条鱼 `enabled=false` —— **只动插件设置，绝不改主人的配置文件**；
+  记录写 `state/town/guard.json`，同一天同一个原因只告警一次，读不到花费就这一轮不判（502 不能当成超支）。
+  阈值比小镇侧那 1 元上限高 50%：真到 1.5 说明我们自己的闸没生效。默认值是「开」的，但发布版 `town.enabled` 还是 `false`，
+  所以不启用就完全不动。
+- **控制台把两本账分开了**：`token 花费`（我们这侧模型账，上限 ¥1）与 `小镇钱包`（游戏里的钱）各一格，
+  熔断时页头多一条横幅；`GET /api/town` 多回 `guard`（读 `guard.json`，没有就当没有）。
+- **recall 改成「存档」口径**：`renderRecall` 的头从「小镇记忆」改成「小镇存档 · 这三天玩到（游戏）」，
+  空库文案改「这三天没有存档」；`stellar_town_recall` 里「只到三天前」那句同步。
+- 测试：`scripts/test-town-guard.mjs`（22 条：判据 / 记录 / 告警去重 / 横幅 / 畸形输入）已进 `test-audit`；
+  `test-town-snapshot.mjs` 加了「熔断记录进快照」与「没有记录时是 null」两条。
+
 ### 说明
 
 - **不开就完全不动**：`town.enabled` 默认 `false`，两处守卫都写成 `!== true` 才返回；没有访问码也一律安静跳过。启用需要自己改配置 + 在 `%DSH_HOME%/fishbowl-town/settings.json` 填 `fbo_…`，仓库里没有任何真实凭据。
 - **动作默认关**：`town.actions` 出厂 `false`，三个动作工具照样注册，但一调就回「动作没开」、端点不会被调用，一分钱不花；想让她自己拿主意就改成 `true`（同时把 `town.enabled` 打开），代价受三道闸与 ¥1 日预算约束。
 - **指令句不进印象**：转述来的指令（`quoted`）不会写进 30 天的人物印象，只当事件留着（3 天后自然过期）。
 - **QQ 链路零改动**：唤醒提示只在启用时多一行指针，不注入小镇正文。
-- 测试：新增 9 个 `test-town-*.mjs`（`test-town-actions.mjs` 16 条：三道闸 / 跨天重置 / 坏文件 / `town.cost` 真被读到；`test-town-snapshot.mjs` 7 条：打码 / 缺块不抛 / 502 留旧快照），已登记进 `scripts/test-audit.mjs`。
+- 测试：新增 10 个 `test-town-*.mjs`（`test-town-actions.mjs` 16 条：三道闸 / 跨天重置 / 坏文件 / `town.cost` 真被读到；`test-town-snapshot.mjs` 12 条：打码 / 缺块不抛 / 502 留旧快照 / 熔断块；`test-town-guard.mjs` 22 条：判据 / 记录 / 告警去重 / 横幅 / 畸形输入），已登记进 `scripts/test-audit.mjs`。
 
 - **官方插件在场时我们让位**（2026-11-21）。小镇的牌局回合是 25 秒硬时限，我们的唤醒链赶不上，
   官方 `dsh-fishbowl-town` 专门干这活。新增 `src/town-plugin.js`（只读它的 settings 与 profiles，不 import 它）：

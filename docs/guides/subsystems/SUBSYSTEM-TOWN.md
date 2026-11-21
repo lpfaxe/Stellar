@@ -359,3 +359,45 @@ persona 的裁剪顺序也为此改过：**先给这三段留预算，剩下的�
 - 角色卡（`roles/<角色>.md`）→ 跑 `town-plugin-sync.mjs` → 插件 persona。
 - 红线话术 → `src/town-plugin.js` 的 `tail`（同步脚本会带到 persona）+ `plugins/stellar/tools/rules/town.md` + `src/town-prompt.js`。
 - 每天额度 → 小镇侧（`/town budget 1`），不是我们的配置文件。
+
+## 14. 超支熔断（P2 watchdog）与控制台的两本账
+
+小镇的钱不是我们的 token 账：**一笔是模型调用（我们记），一笔是游戏里的花销（小镇自己记）**。两本账分开看，闸也分开。
+
+### 13.1 判据
+
+`src/town-guard.js`（零依赖纯逻辑，可以整块删）每轮采集读一次 `/spending`，判两道线：
+
+| 配置（`town.guard.`） | 默认 | 说明 |
+| --- | --- | --- |
+| `enabled` | `true` | 关掉就一律 `ok`（`code:'off'`） |
+| `dailyCNY` | `1.5` | 今天花到这条线就触发；写 0 = 这一档不设限 |
+| `weeklyCNY` | `6` | 近 7 天；日线优先（先说今天） |
+| `action` | `'pause-fish'` | `'alert'` 只记一条不停鱼 |
+
+**为什么是 1.5 而不是 1**：小镇侧本来就有每日 1 元的社交上限（`social_day_cents`），真花到 1.5 说明那道闸没生效——这时候才该我们踩刹车。
+**刚好等于线也算超**（`>=`），不是「超过」。
+
+### 13.2 触发之后
+
+1. 把官方插件那条鱼 `enabled=false`（`src/town-plugin.js` 的 `setPluginEnabled`）——**只动插件设置，绝不改主人的配置文件**；
+2. 记一条 `state/town/guard.json`（`at/day/code/today/d7/cap/fishId/reason/banner`），同一天同一个原因只告警一次；
+3. 面板页头出现一条横幅，说清「花了多少、线在哪、那条鱼已经停掉、在『进小镇』开关那里重新打开」；
+4. 我们不自动重开：钱已经花掉不会回来，要不要继续由她本人决定。
+
+`/spending` 读不到（502 / 网络抖）就**这一轮不判**，记录原样留着——绝不因为一次失败就说她超支。
+坏掉的 `guard.json` 一律当「没有告警」，不会把她永久关在外面。
+
+### 13.3 控制台的两本账
+
+- `token 花费`：我们这侧模型账（`token-usage-daily.json` 的 `town` 那一格），上限 `town.dailyBudgetCNY`；
+- `小镇钱包`：她在游戏里的钱（`/status` 的 `piggy_yuan`），花在座位费/材料/请客上，受上面的熔断线约束。
+
+`GET /api/town` 多回一个 `guard`（先读 `guard.json`，没有再退回快照里的那份），面板只读，不联网、不碰访问码。
+
+### 13.4 测试
+
+`scripts/test-town-guard.mjs`（22 条）：配置默认与坏值回落（`null` / 空串算「没写」，不是 0）、金额解析、日线优先、`>=`、`0` = 不设限、告警去重、两种横幅、坏文件、畸形输入。
+`scripts/test-town-snapshot.mjs` 另有两条：熔断记录进快照、没有记录时是 `null`。
+
+> 发布版默认 `town.enabled=false`，所以熔断也不跑；`town.guard` 的默认值跟开发树一样，启用之后立刻生效。

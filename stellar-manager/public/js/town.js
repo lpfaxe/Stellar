@@ -34,6 +34,16 @@ var TOWN_KIND = {
   activity: '动静',
 };
 
+function townRenderGuard(d) {
+  var box = el('townGuard');
+  if (!box) return;
+  var g = d.guard || (d.snapshot && d.snapshot.guard) || null;
+  var text = g && g.banner ? String(g.banner) : '';
+  if (!text) { box.hidden = true; box.textContent = ''; return; }
+  box.hidden = false;
+  box.textContent = text;
+}
+
 function townRenderStats(d) {
   var box = el('townStats');
   if (!box) return;
@@ -44,7 +54,9 @@ function townRenderStats(d) {
     ['印象', (d.counts && d.counts.impressions) || 0, '个人，30 天'],
     ['每天一句', (d.counts && d.counts.days) || 0, '句，长期'],
     ['今天动过', (snap.actions && snap.actions.today) || 0, '次（上限 3）'],
-    ['今天花费', townYuan(snap.budget && snap.budget.spent), '上限 ' + townYuan(snap.budget && snap.budget.cap)],
+    // 两本账分开：token 是我们这边的模型账，钱包是她在游戏里的钱（小镇自己记）
+    ['token 花费', townYuan(snap.budget && snap.budget.spent), '上限 ' + townYuan(snap.budget && snap.budget.cap)],
+    ['小镇钱包', townYuan(st.piggyYuan), '游戏里的钱'],
   ];
   box.innerHTML = cells.map(function (c) {
     return '<div class="memdb-cell"><span class="k">' + townEsc(c[0]) + '</span><b>' + townEsc(c[1]) + '</b><span class="hint">' + townEsc(c[2]) + '</span></div>';
@@ -157,6 +169,7 @@ function townRenderAll() {
   if (input) input.checked = TOWN.cap.enabled === true;
   if (input) input.disabled = d.canWrite === false;
   townRenderMeta(d);
+  townRenderGuard(d);
   townRenderStats(d);
   townRenderState(d);
   townRenderBonds(d);

@@ -13,6 +13,7 @@ import { SURF, REPO, DSH_HOME } from './paths.js'
 
 export const TOWN_DIR = path.join(SURF, 'state', 'town')
 const STATUS_FILE = path.join(TOWN_DIR, 'status.json')
+const GUARD_FILE = path.join(TOWN_DIR, 'guard.json')
 const DB_FILE = path.join(TOWN_DIR, 'town.db')
 
 // 官方插件（dsh-fishbowl-town）那点事都收在仓库的 src/town-plugin.js 里 —— 面板不自己再写一份，
@@ -129,6 +130,8 @@ export function buildTown() {
     hasDb: fs.existsSync(DB_FILE),
     hasSnapshot: Boolean(snapshot),
     snapshot,
+    // 超支熔断的记录（src/town-guard.js 写的）；快照里也有一份，文件更新一些
+    guard: readJsonSafe(GUARD_FILE, null) || (snapshot && snapshot.guard) || null,
     counts,
     notes: notes.notes,
     notesReason: notes.ok ? '' : notes.reason,
