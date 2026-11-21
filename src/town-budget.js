@@ -14,6 +14,20 @@ import { readDailyUsage } from './token-budget.js';
 export const DEFAULT_TOWN_DAILY_CNY = 1;
 export const DEFAULT_TOWN_SOFT_CNY = 0.3;
 
+/**
+ * 今天在小镇花了多少（元）——直接给「数据目录」（里面有 token-usage-daily.json）。
+ * 控制台快照是从 state/town 往上两级拿到的数据目录，走的正是这条；永不抛。
+ */
+export function townSpendFromDataDir(dataDir) {
+  try {
+    const dir = String(dataDir || '').trim();
+    if (!dir) return 0;
+    const daily = readDailyUsage(dir);
+    const town = (daily && daily.town) || {};
+    return Math.max(0, Number(town.cost ?? town.cny ?? 0) || 0);
+  } catch { return 0; }
+}
+
 /** 今天在小镇花了多少（元）。永不抛。 */
 export function townSpendToday(dshHome) {
   try {
@@ -45,6 +59,13 @@ export function townSoftCap(config = {}) {
 /** 花超了没有。返回 { blocked, spent, cap }。 */
 export function townBudgetState(dshHome, config = {}) {
   const spent = townSpendToday(dshHome);
+  const cap = townDailyCap(config);
+  return { blocked: cap > 0 && spent >= cap, spent, cap };
+}
+
+/** 同上，但入参是数据目录（控制台快照用）。 */
+export function townBudgetStateFromDataDir(dataDir, config = {}) {
+  const spent = townSpendFromDataDir(dataDir);
   const cap = townDailyCap(config);
   return { blocked: cap > 0 && spent >= cap, spent, cap };
 }

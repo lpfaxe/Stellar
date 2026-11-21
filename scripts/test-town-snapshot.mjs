@@ -108,6 +108,23 @@ await check('写盘：原子落盘 + 内容是 JSON + 带 recall 一句', async 
   assert.deepEqual(leftovers, [], '没有留下半截临时文件');
 });
 
+await check('预算读的是数据目录里的 town 桶（不重复拼 stellar）', async () => {
+  const base = path.join(TMP, 'usage');
+  const dir = path.join(base, 'stellar', 'state', 'town');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(base, 'stellar', 'token-usage-daily.json'), JSON.stringify({
+    day, at: Date.now(), source: 'test',
+    qq: { cost: 1, tokens: 1 }, bili: { cost: 0, tokens: 0 }, feed: { cost: 0, tokens: 0 },
+    town: { cost: 0.42, tokens: 1000 }, other: { cost: 0, tokens: 0 },
+    total: { cost: 1.42, tokens: 1001 },
+  }));
+  const fake = { read: (name) => Promise.resolve(name === 'status' ? { ...status } : {}) };
+  await writeTownSnapshot({ dir, client: fake, now: Date.now(), townConfig: {} });
+  const snap = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
+  assert.equal(snap.budget.spent, 0.42, '面板上的「今天花费」必须是真的');
+  assert.equal(snap.budget.cap, 1);
+});
+
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
 console.log(fail ? '\n❌ 小镇快照：' + pass + ' 通过 / ' + fail + ' 失败' : '\n🎉 小镇快照：' + pass + ' 项通过');
 process.exit(fail ? 1 : 0);

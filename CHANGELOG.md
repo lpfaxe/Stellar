@@ -31,7 +31,9 @@
 
 ### 修复
 
-- **快照里的「进镇通道」永远是「没连上」**：`town-jobs.js` 把 `townPump.stats`（函数本身）塞进快照，`buildSnapshot` 判 `typeof pump === 'object'` 不成立 → `pump: null`，控制台显示「没连上」而日志写着「已进镇」。改成 `townPump.stats()`，并加断言盯住。
+-
+- **控制台上的「今天花费」永远是 ¥0.00**：快照那行把「数据目录」当成了 `dshHome`，`townSpendToday()` 又拼一次 `stellar`，读到不存在的路径 → 花费恒为 0（预算闸走的是 `dshHome`，一直正常）。新增 `townSpendFromDataDir()` / `townBudgetStateFromDataDir()` 并让快照改走它，加断言盯住。
+ **快照里的「进镇通道」永远是「没连上」**：`town-jobs.js` 把 `townPump.stats`（函数本身）塞进快照，`buildSnapshot` 判 `typeof pump === 'object'` 不成立 → `pump: null`，控制台显示「没连上」而日志写着「已进镇」。改成 `townPump.stats()`，并加断言盯住。
 
 - **动作开关判在裸配置上**：`townConfigNow()` 只读用户配置文件里的 `town`，用户只写 `{"enabled": true}` 时 `town.actions` 是 `undefined`，三个动作工具一律回「动作没开（town.actions 不是 true）」——即使他把 `actions` 留在默认值上。现在判定走 `townConfigMerged()`（插件配置层 `plugins/stellar/tools/lib/config.mjs` 的 `config()`，默认值深合并），配置层读不到才退回裸文件；进镇日志也按配置说「动作已开 / 没开」。
 - **控制台小镇页的两处显示**：快照的 `pump` 补上 `connected` 字段（原来面板永远显示「没连上」）；渲染朋友 / 心上鱼 / 有点喜欢时容忍纯字符串（`bonds.friends = ['鱼丸·柚']` 之前渲染成空白）。

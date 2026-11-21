@@ -13,7 +13,7 @@ import path from 'node:path';
 import { makeReader } from './town-client.js';
 import { townStats, listNotes } from './town-store.js';
 import { readActionState, listActionsToday, summarizeActions } from './town-actions.js';
-import { townBudgetState } from './town-budget.js';
+import { townBudgetStateFromDataDir } from './town-budget.js';
 import { renderRecall } from './town-memory-pure.js';
 import { localDayKey } from './token-budget.js';
 
@@ -135,7 +135,8 @@ export async function writeTownSnapshot({ dir, client, db, now = Date.now(), act
   try { if (db) stats = townStats({ db }); } catch {}
   let actions = null;
   try { if (actionsFile) actions = readActionState(actionsFile, { today: localDayKey(new Date(now)) }); } catch {}
-  const budget = townBudgetState(path.dirname(path.dirname(dir)), townConfig);
+  // 入参是「数据目录」（state/town 往上两级），townSpendToday 那套会再拼一次 stellar，永远读到 0（2026-11-21 修）
+  const budget = townBudgetStateFromDataDir(path.dirname(path.dirname(dir)), townConfig);
 
   const snap = redactSnapshot(buildSnapshot({ now, status, bonds, spending, lobby, stats, actions, budget, errors, pump }));
   // 顺手给面板一句「她现在记得什么」，免得面板自己拼（也就 400 字上限那套）。
