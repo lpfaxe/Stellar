@@ -72,7 +72,7 @@ export function cleanText(input, max = RAW_TEXT_MAX) {
   return s;
 }
 
-const DIRECTIVE_HEAD = /^(你|请你|请|帮我|帮忙|记住|记得|告诉|去|别|不要|一定要|务必|从现在起|以后|立刻|马上)/;
+const DIRECTIVE_HEAD = /^(你|请你|请|帮我|帮忙|记住|记得|告诉|去|别|不要|一定要|务必|从现在起|以后|立刻|马上|把|替|给我)/;
 const INJECTION_HINT = /(忽略|无视|忘掉|忘记之前|系统提示|系统消息|指令|prompt|system|assistant|ignore (all|previous)|disregard)/i;
 
 /**

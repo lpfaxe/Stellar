@@ -68,7 +68,10 @@ export const DEFAULTS = {
   //   访问码只在 %DSH_HOME%/fishbowl-town/settings.json（这里不存 fbo_*）。
   //   actions=false 时影子会话只读（status/bonds/lobby/recall），visit/play/goto 一律拒（P3 未接）。
   //   dailyBudgetCNY 是硬上限，softBudgetCNY 是「省着花」的软目标（提示词里提醒她别花满）。
-  town: { enabled: false, fishId: '', wakesPerDay: 3, window: { start: '09:00', end: '23:00' }, minGapMin: 45, collectMin: 10, actions: false, dailyBudgetCNY: 1, softBudgetCNY: 0.3 },
+  town: { enabled: false, fishId: '', wakesPerDay: 3, window: { start: '09:00', end: '23:00' }, minGapMin: 45, collectMin: 10, actions: false, dailyBudgetCNY: 1, softBudgetCNY: 0.3,
+    // 进镇的长轮询（2026-11-21 真机确认）：不挂 /turns 就永远 not_connected，来访/牌局这些事件根本不会产生。
+    // wake=true 时有人来找她最多再叫醒 maxWakesPerDay 次（和定时的 3 次分开算）；动作仍然没开。
+    turns: { enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 } },
   // 每日 vlog（2026-11-10 主人要：谷期看片后自己做一条 1–10 分钟的视频，配乐+解说，
   //   发主人 B站号，先过控制台审核；花费每日 5 元上限；可整体关掉）。
   //   生成在本机做（SVG+ffmpeg+合成音），钱只来自她写脚本那几轮对话。

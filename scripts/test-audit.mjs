@@ -149,6 +149,7 @@ const tests = [
   'test-town-collector.mjs',
   'test-town-scheduler.mjs',
   'test-town-tools.mjs',
+    'test-town-turns.mjs',
   // 上线补历史消息（socialV2.history）：默认开、水位/去重/黑名单、桥接启动补看离线消息、
   // history 唤醒提示与快照标记（VM 夹具网关，不连真 QQ）。
   'test-history-catchup.mjs',

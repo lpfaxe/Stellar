@@ -34,14 +34,14 @@
 | B站 | `bili-api.js` / `bili-memory.js` / `bili-dynamics.js` / `bili-card.js` / `bili-share-scheduler.js` | 网络、记忆简报、卡片、分享排期 |
 | 额度 | `token-budget.js` / `token-ledger.js` / `token-guard.js` / `model-prices.js` / `billing-report.js` / `cost-estimate.js` | 每日额度、账本、价目、报表 |
 | 安全 | `identity-guard.js` / `access-audit.js` / `owner-audit.js` / `file-read-guard.js` / `safe-fetch.js` / `safe-text.js` / `state-acl.mjs` | 身份、审计、文件与 URL 白名单、ACL |
-| 鱼缸小镇（可选） | `town-memory-pure.js` / `town-client.js` / `town-store.js` / `town-collector.js` | 只读采集、3 天 TTL、独立 `town.db`；默认不启用，见 subsystems/SUBSYSTEM-TOWN.md |
+| 鱼缸小镇（可选） | `town-memory-pure.js` / `town-client.js` / `town-store.js` / `town-collector.js` / `town-turns.js` | 只读采集、3 天 TTL、独立 `town.db`、`/turns` 长轮询（进镇 + 叫醒）；默认不启用，见 subsystems/SUBSYSTEM-TOWN.md |
 | 其他 | `todos.js` / `approvals.js` / `sticker-*.js` / `slang-learner.js` / `outbox.js` / `self-test.js` | 待办、审批、表情、黑话、发件箱、自检 |
 
 ## 三、`scripts/`：命名约定
 
 | 前缀 | 意思 | 举例 |
 | --- | --- | --- |
-| `test-*.mjs` | 回归（**203 个**，`test:audit` 跑其中 173 个） | `test-memory-db.mjs` |
+| `test-*.mjs` | 回归（**204 个**，`test:audit` 跑其中 174 个） | `test-memory-db.mjs` |
 | `probe-*.mjs` | 手工探针（要真环境，不进回归） | `probe-events.mjs` |
 | `verify-*.mjs` | 断言某件事仍然成立 | `verify-dsh-020-adaptation.mjs` |
 | `bootstrap*` | 首次启动引导（幂等，绝不覆盖已有配置） | `bootstrap.mjs` |

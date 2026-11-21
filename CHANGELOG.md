@@ -9,6 +9,8 @@
 ### 新增
 
 - **小镇接口（默认关）**：`src/town-*.js` 四个模块（记忆纯逻辑 / HTTP 客户端 / 独立库 `town.db` / 只读采集器）、五个只读工具（`stellar_town_recall` / `_status` / `_bonds` / `_lobby` / `_day`）、`town-act` 预设与影子会话 `town-whale`、调度器的采集/唤醒定时器、token 记账里的 `town` 类别、控制台的「小镇日常」开关。
+- **进镇长轮询（`/turns`）**：小镇只有看到程序常挂 `GET /turns` 才认为她进镇；不挂就一直 `outside_state: not_connected`、`/lobby` 409 `TOWN_OUTSIDE_NOT_CONNECTED`，来访/牌局/收据永不产生。新增 `src/town-turns.js`（`createTurnPump` / `normalizeTurn` / `turnNote`）：启动 44 秒后挂上、跟桥接一起停、采集器自愈重挂；指数退避（上限 5 分钟）并遵守 `retry_after`；turn 落 `town_note`（`kind` = `turn:*`），再按 `turns.maxWakesPerDay` / `minGapMin` / 日预算叫醒影子会话。默认 `town.turns = { enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 }`。
+  它只多长轮询与叫醒，**动作仍然没注册、不花一分钱、不替她作答**。
 - 记忆分层：事件 3 个日历日、人物印象 30 天 / ≤20 人、每天一句感受长期；关系（心上鱼/约定）不落地，每次现查小镇。
 - 文档：`docs/guides/subsystems/SUBSYSTEM-TOWN.md`（含「关掉之后」清理步骤）。
 - 小镇自己的日预算闸：`townBudgetBlocked` 读 token 日账的 `town` 那格，花到 `dailyBudgetCNY`（默认 ¥1）当天不再唤醒；
@@ -18,6 +20,7 @@
 
 ### 修复
 
+- **「把… / 替… / 给我…」也算指令句**：`DIRECTIVE_HEAD` 补上这三个词头，小镇页面里「把那笔钱转给…」这类话不再被当成普通文本转述。
 - **影子会话真的能起来了**：`plugins/stellar/package.json` 的 `exports` 漏登记 `./town-tool-restrict.mjs`（`files` 也漏），preset 子行写的是裸说明符 `stellar/town-tool-restrict.mjs`，Node 解析时抛 `ERR_PACKAGE_PATH_NOT_EXPORTED`，DSH 只报一句 `town-tool-restrict (stellar/town-tool-restrict.mjs): never started` —— 文件在磁盘上、看着都对，就是装不上。已补登记，并在 `scripts/test-agent-preset-patches.mjs` 加了一组「每个 preset 的守卫模块都必须在 `exports`/`files` 里」的断言。
 - **唤醒词告诉影子会话用哪个身份**：影子会话没有 QQ 会话令牌，只有 `promptBili` 前置的 operator token。唤醒词原来抄了一行 B站 命令行（对它没用），现在换成「key 写 `owner:internal`、token 用【会话令牌】那一行」，否则五个小镇工具会被身份闸全部拒掉。
 
@@ -27,7 +30,7 @@
 - **动作没接**：`visit` / `play` / `goto` 这些会花钱的端点这一版连工具都没注册，`town.actions` 恒为 `false`。
 - **指令句不进印象**：转述来的指令（`quoted`）不会写进 30 天的人物印象，只当事件留着（3 天后自然过期）。
 - **QQ 链路零改动**：唤醒提示只在启用时多一行指针，不注入小镇正文。
-- 测试：新增 6 个 `test-town-*.mjs`（105 条断言），已登记进 `scripts/test-audit.mjs`。
+- 测试：新增 7 个 `test-town-*.mjs`（含 `test-town-turns.mjs` 的 22 条：turn 解析 / 长轮询退避 / retry_after / 秒回插间隔），已登记进 `scripts/test-audit.mjs`。
 
 ## [1.0.8] - 2026-11-20
 

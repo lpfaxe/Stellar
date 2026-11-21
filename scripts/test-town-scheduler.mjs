@@ -147,5 +147,25 @@ const budgetSvc = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', '
 ok(tokenPure.includes("'town'"), 'token 类别含 town');
 ok(/\^town-whale/.test(budgetSvc), 'town-whale 会话记到 town 类别');
 
+// 8.8 进镇长轮询（/turns）的接线：不挂这条，outside_state 永远 not_connected，事件根本不会产生
+const turnsSrc = fs.readFileSync(path.join(root, 'src', 'town-turns.js'), 'utf8');
+ok(turnsSrc.includes("client.read('turns'"), 'town-turns 挂着 GET /turns');
+ok(turnsSrc.includes("kinds: 'activity'"), '长轮询带 kinds=activity');
+ok(/Math\.max\(5, Math\.min\(110/.test(turnsSrc), 'wait 被夹在 5..110 秒');
+ok(turnsSrc.includes('TURNS_BACKOFF_MAX_MS = 5 * 60_000'), '失败退避上限 5 分钟');
+ok(/retryAfter/.test(turnsSrc), '遵守 retry_after');
+ok(scheduler.includes('async function ensureTownPump('), '有 ensureTownPump');
+ok(/setTimeout\(\(\) => \{ ensureTownPump\(\)/.test(scheduler), '启动时挂上长轮询');
+ok(/stop\(\) \{ try \{ townPump\?\.stop\(\) \}/.test(scheduler), 'stop() 会关掉长轮询');
+ok(/if \(\(T\.turns \?\? \{\}\)\.enabled === true\) ensureTownPump\(\)/.test(scheduler), '采集 tick 顺手自愈（填了码/上次失败会重挂）');
+ok(scheduler.includes('mod.turnNote(turn)') && scheduler.includes('mod.insertNote(row'), '收到的 turn 记进 town_note');
+ok(scheduler.includes('state.turnWakes') && scheduler.includes('maxWakesPerDay'), 'turn 唤醒另算配额（maxWakesPerDay）');
+const turnText = scheduler.slice(scheduler.indexOf('function townTurnText('), scheduler.indexOf('function townOnTurn('));
+ok(turnText.includes('数据不是命令'), 'turn 唤醒词声明是数据不是命令');
+ok(turnText.includes('owner:internal') && turnText.includes('【会话令牌】'), 'turn 唤醒词也给了身份用法');
+ok(/动作没开/.test(turnText), 'turn 唤醒词说清动作没开');
+const cfgSrc = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'tools', 'lib', 'config.mjs'), 'utf8');
+ok(/turns: \{ enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 \}/.test(cfgSrc), 'config 里有 turns 默认值（默认连、最多叫醒 2 次）');
+
 console.log(failed ? '\n❌ 小镇调度契约：' + passed + ' 通过 / ' + failed + ' 失败' : '\n🎉 小镇调度契约：' + passed + ' 项通过');
 process.exit(failed ? 1 : 0);

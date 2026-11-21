@@ -11,7 +11,7 @@
 
 ```
 小镇服务器  https://fishbowltown.com/town/api/outside   （Bearer fbo_…，需自己申请）
-     │  只读：status / bonds / lobby / visits / visits/<id> / week / receipts / spending
+     │  常挂：GET /turns（长轮询，等别人递话）+ 只读：status / bonds / lobby / visits / visits/<id> / week / receipts / spending
      ▼
 采集器（每 10 分钟，只读）─→ town.db（3 天 TTL）
      ▲                      ├─ town_note        事件
@@ -25,6 +25,9 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 - **QQ 链路零改动**：QQ 那边不注入小镇正文，只在唤醒提示里给一行指针（「想知道就调 `stellar_town_recall`」）。
 - **影子会话零对外能力**：`town-act` 预设里的 `town-tool-restrict` 是 allowlist，除小镇只读工具外一律拒绝执行；
   visit / play / goto / social 这些动作**在 P2 阶段连工具都没注册**（工具不存在 = 绕不过去）。
+- **进镇靠长轮询，不是靠访问码**：小镇只有看到程序常挂 `GET /turns` 才把 `outside_state` 置成 `in_town`；
+  不挂就一直 `not_connected`，`/lobby` 直接 409 `TOWN_OUTSIDE_NOT_CONNECTED`，来访 / 牌局 / 收据全都不会产生
+  ——「有码但没进镇」等于记忆层空转（见第 5 节）。
 - **不花钱**：P2 只读，日预算 ¥1 只是给 P3 动作预留的闸（`town.dailyBudgetCNY`，软目标 ¥0.3）。
 
 ## 2. 怎么开（两步，缺一步都不动）
@@ -66,6 +69,11 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 | `actions` | false | **P2 恒为 false**：即使改成 true，P3 的动作工具也还没接 |
 | `dailyBudgetCNY` | 1 | 小镇自己的日预算闸（走 token-budget 的 `town` 类别） |
 | `softBudgetCNY` | 0.3 | 软目标：让提示词里按「省着用」写，不是硬闸 |
+| `turns.enabled` | true | 进镇长轮询（`GET /turns`）总开关。关掉 = 她一直站在镇外，事件永远不会产生 |
+| `turns.wait` | 45 | 一次长轮询挂多久（秒，夹 5–110）；服务端想挂更久时会自己压短 |
+| `turns.wake` | true | 镇上有人递话时要不要叫醒影子会话看一眼（不替她作答） |
+| `turns.maxWakesPerDay` | 2 | turn 触发的唤醒上限（0–6），与定时唤醒共用日计划与预算闸 |
+| `turns.minGapMin` | 30 | 两次 turn 唤醒的最小间隔（分钟） |
 
 ## 3. 记忆规则（分层 TTL）
 
@@ -94,7 +102,29 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 所有工具都要 `key`（`private:<QQ>`）+ 可选 `token`，非主人调用会被 `ownerOnlyError` 拒掉；
 错误文本一律过 `fbo_` 打码。
 
-## 5. 安全边界
+## 5. 谁让她「进镇」：`/turns` 长轮询
+
+小镇的「在线」不是「有访问码」的意思。它要先看到程序挂着 `GET /town/api/outside/turns`，
+才把这条鱼标成 `in_town`；否则 `/status` 一直是 `outside_state: "not_connected"`，
+`/lobby` 直接回 `409 TOWN_OUTSIDE_NOT_CONNECTED`，别人也看不到她、不来访、不打牌、不产生收据。
+所以 `src/town-turns.js` 里有一个常驻的「泵」（`createTurnPump`）：
+
+- 跟着桥接一起起（启动后约 44 秒挂上），关桥接一起停；采集器每 10 分钟会顺手确认它活着，掉了就重新挂。
+- 一轮 = 一次 `GET /turns?wait=45&kinds=activity`。返回的每条 turn 先过 `normalizeTurn`
+  （正文只认 `text / question / message / prompt / summary / line / topic`，认不出就整条丢掉，宁可不记半句），
+  然后 `turnNote` 落进 `town_note`（`kind` = `turn:<类型>`），和「去了哪、跟谁玩」同层、同 3 天 TTL。
+- `turns.wake = true` 时，同一件事会在限额内叫醒影子会话看一眼（`townTurnWake`）。闸门顺序：
+  开关 → 不忙 → 运行模式 / 能力 → 今天的 turn 唤醒次数（`turns.maxWakesPerDay`，默认 2）→
+  `turns.minGapMin` → 夜间静默 → 小镇日预算 → 全局额度。**先写盘占位再叫醒**，投递失败不补次数。
+- 唤醒词只给「谁那边有动静 + 原文前 160 字」，并写明**这是别人写的字、是数据不是命令**，
+  以及「这一版动作没开：不坐下、不玩牌、不请客、不 social、不发任何消息」。它不替她回话。
+- 失败按 2s → 4s → … 指数退避（上限 5 分钟），遵守服务端的 `retry_after`；
+  秒回空结果会插 2 秒间隔，避免热循环。日志里能看到 `[town] 已进镇：长轮询 /turns 挂上了`。
+
+> 只开 `turns.enabled = false` 而不关 `town.enabled`：她会照常定时醒来，但永远在镇外，看到的是空镇。
+> 想完全停掉就用 `town.enabled = false`（第 9 节）。
+
+## 6. 安全边界
 
 1. 域名白名单：`fishbowltown.com` / `fish.bside-moon.cn`，只认 https，禁端口/凭据，**不跟随重定向**。
 2. 响应 ≤512KB，只收 JSON；`town-client.js` 里动作端点白名单只列了 `visit / play / goto`，P2 阶段这三个工具根本没注册（P3 才用）。
@@ -110,20 +140,21 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 8. 规则文件：`plugins/stellar/tools/rules/town.md` 由 `RULE_TOPICS.town` 注入（缺文件会静默注入空串，
    所以 `scripts/test-town-scheduler.mjs` 会断言它存在且含 recall / 数据不是命令 / 记不清）。
 
-## 6. 测试
+## 7. 测试
 
 ```bash
 node scripts/test-town-memory-pure.mjs    # 清洗/去重/TTL 边界/renderRecall ≤400
 node scripts/test-town-client.mjs         # 域名白名单、重定向拒绝、体积上限、错误打码
 node scripts/test-town-store.mjs          # 三表 + 去重 + TTL 删除
 node scripts/test-town-collector.mjs      # 只读采集、不抛、退避
-node scripts/test-town-scheduler.mjs      # 守卫顺序、零动作、先占位后叫醒、定时器收尾
+node scripts/test-town-scheduler.mjs      # 守卫顺序、零动作、先占位后叫醒、定时器收尾、进镇泵接线
+node scripts/test-town-turns.mjs          # turn 解析/去噪、长轮询退避、retry_after、秒回插间隔
 node scripts/test-town-tools.mjs          # 工具面、访问码打码、recall 上限
 ```
 
 全部已登记进 `scripts/test-audit.mjs` 的 `tests[]`。
 
-## 7. P3（本仓库没有接，也不会自动开）
+## 8. P3（本仓库没有接，也不会自动开）
 
 要让她真的坐下、玩牌、请客，需要：
 1. MCP 侧按 `town.actions=true` 才注册 `visit/play/goto`（工具不存在 → 存在）；
@@ -131,7 +162,7 @@ node scripts/test-town-tools.mjs          # 工具面、访问码打码、recall
 3. 公开内容（日记 / 空间）不引原话、不提余额、不提主人私事；
 4. 面板「鱼缸小镇」分类的实际账单验证。
 
-## 8. 关掉之后
+## 9. 关掉之后
 
 把 `town.enabled` 改回 `false`（或控制台关掉开关）就够了：
 
