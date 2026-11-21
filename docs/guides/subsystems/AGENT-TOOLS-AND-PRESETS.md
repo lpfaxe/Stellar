@@ -1,6 +1,6 @@
 # 工具面与 preset（AGENT-TOOLS-AND-PRESETS）
 
-> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 78 个工具）、**哪些手被绑住**
+> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 82 个工具）、**哪些手被绑住**
 > （五层闸门 + fail-closed 守卫）、**她戴哪张面具**（`qq-chat` / `qq-chat-v2` 两代 preset）、
 > **这些是怎么装进 DSH 的**。
 > **最后核对**：2026-10-26（全仓库逐行梳理）。配套阅读：总纲 [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) · 边界 [BOUNDARIES.md](../operations/BOUNDARIES.md) · 索引 [../README.md](../../README.md)。
@@ -11,7 +11,7 @@
 
 **两个 MCP 手 + 一张面具。**
 
-- `snowluma`（36 个 `qq_*` + 39 个 `stellar_*` 工具）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏、B站/空间/小镇/文件柜。
+- `snowluma`（36 个 `qq_*` + 35 个 `stellar_*` 工具；小镇的 8 个 `stellar_town_*` 由同一个 server 里的 `src/town-tools.js` 注册，合计 43 个 `stellar_*`）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏、B站/空间/小镇/文件柜。
 - `snowluma-host`（1 个）是探活手：只问 SnowLuma 在不在，**没有启停能力**（EULA）。
 - `web-search-safe`（2 个）是外部信息手：只读搜索与抓取，带 SSRF 防护。
 - preset 决定"她是谁、在哪说话"：`qq-chat`（一代/普通）与 `qq-chat-v2`（二代仿真）。
@@ -22,7 +22,7 @@
 
 | server | 入口 | 工具 | 挂载 | 边界 |
 | --- | --- | --- | --- | --- |
-| `snowluma` | `src/mcp-snowluma-safe.js`（5,001 行） | 36 个 `qq_*` + 39 个 `stellar_*` | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
+| `snowluma` | `src/mcp-snowluma-safe.js`（4,816 行）+ `src/town-tools.js`（8 个小镇工具） | 36 个 `qq_*` + 43 个 `stellar_*`（其中 8 个 `stellar_town_*`） | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
 | `snowluma-host` | `src/mcp-host-server.js`（94 行） | `snowluma_status` | 同上 | **只读探活**；v0.1.5 起移除了 `start_snowluma`/`stop_snowluma` |
 | `web-search-safe` | `src/mcp-web-search-safe.js`（128 行） | `web_search`、`web_fetch` | 同上 | 只读；禁内网/环回/CGNAT；DNS 解析后逐地址校验；重定向每跳复核 |
 
@@ -124,7 +124,7 @@
 | `409` | 状态冲突（例如正在跑） | 等一下再试 |
 | `415` | 写操作不是 `application/json` | 修请求 |
 | `429` | 频率超限 | 放慢/减少条数 |
-| `502` | 上游失败（TTS 引擎/发送失败） | 降级（改回打字） |
+| `502` | 上游失败（B站 / 搜索接口报错，或消息没送出去） | 过一会儿重试；持续失败就直说没读到 |
 
 ---
 

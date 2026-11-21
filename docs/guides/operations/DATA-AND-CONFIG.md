@@ -62,25 +62,32 @@
 
 ## 4 状态文件全表
 
-| 文件（相对 `DSH_HOME/stellar/state/`） | 内容 | 能删吗 |
-| --- | --- | --- |
-| `social-v2.json` | 每个会话的运行时状态（未读、唤醒配置、令牌、最近消息） | 能（等于丢未读与会话状态） |
-| `sessions.json` | 会话 key → DSH 会话 id 的映射 | 能（会重新建会话） |
-| `run-mode.json` | 三种运行模式（手动指定仅当天） | 能 |
-| `todos.json` | 待办（含 `targetKey`/`targetName`） | **别删**，删了提醒就没了 |
-| `approvals.json` | 等她/等主人批的事 | 能 |
-| `outbox.json` | 待发/已发的出站记录 | 能 |
-| `token-usage.jsonl` | 每次模型调用的用量账本 | 能（账就归零） |
-| `token-budget.json` / `token-alert.json` | 每日额度与当日已用、告警水位 | 能 |
-| `tool-calls.jsonl` | 工具调用流水（面板「运行」页读） | 能 |
-| `audit.jsonl` | 面板写操作审计 | 能 |
-| `bridge.lock` | 桥接 PID 与启动时间 | 桥接没跑时可删 |
-| `console-token` | 控制台令牌（未在配置里指定时） | 能（会重新生成） |
-| `current-role.json` | 当前角色指针 | **别删**，删了她不知道自己是谁 |
-| `turn-context.json` / `turn-context/` | 本轮是谁在说话（15 分钟过期） | 能 |
-| `purpose-outreach.json` | 主动搭话的状态 | 能 |
-| `plugin.log` / `bridge.log` / `qq-activity.log` | 日志 | 能 |
-| `memory-review-request.json` / `memory-profile-request.json` | 面板点的「立即复核/生成侧写」 | 能（40 分钟内有效） |
+运行时状态**分两处**，别搞混：
+
+- **桥接侧 `<仓库>/state/`** —— `src/bridge.js:250 const STATE_DIR = path.join(ROOT, 'state')`；`ROOT` 是 Stellar 的安装目录（`src/bridge.js:171`）。桥接自己写、自己读。
+- **插件侧 `DSH_HOME/stellar/state/`** —— `plugins/stellar/lib/run-mode.js:29`、`plugins/stellar/lib/memory-db-timer.js:86`。DSH 进程里的插件半写，面板读。
+
+| 文件 | 位置 | 内容 | 能删吗 |
+| --- | --- | --- | --- |
+| `social-v2.json` | 桥接 | 每个会话的运行时状态（未读、唤醒配置、令牌、最近消息） | 能（等于丢未读与会话状态） |
+| `sessions.json` | 桥接 | 会话 key → DSH 会话 id 的映射 | 能（会重新建会话） |
+| `run-mode.json` | 插件 | 三种运行模式（手动指定仅当天） | 能 |
+| `todos.json` | 插件 | 待办（含 `targetKey`/`targetName`） | **别删**，删了提醒就没了 |
+| `approvals.json` | 桥接 | 等她/等主人批的事 | 能 |
+| `outbox.json` | 桥接 | 待发/已发的出站记录 | 能 |
+| `token-usage.jsonl` | 桥接 | 每次模型调用的用量账本 | 能（账就归零） |
+| `token-budget.json` / `token-alert.json` | `DSH_HOME/stellar/`（不在 state/ 里） | 每日额度与当日已用、告警水位 | 能 |
+| `tool-calls.jsonl` | 桥接 | 工具调用流水（面板「运行」页读） | 能 |
+| `audit.jsonl` | 插件 | 面板写操作审计 | 能 |
+| `bridge.lock` | 桥接 | 桥接 PID 与启动时间 | 桥接没跑时可删 |
+| `console-token` | 桥接 | 控制台令牌（未在配置里指定时） | 能（会重新生成） |
+| `current-role.json` | 桥接 | 当前角色指针 | **别删**，删了她不知道自己是谁 |
+| `turn-context.json` / `turn-context/` | 桥接 | 本轮是谁在说话（15 分钟过期） | 能 |
+| `purpose-outreach.json` | 角色目录 `characters/<id>/`，写不进才回退桥接 `state/`（`src/bridge.js:2265-2267`） | 主动搭话的状态 | 能 |
+| `plugin.log` | 插件（`DSH_HOME/stellar/`） | 插件半的日志 | 能 |
+| `bridge.log` / `qq-activity.log` | 桥接 | 桥接与 QQ 活动日志 | 能 |
+| `memory-review-request.json` / `memory-profile-request.json` | 插件 | 面板点的「立即复核 / 生成侧写」 | 能（40 分钟内有效） |
+
 ## 5 备份、保留与回滚
 
 - **改配置前**：面板的保存会先写 `<文件名>.bak-<时间戳>`；命令行改就自己复制一份。

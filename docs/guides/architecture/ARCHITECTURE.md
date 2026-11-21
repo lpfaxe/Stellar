@@ -1,4 +1,4 @@
-# 架构总览（Stellar 1.0.0）
+# 架构总览（Stellar 1.0.9）
 
 > 只写现在这个版本实际在跑的东西。想知道「为什么这么设计」，看对应的功能篇；
 > 想知道每个目录放什么，看 [../FOLDER_MAP.md](../../FOLDER_MAP.md)。
@@ -19,7 +19,7 @@ bridge  ──── node src/bridge.js ──────────  http://1
   │  └──► DSH（DeepSeek Harness，端口由它自己挑；config.dsh.baseUrl）
   │                                          │ 会话 prompt / 工具调用（MCP stdio）
   │                                          ▼
-  │                                       她（一个 DSH 会话，带 67 个 MCP 工具）
+  │                                       她（一个 DSH 会话，带 82 个 MCP 工具）
   └──► 面板 stellar-manager ── 3300（可选，另起一个进程）
 ```
 

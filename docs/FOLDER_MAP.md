@@ -25,7 +25,7 @@
 | 组 | 文件 | 职责 |
 | --- | --- | --- |
 | 入口 | `bridge.js` | 常驻主程序：收发消息、拼唤醒提示、67 条控制台路由 |
-| MCP | `mcp-snowluma-safe.js` / `mcp-host-server.js` / `mcp-web-search-safe.js` | 三个 stdio server，共 78 个工具 |
+| MCP | `mcp-snowluma-safe.js` / `mcp-host-server.js` / `mcp-web-search-safe.js` / `town-tools.js` | 三个 stdio server，共 82 个工具（36 `qq_*` + 43 `stellar_*` + 3 宿主级） |
 | DSH 对接 | `dsh-client.js` / `dsh-port.js` / `dsh-health.js` / `dsh-model-follow.js` | 找端口、投提示、探活、跟随默认模型 |
 | 记忆 | `memory-db.js` / `memory-db-schema.sql` / `memory-cache.js` / `memory-read.js` / `memory-worker.js` / `memory-facts.js` | 新记忆库（见 features/MEMORY.md） |
 | 记忆（旧引擎） | `memory-card.js` / `memory-store.js` / `memory-tiers.js` / `memory-blend.js` / `memory-compact.js` / `vector-memory.js` | 只在 `memory.engine=card` 时走 |
@@ -41,7 +41,7 @@
 
 | 前缀 | 意思 | 举例 |
 | --- | --- | --- |
-| `test-*.mjs` | 回归（**209 个**，`test:audit` 跑其中 179 个） | `test-memory-db.mjs` |
+| `test-*.mjs` | 回归（**210 个**，`test:audit` 跑其中 180 个） | `test-memory-db.mjs` |
 | `probe-*.mjs` | 手工探针（要真环境，不进回归） | `probe-events.mjs` |
 | `verify-*.mjs` | 断言某件事仍然成立 | `verify-dsh-020-adaptation.mjs` |
 | `bootstrap*` | 首次启动引导（幂等，绝不覆盖已有配置） | `bootstrap.mjs` |

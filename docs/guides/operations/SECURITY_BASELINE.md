@@ -109,7 +109,7 @@ DSH 的 Windows 文件沙箱按**能力 SID** 授权：SID 由 `sha256(规范化
 > SnowLuma OneBot 令牌与全部 QQ 聊天记录重新开放给本机任何已登录用户。
 
 > ⚠️ 已知的**非预期**收紧（2026-09-29 实测）：`plugins/stellar/**` 与
-> `plugins/qq-mode-console/**` 的内容也被切断了继承（`plugins/` 自身没有）。
+> `plugins/stellar/**`（旧名 `qq-mode-console`） 的内容也被切断了继承（`plugins/` 自身没有）。
 > **本仓库没有任何脚本这么做**，来源不明（手工 icacls 或仓库外工具）。
 > 它的副作用是沙箱会话里改不动 L7 守卫（`qq-tool-restrict.mjs`）。
 > 这两处不含凭据，恢复继承不涉及泄密风险 —— 是否恢复由使用者决定（`npm run diagnose:acl`

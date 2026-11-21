@@ -15,9 +15,9 @@
 | `plugins/stellar/lib/index.js` | **不许硬编码**，从根 `package.json` 读 |
 | `client.js` | 显示用，取 `overview.version`，不写死 |
 
-### 1.2 语义化版本（0.x 阶段）
+### 1.2 语义化版本（0.x 阶段的约定，留作历史）
 
-当前是 `0.x`，约定：
+`1.0.0`（2026-11-14）之后已恢复标准 SemVer：breaking = major、新功能 = minor、修 bug/文档 = patch。下表是 0.x 时期的约定：
 
 | 动作 | 版本变化 | 例子 |
 | --- | --- | --- |
@@ -42,7 +42,7 @@
 
 | 组件 | 仓库 | 当前版本 | 版本清单 | 升级方式 |
 | --- | --- | --- | --- | --- |
-| Stellar 本体 | 本仓库 | **1.0.0** | git tag | `git` 快进（`--ff-only`） |
+| Stellar 本体 | 本仓库 | **1.0.9**（2026-11-21） | git tag | `git` 快进（`--ff-only`） |
 
 ### 兼容性约定
 
@@ -83,9 +83,9 @@ node scripts/version.mjs tag --push    # 打 tag 并推送
 ```text
 [ ] 1. node scripts/version.mjs bump {patch|minor|rc}
 [ ] 2. 补 CHANGELOG.md 的对应小节（新增/变更/修复/破坏性）
-[ ] 3. npm run test:audit          # 76 项全绿
+[ ] 3. npm run test:audit          # 全绿（项数会涨，以最近一次发布记录为准）
 [ ] 4. cd plugins/stellar && npm test
-[ ] 5. git add -A && git commit -m "release: vX.Y.Z"
+[ ] 5. git add <明确路径> && git commit -m "release: vX.Y.Z"   # 不要 add -A
 [ ] 6. node scripts/version.mjs tag
 [ ] 7. git push origin main && git push origin vX.Y.Z
 [ ] 8. GitHub → Releases → 用 tag 建 Release（正文从 CHANGELOG 抄）

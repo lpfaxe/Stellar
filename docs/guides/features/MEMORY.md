@@ -18,12 +18,13 @@
 库文件跟着**角色**走；`DSH_HOME` 可以整体改位置。边界：只装「启用之后的新对话」，
 旧档案（`memory-card*.jsonl` / `memory-inbox.jsonl` / `vector-memory.jsonl`）一个字节都不读、不迁。
 
-## 2 十二张表
+## 2 十二张实体表（+ 一张虚拟表 `search_fts`）
 
 | 表 | 装什么 | 谁写 |
 | --- | --- | --- |
 | `cache_msg` | 所有收发消息的原始缓冲（`role=user/self`、`process_state`） | 桥接入站/出站双写 |
 | `topic` / `topic_msg` | 切出来的话题与它的正文 | 切分作业 |
+| `topic_participant` | 一个话题里都有谁说过话（`qq` / `name` / `role` / `msgs`）——「按人找话题」要能走索引，所以单独一张表 | 切分作业 |
 | `fragment` | 够长但没配对的独白（单边话） | 切分作业 |
 | `fact` | 生日、忌口、过敏、称呼、住址、联系方式 | 切分时正则抽 + 面板手写 |
 | `zone_note` | 两个「见闻区」：`bili`（今天刷了什么）/ `qzone`（好友爱看） | 她自己调 `stellar_memory_zone` |
@@ -33,7 +34,7 @@
 | `job_state` | 后台作业进度（`split` / `window` / `profile`） | 作业自身 |
 | `meta` | schema 版本、引擎标记 | `openDb()` |
 
-改动表结构要同时改 `src/memory-db-schema.sql` 与 `SCHEMA_VERSION`（当前 **3**）。
+改动表结构要同时改 `src/memory-db-schema.sql` 与 `SCHEMA_VERSION`（当前 **4**）。
 
 ## 3 写进来（三条路）
 
@@ -114,7 +115,7 @@
 
 ## 9 面板上能做什么
 
-`stellar-manager` 的「记忆」页有六张卡：记忆库概览、话题目录、零碎记忆、人物侧写、重要事实、参考库。
+`stellar-manager` 的「记忆」页有六张卡：记忆库概览、话题目录、零碎记忆、重要事实、B站 记忆、好友爱看记忆。（人物侧写在「通讯录」页，参考库在「设置」页。）
 能做的事：搜话题、读一个话题的原文、标为重要、**忘记**（先导出到 `memory-trash/` 再删）、
 新增/编辑/删除事实（选人、选类型、选隐私级、权重 1~5）、生成侧写、清空某天某人的见闻区。
 
