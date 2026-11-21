@@ -182,7 +182,9 @@ const pluginSrc = fs.readFileSync(path.join(root, 'src', 'town-plugin.js'), 'utf
 const toolsSrc = fs.readFileSync(path.join(root, 'src', 'town-tools.js'), 'utf8');
 const snapSrc = fs.readFileSync(path.join(root, 'src', 'town-snapshot.js'), 'utf8');
 ok(townJobs.includes("import('../../../src/town-plugin.js')"), '插件检测是动态 import（它随时能被整个剔掉）');
-ok(/if \(townPluginActive\(\)\) \{\s*if \(!townPluginYieldLogged\)/.test(townJobs), '插件在答题时我们的普通泵不挂');
+ok(/if \(townPluginActive\(\)\) \{\s*if \(townPump\) \{/.test(townJobs), '插件在答题时先真的停掉我们的泵（同一接入码只允许一个长轮询）');
+ok(townJobs.includes('townPump.stop()'), '让位是显式 stop()，不只是不再新建');
+ok(/pump: townPluginActive\(\) \? null :/.test(townJobs), '快照里插件答题时通道归插件，不把旧泵画成没连上');
 ok((townJobs.match(/if \(townPluginActive\(\)\)/g) || []).length >= 2, '叫醒（townTick）也一并让位');
 ok(townJobs.includes('plugin: mod.pluginStatus'), '快照里带上插件状态（谁在答题）');
 ok(toolsSrc.includes('townPluginModule') && /status\.installed && status\.takesTurns/.test(toolsSrc), '动作工具在插件答题时拒绝执行');

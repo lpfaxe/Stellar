@@ -215,7 +215,8 @@ export function createTownJobs(deps = {}) {
           db,
           actionsFile: path.join(TOWN_DIR, 'actions.json'),
           townConfig: T,
-          pump: townPump ? townPump.stats() : null, // stats 是函数，不是属性（2026-11-21 修）
+          // stats 是函数不是属性（2026-11-21 修）；插件答题时通道归它，别把我们的旧泵画成「没连上」
+          pump: townPluginActive() ? null : (townPump ? townPump.stats() : null),
           plugin: mod.pluginStatus ? mod.pluginStatus({ dshHome, fishId: T.fishId }) : null,
           log,
         })
@@ -384,6 +385,12 @@ export function createTownJobs(deps = {}) {
     const W = T.turns ?? {}
     if (T.enabled !== true || W.enabled !== true) return null
     if (townPluginActive()) {
+      if (townPump) {
+        // 同一个接入码只允许一个长轮询：我们的泵留着会把插件的回合顶掉（拿到空 turns），
+        // 所以一旦让位就真的停掉，不只是不再新建。
+        try { townPump.stop() } catch {}
+        townPump = null
+      }
       if (!townPluginYieldLogged) {
         townPluginYieldLogged = true
         log('[town] 官方插件在答题（它自己挂着长轮询），我们的 /turns 泵让位，只做只读采集')

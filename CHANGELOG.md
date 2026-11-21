@@ -31,6 +31,8 @@
 
 ### 修复
 
+- **官方插件在场时，我们的长轮询泵真的停了**：原来只是不再新建，已在跑的还留着；同一个接入码只允许一个长轮询，它会跟插件抢回合。现在 `ensureTownPump()` 发现插件在答题就先 `townPump.stop()` 再让位，快照 `pump` 记 `null`，控制台显示「进镇通道：官方插件在挂着」。
+
 -
 - **控制台上的「今天花费」永远是 ¥0.00**：快照那行把「数据目录」当成了 `dshHome`，`townSpendToday()` 又拼一次 `stellar`，读到不存在的路径 → 花费恒为 0（预算闸走的是 `dshHome`，一直正常）。新增 `townSpendFromDataDir()` / `townBudgetStateFromDataDir()` 并让快照改走它，加断言盯住。
  **快照里的「进镇通道」永远是「没连上」**：`town-jobs.js` 把 `townPump.stats`（函数本身）塞进快照，`buildSnapshot` 判 `typeof pump === 'object'` 不成立 → `pump: null`，控制台显示「没连上」而日志写着「已进镇」。改成 `townPump.stats()`，并加断言盯住。

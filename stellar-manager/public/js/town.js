@@ -59,8 +59,9 @@ function townRenderMeta(d) {
     var bits = [];
     bits.push(d.hasDb ? '记忆库在 ' + d.dir : '还没有 town.db' + (d.notesReason ? '：' + d.notesReason : ''));
     bits.push(d.hasSnapshot ? '快照 ' + townClock(snap.at) : '还没有状态快照（调度器采集过才会有）');
-    if (pump) bits.push('进镇通道：' + (pump.connected ? '连着' : '没连上') + (pump.lastOkAt ? ' · 上次成功 ' + townClock(pump.lastOkAt) : ''));
     var plug = d.plugin || snap.plugin || null;
+    if (pump) bits.push('进镇通道：' + (pump.connected ? '连着' : '没连上') + (pump.lastOkAt ? ' · 上次成功 ' + townClock(pump.lastOkAt) : ''));
+    else if (plug && plug.installed && plug.takesTurns) bits.push('进镇通道：官方插件在挂着');
     if (plug && plug.installed) {
       bits.push('答题：官方插件' + (plug.version ? ' ' + plug.version : '') + (plug.takesTurns ? '（它挂着长轮询）' : '（这条鱼没接上）'));
       if (plug.hasFish && !plug.personaChars) bits.push('人设还没同步：镇上那个她只是分身，跑一次 scripts/town-plugin-sync.mjs');
