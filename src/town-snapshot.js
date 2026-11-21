@@ -105,7 +105,7 @@ export function buildSnapshot({ now = Date.now(), status = null, bonds = null, s
       cap: num(budget && budget.cap, 0),
       blocked: Boolean(budget && budget.blocked),
     },
-    pump: pump && typeof pump === 'object' ? { running: Boolean(pump.running), lastOkAt: num(pump.lastOkAt, 0), errors: num(pump.errors, 0) } : null,
+    pump: pump && typeof pump === 'object' ? { running: Boolean(pump.running), connected: Boolean(pump.connected), lastOkAt: num(pump.lastOkAt, 0), errors: num(pump.errors, 0) } : null,
     recall: '',
   };
 }

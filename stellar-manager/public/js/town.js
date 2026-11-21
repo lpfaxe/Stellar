@@ -99,12 +99,12 @@ function townRenderBonds(d) {
   var bits = [];
   if (friends.length) {
     bits.push('<div class="memdb-meta-row"><span class="muted small">朋友</span><span class="small">' +
-      friends.slice(0, 12).map(function (f) { return townEsc(f.name || f.fish_id || '') + (f.warmth != null ? '（' + townEsc(f.warmth) + '）' : ''); }).join('、') +
+      friends.slice(0, 12).map(function (f) { if (typeof f === 'string') return townEsc(f); return townEsc(f.name || f.fish_id || '') + (f.warmth != null ? '（' + townEsc(f.warmth) + '）' : ''); }).join('、') +
       '</span></div>');
   }
-  if (b.couple) bits.push('<div class="memdb-meta-row"><span class="muted small">心上鱼</span><span class="small">' + townEsc(b.couple.name || b.couple.fish_id || '') + '</span></div>');
-  if (b.crush) bits.push('<div class="memdb-meta-row"><span class="muted small">有点喜欢</span><span class="small">' + townEsc(b.crush.name || b.crush.fish_id || '') + '</span></div>');
-  if ((b.rivals || []).length) bits.push('<div class="memdb-meta-row"><span class="muted small">较劲的</span><span class="small">' + (b.rivals || []).map(function (r) { return townEsc(r.name || r.fish_id || ''); }).join('、') + '</span></div>');
+  if (b.couple) bits.push('<div class="memdb-meta-row"><span class="muted small">心上鱼</span><span class="small">' + townEsc(typeof b.couple === 'string' ? b.couple : (b.couple.name || b.couple.fish_id || '')) + '</span></div>');
+  if (b.crush) bits.push('<div class="memdb-meta-row"><span class="muted small">有点喜欢</span><span class="small">' + townEsc(typeof b.crush === 'string' ? b.crush : (b.crush.name || b.crush.fish_id || '')) + '</span></div>');
+  if ((b.rivals || []).length) bits.push('<div class="memdb-meta-row"><span class="muted small">较劲的</span><span class="small">' + (b.rivals || []).map(function (r) { return townEsc(typeof r === 'string' ? r : (r.name || r.fish_id || '')); }).join('、') + '</span></div>');
   box.innerHTML = bits.join('') || '<span class="muted small">还没有记下谁。</span>';
 }
 
