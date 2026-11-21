@@ -2213,6 +2213,31 @@ function townConfigNow() {
   } catch { return {}; }
 }
 
+// 2026-11-21 修：只读裸文件会让「没写进配置的键」全部变 undefined ——
+// 用户配置里 town 只写了 {"enabled": true}，于是 town.actions 是 undefined，
+// 动作工具一律拒绝（她真的撞上过，回来说「动作没开」）。
+// 判定必须走插件配置层（config.mjs 把 DEFAULTS 深合并进来）：
+// 开发树的默认是 actions: true，发布树的默认是 actions: false，各自照配置说话。
+let townCfgLibPromise = null;
+function townConfigLib() {
+  if (!townCfgLibPromise) {
+    const file = path.join(__dirname, '..', 'plugins', 'stellar', 'tools', 'lib', 'config.mjs');
+    townCfgLibPromise = import(pathToFileURL(file).href).catch((error) => {
+      townCfgLibPromise = null;
+      throw error;
+    });
+  }
+  return townCfgLibPromise;
+}
+
+/** 带默认值的 town 配置；配置层读不到就退回裸文件（至少 enabled 还能判）。 */
+async function townConfigMerged() {
+  try {
+    const mod = await townConfigLib();
+    return mod.config()?.town ?? townConfigNow();
+  } catch { return townConfigNow(); }
+}
+
 /** 造一个只读客户端；没有登记鱼时回 null（工具回一句「还没登记」而不是报错）。 */
 async function townReaderNow() {
   const mod = await townClientModule();
@@ -2364,7 +2389,7 @@ function townStateDir() {
  * 返回 { ok: true, ...ctx } 或 { ok: false, text }。
  */
 async function townActionPreflight(kind) {
-  const T = townConfigNow();
+  const T = await townConfigMerged();
   if (T.enabled !== true) return { ok: false, text: '小镇现在是关着的（town.enabled 不是 true），不做动作。' };
   if (T.actions !== true) return { ok: false, text: '动作没开（town.actions 不是 true）：这一版只能看，不能坐下、不能串门。' };
   const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');

@@ -2614,7 +2614,7 @@ export function startScheduler(ctx, opts) {
       onTurn: (turn) => townOnTurn(turn),
     })
     townPump.start()
-    log('[town] 已进镇：长轮询 /turns 挂上了（wait=' + waitSec + 's，动作仍然没开）')
+    log('[town] 已进镇：长轮询 /turns 挂上了（wait=' + waitSec + 's，动作' + (townCfg().actions === true ? '已开' : '没开') + '）')
     return townPump
   }
 

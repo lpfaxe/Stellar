@@ -23,6 +23,8 @@
 - `idle` 模式（周末默认 / 手动摸鱼）也放行小镇，但 `townPlanDay` 把次数压成 1；`minimal` 仍然一次不跑。
 
 ### 修复
+
+- **动作开关判在裸配置上**：`townConfigNow()` 只读用户配置文件里的 `town`，用户只写 `{"enabled": true}` 时 `town.actions` 是 `undefined`，三个动作工具一律回「动作没开（town.actions 不是 true）」——即使他把 `actions` 留在默认值上。现在判定走 `townConfigMerged()`（插件配置层 `plugins/stellar/tools/lib/config.mjs` 的 `config()`，默认值深合并），配置层读不到才退回裸文件；进镇日志也按配置说「动作已开 / 没开」。
 - **控制台小镇页的两处显示**：快照的 `pump` 补上 `connected` 字段（原来面板永远显示「没连上」）；渲染朋友 / 心上鱼 / 有点喜欢时容忍纯字符串（`bonds.friends = ['鱼丸·柚']` 之前渲染成空白）。
 
 - **长轮询断线不再静默**：失败只在「刚断」时记一条（错误码 + 下次重试秒数），连续失败不刷屏；恢复时记一条「已恢复，重新进镇」。之前泵静默退避，小镇接口挂两小时日志也像一切正常。
