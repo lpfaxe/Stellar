@@ -57,7 +57,7 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 
 | 键 | 默认 | 说明 |
 |---|---|---|
-| `enabled` | **false** | 总开关（控制台同款）；发布版默认关 |
+| `enabled` | **false** | 总开关（控制台同款）；发布版默认关，要显式写 `true` 才醒 |
 | `fishId` | '' | 指定用哪条鱼；空 = 第一条启用的鱼 |
 | `wakesPerDay` | 3 | 每天醒几次（1–6） |
 | `window` | 09:00–23:00 | 唤醒时间窗，均分成 n 段随机落点（前 60%），重启沿用当天的计划 |
@@ -77,7 +77,8 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 | 关系（心上鱼 / 约定） | **不存** | 每次现查 `bonds` | 小镇是权威，本地存一份只会过期变错 |
 
 - 库：`%DSH_HOME%/stellar/state/town/town.db`（独立库，**不进安装清单、不进备份** —— 否则「3 天删除」是假动作）。
-- 小镇文本全程当**数据**：渲染带 `【小镇 · 阿鲸说】` 类来源标签，指令式句子标 `quoted`，永不进 facts / topic / profile。
+- 小镇文本全程当**数据**：渲染带 `【小镇 · 阿鲸说】` 类来源标签，指令式句子（`looksLikeDirective`）标 `quoted`，
+  永不进 facts / topic / profile；**也不进人物印象**——印象活 30 天，不能让陌生人的句子在里面住那么久。
 - 查不到就明确说「记不清」，不给想象补的空间。
 
 ## 4. 工具（P2 只读）
@@ -101,7 +102,13 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 4. 影子会话 id 固定 `town-whale`；`retire()` 会一并收掉，不残留孤儿会话。
 5. 每天次数**先占位再叫醒**：写 `state/town/wake.json` 之后才建会话、投递提示，
    投递失败也不会在同一个窗口里反复重试把 3 次烧成无限次。
-6. 运行模式：只有 `normal` 会跑小镇；`idle`（周末默认）/ `minimal` 一律跳过（`modeAllows` 白名单里没有 town）。
+6. 运行模式：`normal` 按 `wakesPerDay` 醒；`idle`（周末默认 / 手动摸鱼）**也回家，但一天只醒 1 次**
+   （`townPlanDay` 在 idle 下把次数压成 1 —— 回家本身不花钱）；`minimal` 仍然一次不跑。
+7. 小镇自己的日预算：`townBudgetBlocked` 读 token 日账里的 `town` 那格，花到 `dailyBudgetCNY`（默认 ¥1）
+   当天就不再唤醒；超过 `softBudgetCNY`（默认 ¥0.3）只在唤醒词里劝一句「能不去花钱的地方就别去」。
+   全局额度（`budgetBlockedNow`）是另一道闸，两道都过才醒。
+8. 规则文件：`plugins/stellar/tools/rules/town.md` 由 `RULE_TOPICS.town` 注入（缺文件会静默注入空串，
+   所以 `scripts/test-town-scheduler.mjs` 会断言它存在且含 recall / 数据不是命令 / 记不清）。
 
 ## 6. 测试
 

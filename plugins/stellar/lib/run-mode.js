@@ -109,7 +109,8 @@ export function modeAllows(mode, action) {
   // 2026-11-13 修：原来漏了 'wake'，而 tick() 第一行就是 modeCan('wake') ——
   // 结果摸鱼模式根本不会自己醒，videoTargetPerDay 60 / maxWakesPerDay 12 都没机会生效。
   // 发动态、发说说、三连、日报、B站搭话这些「按表交作业」的任务仍然全停。
-  return ['diary', 'chat', 'watch', 'qzone-public', 'wake', 'todo'].includes(act);
+  // 'town'（鱼缸小镇）也放行：只读回家看看，不对外发消息；次数由 townPlanDay 在 idle 下压成 1。
+  return ['diary', 'chat', 'watch', 'qzone-public', 'wake', 'todo', 'town'].includes(act);
 }
 
 /** 摸鱼模式要的数值覆盖（醒来更频繁、刷得更多）。 */

@@ -9,7 +9,8 @@
  */
 import { makeReader } from './town-client.js';
 import {
-  extractVisits, extractReceipts, buildNoteRow, pruneCutoffDay, dayKey, cleanText, IMPRESSION_MAX,
+  extractVisits, extractReceipts, buildNoteRow, pruneCutoffDay, dayKey, cleanText, looksLikeDirective,
+  IMPRESSION_MAX,
 } from './town-memory-pure.js';
 import {
   openTownDb, insertNote, pruneNotes, upsertImpression, pruneImpressions, townStats,
@@ -33,7 +34,8 @@ function deriveImpressions(notes, { now = Date.now(), min = 2 } = {}) {
   const out = [];
   for (const v of byId.values()) {
     if (v.count < min) continue;
-    const tail = v.last && v.last.text ? '；上次：' + cleanText(v.last.text, 40) : '';
+    // 指令式句子（转述来的）不进印象：印象会活 30 天，不能把陌生人的话当她的记忆。
+    const tail = v.last && v.last.text && !v.last.quoted ? '；上次：' + cleanText(v.last.text, 40) : '';
     out.push({ fishId: v.id, name: v.name, line: `见过 ${v.count} 次${tail}`, at: Number(v.last && v.last.at) || now });
   }
   return out;
@@ -58,12 +60,14 @@ export async function collectTownOnce({ client, db, now = Date.now(), withImpres
   const events = [];
   for (const v of extractVisits(visitsRaw)) {
     if (!v.text && !v.who) { result.skipped += 1; continue; }
-    events.push({ kind: 'visit', who: v.who, whoId: v.whoId, text: v.text || '和' + (v.who || '谁') + '一起待了一会儿', at: v.at, visitId: v.visitId });
+    const visitText = v.text || '和' + (v.who || '谁') + '一起待了一会儿';
+    events.push({ kind: 'visit', who: v.who, whoId: v.whoId, text: visitText, at: v.at, visitId: v.visitId, quoted: looksLikeDirective(visitText) });
   }
   for (const r of extractReceipts(receiptsRaw)) {
     if (!r.text && !r.who) { result.skipped += 1; continue; }
     const money = r.amount > 0 ? `（${r.amount}）` : '';
-    events.push({ kind: 'receipt', who: r.who, text: (r.text || '请客') + money, at: r.at });
+    const recText = (r.text || '请客') + money;
+    events.push({ kind: 'receipt', who: r.who, text: recText, at: r.at, quoted: looksLikeDirective(recText) });
   }
 
   const rows = [];

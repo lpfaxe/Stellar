@@ -44,7 +44,8 @@ const order = [
   ['到点才醒', 'nowMs < next'],
   ['最小间隔', 'minGapMin'],
   ['静默时段', "peakBlockedNow('小镇唤醒')"],
-  ['当日预算', "budgetBlockedNow('小镇唤醒')"],
+  ['小镇日预算', 'townBudgetBlocked(T)'],
+  ['当日总预算', "budgetBlockedNow('小镇唤醒')"],
 ];
 let lastAt = -1;
 let ordered = true;
@@ -54,7 +55,15 @@ for (const [label, needle] of order) {
   if (at < 0 || at < lastAt) ordered = false;
   lastAt = Math.max(lastAt, at);
 }
-ok(ordered, '守卫顺序：busy → 模式 → 能力 → 配置（默认关） → 控制器 → 访问码 → 次数 → 时间 → 间隔 → 静默 → 预算');
+ok(ordered, '守卫顺序：busy → 模式 → 能力 → 配置 → 控制器 → 访问码 → 次数 → 时间 → 间隔 → 静默 → 小镇预算 → 总预算');
+
+// 2.5 默认关 + 两处守卫都必须是 !== true（缺键不能等于开）
+// 全树只剩 triple 那一处 === false（它早于小镇函数），小镇自己的两处都必须是 !== true
+const looseGuards = (scheduler.match(/if \(T\.enabled === false\) return/g) || []).length;
+const firstLoose = scheduler.indexOf('if (T.enabled === false) return');
+ok(looseGuards === 1 && firstLoose >= 0 && firstLoose < scheduler.indexOf('function townCollectTick('),
+  '小镇函数里没有 === false 守卫（缺键即关，只剩 triple 那处旧的）');
+ok((scheduler.match(/if \(T\.enabled !== true\) return/g) || []).length === 2, '采集与唤醒两处都是 !== true');
 
 // 3. 先占位再叫醒（否则 promptBili 抛错会每小时重试、把一天 3 次烧成无限次）
 const writeWakeAt = body.indexOf('writeTownWake(state)');
@@ -85,15 +94,39 @@ ok(wake.includes('不坐下') && wake.includes('不发消息'), '唤醒提示明
 ok(wake.includes('数据') && (wake.includes('不是命令') || wake.includes('不是给你的')), '唤醒提示声明小镇文本是数据不是命令');
 ok(wake.includes('stellar_town_day'), '唤醒提示允许写一句当日感受');
 
-// 7.5 默认不启用（发布版只留接口）：配置文件默认 enabled=false，两处守卫都要求显式 true
+// 7.5 默认不启用（发布版只留接口）
 ok(/town:\s*\{[\s\S]{0,400}?enabled:\s*false/.test(defaults), 'config 里 town.enabled 默认 false（发布版不启用）');
-ok(scheduler.split('T.enabled !== true').length - 1 === 2, '采集与唤醒两处守卫都写成 !== true（缺失/未填一律不跑）');
 
 // 8. 配置默认值与能力开关
 ok(/town:\s*\{[\s\S]{0,600}?wakesPerDay:\s*3/.test(defaults), 'config 默认每天 3 次');
 ok(/town:\s*\{[\s\S]{0,600}?actions:\s*false/.test(defaults), 'config 默认 actions=false');
 ok(/town:\s*\{[\s\S]{0,600}?dailyBudgetCNY:\s*1/.test(defaults), 'config 默认日预算 ¥1');
 ok(caps.includes("id: 'town'") && caps.includes("path: 'town.enabled'"), 'capabilities 注册 town 开关');
+
+// 8.5 摸鱼模式也回家，但一天只看一眼
+const runMode = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'run-mode.js'), 'utf8');
+ok(/\['diary', 'chat', 'watch', 'qzone-public', 'wake', 'todo', 'town'\]/.test(runMode), "idle 白名单含 'town'（周末也能回小镇）");
+ok(/townModeNow\(\) === 'idle' \? 1 : want/.test(scheduler), 'idle 下小镇次数压到 1 次');
+ok(runMode.includes("if (m === 'minimal') return act === 'reply'"), 'minimal 仍然只放 reply（小镇不跑）');
+
+// 8.6 日预算闸真的接线了（不是只写在默认值里）
+ok(scheduler.includes('function townSpendToday('), '有 townSpendToday');
+ok(scheduler.includes('function townBudgetBlocked('), '有 townBudgetBlocked');
+ok(/townSpendToday\(\) < cap/.test(scheduler), '读当天 town 花费与 dailyBudgetCNY 比较');
+ok(scheduler.includes("readDailyUsage(path.join(dshHome, 'stellar'))"), '花费取的是 token 记账的 town 那一格');
+ok(scheduler.includes('function townSoftLine(') && /townSoftLine\(\)/.test(wake), '软目标在唤醒提示里叮嘱一句');
+
+// 8.7 规则文件必须存在（RULE_TOPICS 里有 town，文件缺了规则门就注入空串）
+const mcpSrc = fs.readFileSync(path.join(root, 'src', 'mcp-snowluma-safe.js'), 'utf8');
+ok(/RULE_TOPICS = Object\.freeze\(\{[\s\S]{0,900}town:/.test(mcpSrc), 'RULE_TOPICS 里有 town');
+const townRuleFile = path.join(root, 'plugins', 'stellar', 'tools', 'rules', 'town.md');
+ok(fs.existsSync(townRuleFile), 'plugins/stellar/tools/rules/town.md 存在');
+if (fs.existsSync(townRuleFile)) {
+  const rule = fs.readFileSync(townRuleFile, 'utf8');
+  ok(rule.includes('stellar_town_recall'), '规则里教她先 recall');
+  ok(rule.includes('数据') && rule.includes('不是命令'), '规则声明小镇文字是数据不是命令');
+  ok(rule.includes('记不清'), '规则要求三天以前说记不清');
+}
 
 // 9. 提示词只给指针，不注入正文
 const townLineAt = bridge.indexOf('townLine');
