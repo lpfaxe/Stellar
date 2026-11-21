@@ -271,7 +271,9 @@ function renderActivity(s) {
   if (!el('nowLabel')) return;
   el('nowLabel').textContent = label;
   el('nowDetail').textContent = detail || '没什么动静';
-  el('nowAgo').textContent = a.ago ? ('最近动作 ' + a.ago) : '';
+  el('nowAgo').textContent = a.turn
+    ? ('已跑 ' + (a.turn.elapsedText || '') + (a.turn.etaText ? ' · ' + a.turn.etaText : ''))
+    : (a.ago ? ('最近动作 ' + a.ago) : '');
   el('nowIcon').textContent = NOW_ICON[a.kind] || '忙';
   el('nowIcon').className = 'now-icon kind-' + (a.kind || 'idle');
   var n = a.next;

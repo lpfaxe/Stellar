@@ -7,6 +7,7 @@ import { clampNum, findWhale, logLine, maskText, portOpen, readJson, readTail, r
 import { qzoneStats, readReports } from './report.js'
 import { buildHerStatus } from './her.js'
 import { buildActivity } from './activity.js'
+import { buildTurns } from './turns.js'
 import { currentToken, lanAddresses, publicV6Addresses, tailnetAddresses } from './auth.js'
 import { HOST } from './paths.js'
 
@@ -114,6 +115,8 @@ async function collectStatus() {
   const dshUp = /DeepSeek Harness/i.test(dsh.out || '')
   const lastRun = taskParts[0] || ''
   const lastResult = taskParts[1] || ''
+  // 遥测里「回合没收尾」= 她真的还在跑（lib/turns.js，读 context-telemetry-plugin.jsonl）
+  const turns = buildTurns()
   return {
     now: new Date().toISOString(),
     panelPort: PORT,
@@ -122,7 +125,7 @@ async function collectStatus() {
     dshRunning: dshUp,
     dsh: { running: dshUp, supported: dshAvailable(), exe: DSH_EXE, restart: readRestartState() },
     // 重启时机建议：重启 DSH = 会话重新 seed，整段上下文按未命中重算（见 lib/restart-advice.js）
-    restartAdvice: buildRestartAdvice({ dshRunning: dshUp }),
+    restartAdvice: buildRestartAdvice({ dshRunning: dshUp, turns }),
     keepalive: { configured: fs.existsSync(KEEPALIVE), lastRun: lastRun.trim(), lastResult: lastResult.trim() },
     // DSH 桌面端 Cookie 守卫（431 坑）：只在 DSH 退出时清理，这里只读状态
     cookieGuard: readCookieGuardState(),
@@ -152,7 +155,8 @@ async function collectStatus() {
     // 现在是不是价格谷期（生物钟只在谷期叫醒）
     pricing: { peak: peakAt(Date.now()), label: peakAt(Date.now()) ? '峰时 ×2' : '谷期 ×1' },
     her: buildHerStatus(),
-    activity: buildActivity(),
+    activity: buildActivity({ turns }),
+    turns,
     // 紧急停止 + 生图额度（2026-11-11 owner 拍板：手动停、**不再自动恢复**；生图 3 张/天）
     stop: readStop(),
     imageBudget: approvalStatus(),

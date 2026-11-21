@@ -101,7 +101,7 @@ function nowMin() {
   return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
 }
 
-export function buildActivity() {
+export function buildActivity({ turns = null } = {}) {
   const now = Date.now()
   const index = contactIndex()
   const calls = readRecentCalls()
@@ -183,6 +183,18 @@ export function buildActivity() {
     detail = '在听，等你继续说'
   }
 
+  // DSH 遥测里「回合还没收尾」比工具调用日志更硬：工具调用只说明她动过手，
+  // 回合没收尾才说明她现在还在跑（可能正卡在一条要跑五分钟的命令里）。
+  let turn = null
+  if (turns && turns.herTop) {
+    turn = turns.herTop
+    kind = /B 站/.test(turn.label) ? 'bili' : /小镇/.test(turn.label) ? 'other' : 'chat'
+    label = /^在/.test(turn.action) ? '正' + turn.action.slice(1) : '正在' + turn.action
+    detail = turn.label + ' · 已 ' + turn.elapsedText + (turn.etaText ? '，' + turn.etaText : '')
+    at = turn.since
+    active = true
+  }
+
   const recent = calls.slice(-6).reverse().map((c) => {
     const k = kindOf(c.tool)
     const key = String(c.args.key || c.args.target || c.key || '')
@@ -204,6 +216,7 @@ export function buildActivity() {
     counts: states.counts,
     updatedAt: states.updatedAt,
     next,
+    turn,
     recent,
   }
 }

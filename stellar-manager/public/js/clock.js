@@ -82,6 +82,12 @@ if (passSave) passSave.onclick = function () {
     .then(function () { passSave.disabled = false; });
 };
 el('actRestartDsh').onclick = function () {
-  if (!confirm('重启 DSH？正在进行的对话会中断，约 20–40 秒回来。\n面板、SnowLuma、桥接不受影响，手机上的这个页面也不会断。')) return;
+  var t = state.status && state.status.turns;
+  var warn = '';
+  if (t && t.busy && t.top) {
+    warn = '\n⚠ 她还在跑：' + t.top.label + ' · ' + t.top.action + '（已 ' + t.top.elapsedText + (t.top.etaText ? '，' + t.top.etaText : '') + '）'
+      + (t.count > 1 ? '，另有 ' + (t.count - 1) + ' 个会话没收尾' : '') + '。\n现在重启会打断这一轮。';
+  }
+  if (!confirm('重启 DSH？正在进行的对话会中断，约 20–40 秒回来。\n面板、SnowLuma、桥接不受影响，手机上的这个页面也不会断。' + warn)) return;
   act('restart-dsh', this);
 };

@@ -56,7 +56,7 @@ function fmtYuan(n) {
 }
 
 /** 现在适不适合重启 DSH；不适合就给出最划算的时机。 */
-export function buildRestartAdvice({ dshRunning = true } = {}) {
+export function buildRestartAdvice({ dshRunning = true, turns = null } = {}) {
   const now = Date.now()
   const sessions = readJson(SESSIONS_FILE, {}) || {}
   const map = sessions.sessions || {}
@@ -86,11 +86,28 @@ export function buildRestartAdvice({ dshRunning = true } = {}) {
   const costAfterRoll = (COLD_START_TOKENS / 1e6) * MISS_PRICE
   const restarts = todayRestartCount()
 
+  // 遥测里还有回合没收尾的会话（lib/turns.js）：B站/小镇/开发会话它都看得见，
+  // 而下面的 herState 只反映 QQ 会话状态机——只看 herState 会给出「她空闲着，现在切最稳」。
+  const liveTurns = turns && Array.isArray(turns.sessions) ? turns.sessions.filter((x) => x && x.active) : []
+  const turnTop = liveTurns.find((x) => !x.mine) || liveTurns[0] || null
+  let turnWaitSec = 0
+  if (turnTop) {
+    turnWaitSec = turnTop.etaAt ? Math.max(0, Math.round((turnTop.etaAt - now) / 1000)) : Math.max(30, 120 - Math.round((turnTop.elapsedMs || 0) / 1000))
+  }
+
   const reasons = []
   let level = 'ok'
   let bestInSec = 0
   if (!dshRunning) {
     level = 'off'
+  } else if (turnTop) {
+    level = 'busy'
+    bestInSec = turnWaitSec
+    reasons.push(turnTop.mine
+      ? '你这边还有一轮没跑完：开发会话 · ' + turnTop.action + '（已 ' + turnTop.elapsedText + (turnTop.etaText ? '，' + turnTop.etaText : '') + '），现在重启会打断它'
+      : '她还在跑：' + turnTop.label + ' · ' + turnTop.action + '（已 ' + turnTop.elapsedText + (turnTop.etaText ? '，' + turnTop.etaText : '') + '），现在重启会把这一轮打断')
+    const others = liveTurns.filter((x) => x !== turnTop)
+    if (others.length) reasons.push('另外还有 ' + others.length + ' 个会话没收尾（' + others.map((x) => x.label + (x.mine ? '·主人这边' : '')).join('、') + '）')
   } else if (herState === 'ACTIVE') {
     level = 'busy'
     bestInSec = Math.max(30, 120 - (ageSec || 0))
@@ -118,12 +135,18 @@ export function buildRestartAdvice({ dshRunning = true } = {}) {
 
   const label = STATE_LABEL[herState] || '状态未知'
   const ago = ageSec == null ? '' : ageSec < 60 ? '刚刚' : ageSec < 3600 ? Math.round(ageSec / 60) + ' 分钟前' : Math.round(ageSec / 3600) + ' 小时前'
-  const statePart = level === 'ok' ? ('她空闲着' + (ago ? '（' + ago + '刚收尾）' : '')) : ('她' + label + (ago ? '（' + ago + '）' : ''))
+  // 有回合没收尾时正文第一句必须说那个回合，不能再说 herState（否则「现在别重启」配「她休眠」）
+  const turnPart = turnTop
+    ? (turnTop.mine
+        ? '你这边还有一轮没跑完（开发会话，已 ' + turnTop.elapsedText + (turnTop.etaText ? '，' + turnTop.etaText : '') + '）'
+        : '她还在跑：' + turnTop.label + ' · ' + turnTop.action + '（已 ' + turnTop.elapsedText + (turnTop.etaText ? '，' + turnTop.etaText : '') + '）')
+    : ''
+  const statePart = turnPart || (level === 'ok' ? ('她空闲着' + (ago ? '（' + ago + '刚收尾）' : '')) : ('她' + label + (ago ? '（' + ago + '）' : '')))
   const detail = statePart + '，未读 ' + unread + ' 条；当前上下文 ' + (contextTokens ? fmtK(contextTokens) : '—') + '，重启一次约 ' + fmtYuan(costNow) + '。'
 
   let headline = '现在适合重启'
   if (level === 'off') headline = 'DSH 没在运行，直接启动就行'
-  else if (level === 'busy') headline = '现在别重启：她正在回话'
+  else if (level === 'busy') headline = turnTop ? (turnTop.mine ? '现在别重启：你这边还有一轮没跑完' : '现在别重启：她的会话还在跑') : '现在别重启：她正在回话'
   else if (level === 'wait') headline = '可以再等一会儿再重启'
   else if (contextTokens > 100000) headline = '能重启，但上下文偏大，等一下更省'
 
@@ -149,6 +172,7 @@ export function buildRestartAdvice({ dshRunning = true } = {}) {
     rolloverTokens,
     unread,
     todayRestarts: restarts,
+    turns: { busy: Boolean(turnTop), count: liveTurns.length, top: turnTop },
     her: { state: herState, label, ageSec, cooldownLeft },
     reasons,
   }
