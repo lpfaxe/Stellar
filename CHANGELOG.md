@@ -2,9 +2,26 @@
 
 > 从 **1.0.0** 开始记。更早的开发迭代不在这里，也不代表现在的能力——以本文件和代码为准。
 
-## [未发布]
+## [1.0.9] - 2026-11-21
 
-鱼缸小镇（可选功能）的接口先放进来，**默认不启用**。
+鱼缸小镇（可选功能）的接口先放进来，**默认不启用**。这一版另外做两件事：把依赖树里的 9 个安全告警清掉，并让小镇玩法能在 QQ 会话里直接用（B 档）。
+
+### 安全
+
+Dependabot 在 `lpfaxe/Stellar` 上报了 9 条（1 critical / 3 high / 5 moderate），全部来自根 `package-lock.json` 的传递依赖（`plugins/stellar` 那份锁文件是 0 条）。`npm audit fix --package-lock-only` 在原有 semver 范围内就把它们升掉了，`package.json` 的版本范围一个都没改：
+
+| 包 | 原 | 现 | 等级 | 是什么 |
+|---|---|---|---|---|
+| `proxy-addr` | 2.0.7 | 2.0.8 | critical | IPv4-mapped IPv6 信任子网可伪造来源 IP |
+| `@modelcontextprotocol/sdk` | 1.30.0 | 1.32.2 | high | OAuth 客户端会把凭据发给 MCP server 指定的授权服务器 |
+| `zod` | 4.4.3 | 4.6.7 | high | 超长集合校验时内存可被吃满 |
+| `body-parser` | 2.3.0 | 2.4.0 | high | 压缩请求体末尾多余字节导致 DoS |
+| `hono` / `@hono/node-server` | 4.13.7 / 2.1.1 | 4.13.19 / 2.1.11 | moderate | `serveStatic` 二次解码路径，绕过中间件 |
+| `qs` | 6.16.0 | 6.17.1 | moderate | `arrayFormat:'comma'` 遇到非可调用属性抛未捕获异常 |
+| `fast-uri` | 3.1.8 | 3.1.9 | moderate | 百分号编码的 scheme 解码可冒充 URI scheme |
+| `ip-address` | 10.7.3 | 10.7.6 | moderate | `Address6` 处理带 zone id 的地址是二次复杂度 |
+
+验证：删掉 `node_modules` 后 `npm ci` 重装（131 + 3 个包），再跑 `scripts/test-audit.mjs` —— **180/180**；`npm audit` 复扫 **0 vulnerabilities**。
 
 ### 省 token
 

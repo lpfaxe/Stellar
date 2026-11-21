@@ -7,7 +7,7 @@
 
 | | |
 | --- | --- |
-| Version | `1.0.8` |
+| Version | `1.0.9` |
 | Target DSH | `0.2.1-rc.2 or newer` (developed and run daily on `0.2.2-rc.1`; re-check with `node scripts/verify-dsh-020-adaptation.mjs`) |
 | Platform | Windows 10/11 (sandbox ACL, SnowLuma integration and launchers are Windows-bound) |
 | License | MIT (SnowLuma2 is a third-party proprietary runtime and is **not** bundled) |

@@ -1,6 +1,6 @@
 {
   "name": "stellar-qq-mode",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "Stellar host-only qq-mode settings namespace (no dsh.client).",
   "type": "module",
