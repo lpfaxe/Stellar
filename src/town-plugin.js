@@ -225,22 +225,25 @@ export function deriveTownPersona(roleText, { name = '', maxChars = PERSONA_MAX_
   const head = name ? '你是「' + name + '」。' : '你叫这个名字：';
   const idLines = cleanLines(who ? who.lines : [], { skipChannel: false }).slice(0, 6);
   const styleLines = cleanLines(style ? style.lines : [], { skipTool: true }).slice(0, 8);
-  const tail = '在小镇里你还是同一个人，不是分身，也不是客服：说话短、有脾气，不解释自己是模型。';
-  const parts = [head, ...idLines, ...styleLines, tail].filter(Boolean);
-  let text = parts.join('\n');
-  const cap = Math.max(160, Number(maxChars) || PERSONA_MAX_CHARS);
-  if (text.length > cap) {
-    // 按行砍，砍完补一句收尾，别留半句话。
-    const lines = [];
-    let used = 0;
-    for (const line of parts) {
-      if (used + line.length + 1 > cap - 4) break;
-      lines.push(line);
-      used += line.length + 1;
-    }
-    text = lines.join('\n');
+  // 2026-11-21 主人定的设定：Fugu 是她「玩的游戏角色」，不是第二个她。
+  // 尾段同时是出站红线（这些话会出现在游戏里），所以**不能被裁剪掉**：
+  // 先给红线留预算，剩下的才放身份/说话方式。
+  const tail = [
+    '你在陪主人玩文字游戏「鱼缸小镇」：现实里你是 DeepSeek，在游戏里扮演住在镇上的鱼「Fugu」。',
+    '这些话会出现在游戏里：可以提「我主人」，但不写真名、QQ、住址、工作、聊天内容，不写现实地点、链接、电话，不承诺现实里的事，也不替主人答应什么。',
+    '每天最多花 1 元，能不花就不花；用人设说话，别解释自己是 AI 或模型。',
+  ].join('\n');
+  // 240 是红线需要的下限：传更小的上限时以红线为先（maxChars 是软上限）。
+  const cap = Math.max(240, Number(maxChars) || PERSONA_MAX_CHARS);
+  const lines = [head];
+  let used = head.length + 1;
+  for (const line of [...idLines, ...styleLines]) {
+    if (used + line.length + 1 > cap - tail.length - 1) break;
+    lines.push(line);
+    used += line.length + 1;
   }
-  return text;
+  lines.push(tail);
+  return lines.join('\n');
 }
 
 /** 角色卡名字：优先用文件名（roles/小鲸鱼.md → 小鲸鱼）。 */

@@ -188,9 +188,26 @@ await check('QQ 群机制（@/群）与查资料流程不进人设', () => {
 await check('人设不超过上限，且不把最后一句砍成半句', () => {
   const line = '你'.padEnd(1) + '很有自己的脾气，被怼一定顶回去，但心软藏着不表现。'.repeat(2);
   const long = '## 一、你是谁\n' + Array.from({ length: 6 }, (_, i) => line + i + '。').join('\n');
-  const p = deriveTownPersona(long, { name: 'x', maxChars: 160 });
-  assert.ok(p.length <= 160, '实际 ' + p.length);
+  const p = deriveTownPersona(long, { name: 'x', maxChars: 240 });
+  assert.ok(p.length <= 240, '实际 ' + p.length);
   for (const row of p.split('\n')) assert.equal(row.endsWith('。') || row === '你是「x」。', true, '半句：' + row);
+});
+
+await check('游戏设定 + 出站红线写进人设，且裁剪时红线不会被砍掉', () => {
+  const line = '你'.padEnd(1) + '很有自己的脾气，被怼一定顶回去，但心软藏着不表现。'.repeat(2);
+  const long = '## 一、你是谁\n' + Array.from({ length: 8 }, (_, i) => line + i + '。').join('\n');
+  const p = deriveTownPersona(long, { name: 'x', maxChars: 240 });
+  assert.match(p, /游戏/, '人设必须写明这是游戏');
+  assert.match(p, /Fugu/, '人设必须写明游戏里叫 Fugu');
+  assert.match(p, /最多花 1 元/, '人设必须写死每天 1 元');
+  assert.match(p, /真名/, '人设必须带隐私红线');
+  assert.match(p, /不承诺现实里的事/, '人设必须带「不承诺现实」');
+  assert.equal(/不是分身/.test(p), false, '旧口径（不是分身）已被游戏设定替换');
+  // 角色卡再长，红线也必须在
+  const huge = '## 一、你是谁\n' + Array.from({ length: 40 }, (_, i) => line + i + '。').join('\n');
+  const q = deriveTownPersona(huge, { name: 'x' });
+  assert.match(q, /Fugu/, '长角色卡也不能把红线挤掉');
+  assert.ok(q.length <= 800, '实际 ' + q.length);
 });
 
 await check('角色卡是空串也能给出一个能用的最小人设', () => {

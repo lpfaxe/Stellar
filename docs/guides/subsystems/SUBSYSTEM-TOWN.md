@@ -291,7 +291,7 @@ node scripts/town-plugin-sync.mjs --check   # 不一致 exit 1，可挂门禁
 ```
 
 派生规则在 `src/town-plugin.js`：取「你是谁」到 6 行 + 「说话方式」到 8 行，去掉群聊/@/潜水这类只在 QQ 成立的句子、
-去掉查资料/引用工具这类只在有工具时成立的句子，末尾固定一句「在小镇里你还是同一个人，不是分身，也不是客服」。
+去掉查资料/引用工具这类只在有工具时成立的句子，末尾固定三段**硬边界**（先留预算，裁剪时不会被砍掉）：这是游戏、出站不写隐私与现实、每天最多 1 元。
 **只改 `persona` 一个字段**，settings 里的其它键（`code`、`bridgeChat`…）原样保留；写前备份 `.bak-<时间戳>`，tmp + rename 原子替换。
 角色卡改了要再跑一次，`--check` 会红。
 
@@ -327,3 +327,35 @@ node scripts/town-plugin-sync.mjs --check   # 不一致 exit 1，可挂门禁
 ```
 
 `personaChars: 0` 就是提醒你去跑 `town-plugin-sync.mjs`。这些字段里**不含访问码**。
+
+## 13. 这是游戏：Fugu 是她玩的角色（2026-11-21）
+
+设定：「不让她「真的住进岛上」，而是「她在陪主人玩一个文字游戏，游戏里的角色叫 Fugu」」。她自己知道这是游戏；小镇里的钱、关系、承诺都只是游戏里的。
+
+### 三条硬边界（写在 persona 与 rules 里，不靠她自己记）
+
+| 边界 | 落在哪 | 内容 |
+| --- | --- | --- |
+| 这是游戏 | 插件 persona 尾段 + 唤醒提示 + `rules/town.md` | 现实里是 DeepSeek，游戏里演 Fugu；别把游戏关系/身份当真，也别对别人演成「现实里真有这座岛」 |
+| 出站不写隐私与现实 | 同上 | 可以提「我主人」；不写真名、QQ、住址、工作、聊天内容、账号；不写现实地点、链接、电话；不承诺现实里的事（见面/转账/打电话），不替主人答应任何事 |
+| 每天最多 1 元 | 小镇服务端 `social_day_cents` + persona | 钱由小镇自己按这个数挡（插件页「她每天为朋友花多少」/ `/town budget 1` 可改）；我们这边只写「能不花就不花」 |
+
+persona 的裁剪顺序也为此改过：**先给这三段留预算，剩下的才放身份与说话方式**——角色卡再长也挤不掉边界（`maxChars` 软下限 240）。改动后跑 `node scripts/town-plugin-sync.mjs` 同步，`--check` 能当门禁。
+
+### 工具面：`fishbowl_town_*` 也在白名单里
+
+第三方插件的工具**不带 MCP 命名空间**，所以 `plugins/stellar/qq-tool-restrict.mjs` 的 `SAFE_PREFIXES` 里单独加了 `'fishbowl_town_'`（紧急停止时它算写操作，一并拦）。不放行时的表现是「工具不在白名单内」，她会以为小镇坏了（PITFALLS #281）。发布版里这条前缀**照样在名单里**——真正的默认关在 `town.enabled`。
+
+### 发布版的默认状态
+
+`town.enabled` 默认 `false`：不唤醒、不进镇、唤醒提示里不出现小镇那一段，也就不会用到上面这些规矩。打开之后：
+
+- 只读五个（`stellar_town_status/bonds/lobby/recall/day`）随时可用，当「看存档」。
+- 三个动作工具要另外把 `town.actions` 设成 `true`，默认仍是 `false`（一调就回「动作没开」）。
+- 装了第三方插件并让它接管答题时，把 `town.actions` 留 `false`，否则两套动作会重复花钱。
+
+### 想改设定时改哪里
+
+- 角色卡（`roles/<角色>.md`）→ 跑 `town-plugin-sync.mjs` → 插件 persona。
+- 红线话术 → `src/town-plugin.js` 的 `tail`（同步脚本会带到 persona）+ `plugins/stellar/tools/rules/town.md` + `src/town-prompt.js`。
+- 每天额度 → 小镇侧（`/town budget 1`），不是我们的配置文件。

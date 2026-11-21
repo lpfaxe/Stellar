@@ -251,6 +251,11 @@ const SAFE_PREFIXES = [
   'mcp__snowluma__',
   'mcp__snowluma-host__',
   'mcp__web-search-safe__',
+  // 2026-11-21 主人要求放开第三方插件注册的全局工具（下一行那个前缀，不带 MCP 命名空间）：
+  // 「Fugu 是她玩的游戏角色」，进不进、玩不玩由她自己定。不放行时她只会看到
+  // 「工具不在白名单内」，以为小镇坏了（PITFALLS #281）。
+  // 边界不在这一层：钱由插件侧的每天 1 元上限挡，出站红线写在插件人设与对应 rules 文件里。
+  'fishbowl_town_',
 ]
 
 // 无害模型侧工具：ask_user_question 用于把问题转给管理员/用户，
@@ -275,7 +280,7 @@ const SAFE_EXACT = new Set([
 ])
 
 // 对外写操作：紧急停止时一律拒绝（读工具不受影响）。
-const WRITE_TOOL_RE = /(?:qq_send_|qq_reply|qq_send_image|qq_send_sticker|stellar_qzone_post|stellar_qzone_react|stellar_qzone_delete_comment|stellar_bili_post|stellar_bili_comment|dynamic|image_generate)/i
+const WRITE_TOOL_RE = /(?:qq_send_|qq_reply|qq_send_image|qq_send_sticker|stellar_qzone_post|stellar_qzone_react|stellar_qzone_delete_comment|stellar_bili_post|stellar_bili_comment|dynamic|image_generate|fishbowl_town_)/i
 function isWriteTool(name) { return WRITE_TOOL_RE.test(String(name || '')) }
 
 // 紧急停止状态：3 秒缓存，避免每次工具调用都读盘。

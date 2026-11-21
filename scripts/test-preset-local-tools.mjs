@@ -112,6 +112,8 @@ const EXPECTED_SAFE_PREFIXES = [
   'mcp__snowluma__',
   'mcp__snowluma-host__',
   'mcp__web-search-safe__',
+  // 第三方小镇插件的全局工具（不带 MCP 前缀，2026-11-21 主人放开）
+  'fishbowl_town_',
 ];
 
 function readPreset(id) {

@@ -8,6 +8,9 @@
 
 ### 新增
 
+- **「这是游戏」成了设定**：小镇不再按「她真的住进岛上」写，而是「她在陪主人玩一个文字游戏，游戏里的角色叫 Fugu」。插件人设尾段固定三段硬边界——①这是游戏（现实里是 DeepSeek）；②出站不写隐私与现实（可以提「我主人」，但不写真名 / QQ / 住址 / 工作 / 聊天内容，不写现实地点 / 链接 / 电话，不承诺现实里的事，也不替主人答应什么）；③每天最多 1 元，能不花就不花。`deriveTownPersona` 的装配顺序改成**先给这三段留预算**，剩下的才放身份与说话方式，`maxChars` 有 240 的软下限——角色卡再长也不会把红线挤掉。唤醒提示（`src/town-prompt.js`）与规则文件（`plugins/stellar/tools/rules/town.md`）同步改成游戏口径。
+- **第三方插件的小镇工具对她开放**：`plugins/stellar/qq-tool-restrict.mjs` 的 `SAFE_PREFIXES` 加上 `fishbowl_town_`——第三方插件注册的是**不带 `mcp__` 命名空间**的全局工具，原先落到 fail-closed 兜底，她只会被告知「工具不在白名单内」，看起来像小镇坏了。紧急停止时这个前缀算写操作，一并拦；`scripts/test-preset-local-tools.mjs` 的期望名单同步加一条。
+
 - **小镇接口（默认关）**：`src/town-*.js` 四个模块（记忆纯逻辑 / HTTP 客户端 / 独立库 `town.db` / 只读采集器）、五个只读工具（`stellar_town_recall` / `_status` / `_bonds` / `_lobby` / `_day`）、`town-act` 预设与影子会话 `town-whale`、调度器的采集/唤醒定时器、token 记账里的 `town` 类别、控制台的「小镇日常」开关。
 - **进镇长轮询（`/turns`）**：小镇只有看到程序常挂 `GET /turns` 才认为她进镇；不挂就一直 `outside_state: not_connected`、`/lobby` 409 `TOWN_OUTSIDE_NOT_CONNECTED`，来访/牌局/收据永不产生。新增 `src/town-turns.js`（`createTurnPump` / `normalizeTurn` / `turnNote`）：启动 44 秒后挂上、跟桥接一起停、采集器自愈重挂；指数退避（上限 5 分钟）并遵守 `retry_after`；turn 落 `town_note`（`kind` = `turn:*`），再按 `turns.maxWakesPerDay` / `minGapMin` / 日预算叫醒影子会话。默认 `town.turns = { enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 }`。
   它只多长轮询与叫醒，**默认不注册动作、不花一分钱、不替她作答**。
@@ -31,13 +34,15 @@
 
 ### 修复
 
+- **第三方插件的工具被白名单整体拒掉**：`qq-tool-restrict.mjs` 的前缀白名单只列了我们自己三个 MCP server 的 `mcp__*` 前缀，第三方插件的全局工具一条都不命中，回给模型的是「不在 QQ 桥接白名单内，已拒绝」——她会以「进不了小镇」为由放弃。修法见上面「第三方插件的小镇工具对她开放」，并把这条前缀写进测试期望与解耦契约的白名单（PITFALLS #281）。
+- **人设裁剪会把红线砍掉**：旧的 `deriveTownPersona` 是「拼完再按行砍」，角色卡一长，末尾那句边界正好是被砍的那一行。现在先算 `tail.length` 再从身份行里取舍。
+
 - **她一进小镇就报 `os is not defined`**：浅耦合重构把小镇工具搬进 `src/town-tools.js` 时漏了 `import os from 'node:os'`，而 6 处 `os.homedir()` 都在读工具入口上——`stellar_town_status` / `_lobby` / `_recall` / `_bonds` / `_day` 一调就 `ReferenceError`。补上 import；`scripts/test-town-tools.mjs` 加了「运行时冒烟」段（假 server 抓 handler、Proxy 顶替 zod、临时 `DSH_HOME`，真调一次 recall 与 status），只读源码的静态断言挡不住这类错。
 - **「插件在答题」不再把她的主动动作一起挡死**：`townActionPreflight` 原来在插件 `takesTurns` 时直接回「这次不用我们动手」，可插件接的只是牌局回合（长轮询 `/turns`），去不去、坐不坐是她的动作——短路之后她站在镇上什么也干不了。现在两边各管一段：插件答回合，动作工具过三道闸后真去动手。
 - **官方插件在场时，我们的长轮询泵真的停了**：原来只是不再新建，已在跑的还留着；同一个接入码只允许一个长轮询，它会跟插件抢回合。现在 `ensureTownPump()` 发现插件在答题就先 `townPump.stop()` 再让位，快照 `pump` 记 `null`，控制台显示「进镇通道：官方插件在挂着」。
 
--
 - **控制台上的「今天花费」永远是 ¥0.00**：快照那行把「数据目录」当成了 `dshHome`，`townSpendToday()` 又拼一次 `stellar`，读到不存在的路径 → 花费恒为 0（预算闸走的是 `dshHome`，一直正常）。新增 `townSpendFromDataDir()` / `townBudgetStateFromDataDir()` 并让快照改走它，加断言盯住。
- **快照里的「进镇通道」永远是「没连上」**：`town-jobs.js` 把 `townPump.stats`（函数本身）塞进快照，`buildSnapshot` 判 `typeof pump === 'object'` 不成立 → `pump: null`，控制台显示「没连上」而日志写着「已进镇」。改成 `townPump.stats()`，并加断言盯住。
+- **快照里的「进镇通道」永远是「没连上」**：`town-jobs.js` 把 `townPump.stats`（函数本身）塞进快照，`buildSnapshot` 判 `typeof pump === 'object'` 不成立 → `pump: null`，控制台显示「没连上」而日志写着「已进镇」。改成 `townPump.stats()`，并加断言盯住。
 
 - **动作开关判在裸配置上**：`townConfigNow()` 只读用户配置文件里的 `town`，用户只写 `{"enabled": true}` 时 `town.actions` 是 `undefined`，三个动作工具一律回「动作没开（town.actions 不是 true）」——即使他把 `actions` 留在默认值上。现在判定走 `townConfigMerged()`（插件配置层 `plugins/stellar/tools/lib/config.mjs` 的 `config()`，默认值深合并），配置层读不到才退回裸文件；进镇日志也按配置说「动作已开 / 没开」。
 - **控制台小镇页的两处显示**：快照的 `pump` 补上 `connected` 字段（原来面板永远显示「没连上」）；渲染朋友 / 心上鱼 / 有点喜欢时容忍纯字符串（`bonds.friends = ['鱼丸·柚']` 之前渲染成空白）。

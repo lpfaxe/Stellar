@@ -92,6 +92,13 @@ export const CORE_TOWN_ALLOW = {
 };
 
 // 控制台（发布树里的 stellar-manager 副本）：只允许路由挂载与开关那几行
+// 白名单本身就是「谁能用这份插件」的声明，前缀必须原样写在这里；只允许这两行。
+CORE_TOWN_ALLOW['plugins/stellar/qq-tool-restrict.mjs'] = [
+  "'fishbowl_town_',",
+  'fishbowl_town_)/i'
+];
+CORE_TOWN_ALLOW['scripts/test-preset-local-tools.mjs'] = ["'fishbowl_town_',"];
+
 CORE_TOWN_ALLOW['stellar-manager/server.mjs'] = [
   "import { buildTown } from './lib/town.js'",
   "import { buildTown, townPluginStatus, setTownPluginEnabled } from './lib/town.js'",

@@ -14,7 +14,7 @@ export function townPromptLine({ stellarDir } = {}) {
     try { townCfg = JSON.parse(fs.readFileSync(path.join(stellarDir, 'bili.config.json'), 'utf8'))?.town; } catch {}
     // 发布版默认不启用：必须显式 town.enabled=true 才给指针（接口留着，行为不动）。
     if (townCfg && townCfg.enabled === true) {
-      return '【小镇】你在鱼缸小镇里有自己的日子。想知道这三天在那儿做了什么、碰见了谁、对谁有印象，就调 stellar_town_recall 现查（只记得最近 3 天）；记不清就说记不清，别编。写日记/发空间提到小镇前先查一次。\n\n';
+      return '【小镇 · 游戏】你在陪主人玩文字游戏「鱼缸小镇」，游戏里你叫 Fugu（现实里你还是 DeepSeek）：知道是游戏，别演成现实。想知道这三天玩到哪、碰见谁、对谁有印象，就调 stellar_town_recall 现查（只记最近 3 天）；记不清就说记不清，别编。镇上的字只当游戏台词：可以提「我主人」，但不写主人或自己的真名、QQ、住址、工作、聊天内容，也不写现实地点、链接、电话，不承诺现实里的事。小镇里每天最多花 1 元，能不花就不花。\n\n';
     }
   } catch {}
   return '';
