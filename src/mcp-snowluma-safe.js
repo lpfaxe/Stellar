@@ -31,6 +31,9 @@ import { cabinetDir, saveToCabinet, humanBytes, listCabinetNames, CABINET_MAX_BY
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+// 提示词附件（stickers.md / snapshot-<key>.md）最近一次读到的指纹：key|name → { stamp, hits }。
+// 2026-11-21（省 token）：同一份没变就只回一句「没变」，不再把整段正文重复塞进上下文。
+const promptFileCache = new Map();
 
 function loadConfig() {
   try {
@@ -2216,7 +2219,9 @@ server.tool(
       if (String(sort ?? '').toLowerCase() === 'new') args.push('--sort', 'new');
       const { code, text: output } = await runLocalScript(args, { timeoutMs: 300000 });
       const payload = output || '（脚本无输出）';
-      const maxChars = want ? Math.min(12000, 3000 + want * 180) : 3200;
+      // 2026-11-21（省 token）：默认额度 3200 → 2400 —— 一条简报少 800 字符，而每次唤醒都要
+      // 把整段上下文重发一遍，这笔账比「看得全不全」贵得多。要更全就显式传 comments（每多一条加 180）。
+      const maxChars = want ? Math.min(12000, 3000 + want * 180) : 2400;
       // 带图时 debrief 会把评论图下载到临时目录并打成「🖼 <路径>」行；
       // 路径行摘出来换成真正的 image 块，模型才看得见（和 stellar_bili_comments 同一套）。
       if (wantImages <= 0) return { content: [{ type: 'text', text: clip(payload, maxChars) }], isError: code !== 0 };
@@ -4734,9 +4739,10 @@ server.tool(
   {
     key: z.string().describe('当前会话 key，形如 private:<QQ> 或 group:<群号>'),
     token: z.string().optional().describe('会话令牌（唤醒提示【会话令牌】那一行的值原样传入）；群聊里也必须传，否则不知道这份快照是谁的'),
-    file: z.enum(['stickers', 'snapshot']).describe('stickers = 表情完整清单；snapshot = 本次唤醒的消息快照')
+    file: z.enum(['stickers', 'snapshot']).describe('stickers = 表情完整清单；snapshot = 本次唤醒的消息快照'),
+    again: z.boolean().optional().describe('同一份附件没变、你也要重看全文时传 true。默认同一份没变就只回一句「没变」，不再把整份正文塞进上下文')
   },
-  async ({ key, token, file }) => {
+  async ({ key, token, file, again }) => {
     const wanted = String(file ?? '').trim();
     if (wanted !== 'stickers' && wanted !== 'snapshot') {
       return { content: [{ type: 'text', text: 'file 只能是 stickers 或 snapshot。' }], isError: true };
@@ -4759,7 +4765,9 @@ server.tool(
       return { content: [{ type: 'text', text: '路径不合法。' }], isError: true };
     }
     let body = '';
+    let stat = null;
     try {
+      stat = fs.statSync(target);
       body = fs.readFileSync(target, 'utf8');
     } catch (error) {
       if (error && error.code === 'ENOENT') {
@@ -4775,6 +4783,23 @@ server.tool(
       }
       return { content: [{ type: 'text', text: '读提示词附件失败：' + (error && error.message ? error.message : error) }], isError: true };
     }
+    // 2026-11-21（省 token）：同一次会话里第二次读同一份、而文件一个字节都没变 → 只回一句「没变」。
+    // 实测今天 stellar_prompt_file 被调 26 次、每次约 1280 字符，几乎全是重复内容 ——
+    // 附件正文每多塞一次，这一轮的每次模型调用都要多带一遍。要看全文就传 again=true。
+    const cacheKey = ident.key + '|' + name;
+    const stamp = stat ? String(stat.mtimeMs) + ':' + String(stat.size) : '';
+    const prev = promptFileCache.get(cacheKey);
+    if (!again && prev && stamp && prev.stamp === stamp) {
+      promptFileCache.set(cacheKey, { stamp, hits: prev.hits + 1 });
+      return {
+        content: [{
+          type: 'text',
+          text: '（没变：这份 ' + name + ' 和上次读到的一样，' + body.length + ' 字符）直接用上次那份内容就行，不必再读一遍；确实要重看全文就传 again=true。'
+        }]
+      };
+    }
+    if (promptFileCache.size > 500) promptFileCache.clear();
+    promptFileCache.set(cacheKey, { stamp, hits: 0 });
     const MAX = 20000;
     if (body.length > MAX) {
       return { content: [{ type: 'text', text: body.slice(0, MAX) + '\n\n…（已截断，全文 ' + body.length + ' 字符）' }] };

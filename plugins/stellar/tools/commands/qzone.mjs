@@ -18,6 +18,8 @@
 //   node bili.mjs qzone public like   --id <动态id> --dry|--go
 //   node bili.mjs qzone public unlike --id <动态id> --dry|--go
 //   node bili.mjs qzone public comment --id <动态id> --text "..." --dry|--go
+//   node bili.mjs qzone public batch --likes "3,5" --comments "7=这句真准; 2=猫怎么这么胖" --dry|--go
+//        （一条命令做完这一轮的赞+评：以前一条一调用，6 次模型往返压成 1 次）
 //   node bili.mjs qzone public score  --scores "1=7,2=3,3=8"          # 打分（面板「今天刷的动态」显示）
 //   node bili.mjs qzone public score  --id <动态id> --score 7 --note "猫太胖了"
 //   node bili.mjs qzone public today  [--json]                        # 今天刷过/赞过/评过什么（面板同款数据）
@@ -1066,6 +1068,90 @@ async function publicComment() {
   console.log('\n✓ 已评论 ' + id)
 }
 
+// 一次做完「点赞 + 评论」（2026-11-21 省 token）：以前每条赞/评各一次调用（3 赞 + 3 评 = 6 次
+// 模型往返，每次都要重发整段上下文）；现在一条命令把这一轮的计划全做完，失败一条不影响其余。
+// 用法：node bili.mjs qzone public batch --likes "3,5" --comments "7=物价这句真准; 2=猫怎么这么胖" --dry|--go
+// 仍然守全部老闸：今天条数上限、同一条只评一次、已经赞过就跳过、隐私闸拦下就跳过。
+async function publicBatch() {
+  const likes = String(args.get('likes') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  const rawComments = String(args.get('comments') ?? '').split(';').map((s) => s.trim()).filter(Boolean)
+  const comments = []
+  for (const pair of rawComments) {
+    const at = pair.indexOf('=')
+    if (at <= 0) throw new Error('--comments 每一项要写成「动态#/短id=内容」，收到：' + pair)
+    const idArg = pair.slice(0, at).trim()
+    const text = pair.slice(at + 1).trim()
+    if (idArg && text) comments.push({ idArg, text })
+  }
+  if (!likes.length && !comments.length) {
+    console.error('这一轮要做什么？--likes "3,5" / --comments "7=内容; 2=内容"（可以只给一个）')
+    process.exit(2)
+  }
+  // 参数齐了再要 dry/go：先报「要做什么」比先报「缺 dry/go」有用。
+  needGo()
+  const plan = []
+  for (const idArg of likes) {
+    const { id, feed, nick } = resolvePublicFeed(idArg)
+    if (publicStat(feed).liked) { plan.push({ kind: 'like', idArg, id, nick, skip: '已经赞过' }); continue }
+    plan.push({ kind: 'like', idArg, id, nick, feed })
+  }
+  for (const c of comments) {
+    const { id, feed, nick } = resolvePublicFeed(c.idArg)
+    if (c.text.length > 120) { plan.push({ kind: 'comment', idArg: c.idArg, id, nick, skip: '超过 120 字' }); continue }
+    if (publicTouched('public-comment', id)) { plan.push({ kind: 'comment', idArg: c.idArg, id, nick, skip: '这条已经评过' }); continue }
+    const pv = checkPrivacy(c.text, { audience: 'public' })
+    if (!pv.ok) { plan.push({ kind: 'comment', idArg: c.idArg, id, nick, skip: '隐私闸拦下' }); continue }
+    plan.push({ kind: 'comment', idArg: c.idArg, id, nick, feed, text: c.text })
+  }
+  const todo = plan.filter((p) => !p.skip)
+  const likeUsed = reactedToday('public-like')
+  const cmtUsed = reactedToday('public-comment')
+  const likeWant = todo.filter((p) => p.kind === 'like').length
+  const cmtWant = todo.filter((p) => p.kind === 'comment').length
+  const over = []
+  if (PUBLIC_LIKE_LIMIT > 0 && likeUsed + likeWant > PUBLIC_LIKE_LIMIT) over.push('点赞：今天已 ' + likeUsed + '/' + PUBLIC_LIKE_LIMIT + '，这批还要 ' + likeWant + ' 条')
+  if (PUBLIC_COMMENT_LIMIT > 0 && cmtUsed + cmtWant > PUBLIC_COMMENT_LIMIT) over.push('评论：今天已 ' + cmtUsed + '/' + PUBLIC_COMMENT_LIMIT + '，这批还要 ' + cmtWant + ' 条')
+  if (over.length) {
+    console.error('\n✗ 这一批会超过今天的额度：\n  ' + over.join('\n  ') + '\n  减几条再来（脚本不替你砍）')
+    process.exit(6)
+  }
+  console.log('=== 公开动态：这一轮 ' + likeWant + ' 赞 / ' + cmtWant + ' 评 ===')
+  for (const p of plan) {
+    console.log('  [' + (p.kind === 'like' ? '赞' : '评') + '] ' + p.idArg + ' → ' + p.id + (p.nick ? '  ' + p.nick : '') + (p.skip ? '  （跳过：' + p.skip + '）' : ''))
+    if (p.kind === 'comment' && !p.skip) console.log('        ' + oneLine(p.text, 80))
+  }
+  console.log('  今日已赞 ' + likeUsed + '/' + PUBLIC_LIKE_LIMIT + ' · 已评 ' + cmtUsed + '/' + PUBLIC_COMMENT_LIMIT)
+  if (isDry) {
+    console.log('\n[dry] 上面这些都会真做；满意就把 --dry 换成 --go 再跑这一条。')
+    return
+  }
+  const failed = []
+  for (const p of todo) {
+    try {
+      if (p.kind === 'like') {
+        await call('set_qzone_public_like', { feed: p.feed, enable: true })
+        logWrite({ kind: 'public-like', feedId: p.id, nick: p.nick })
+        markPublicRow(p.id, { liked: true, likeAt: new Date().toISOString() })
+        console.log('  ✓ 已赞 ' + p.id)
+      } else {
+        await call('comment_qzone_public_feed', { feed: p.feed, content: p.text })
+        logWrite({ kind: 'public-comment', feedId: p.id, nick: p.nick, text: p.text.slice(0, 200) })
+        markPublicRow(p.id, { commentText: p.text.slice(0, 200), commentAt: new Date().toISOString() })
+        console.log('  ✓ 已评 ' + p.id)
+      }
+    } catch (e) {
+      const why = String(e?.message ?? e).slice(0, 120)
+      failed.push(p.kind + ' ' + p.id + '：' + why)
+      console.log('  ✗ ' + p.kind + ' ' + p.id + ' 失败：' + why)
+    }
+  }
+  console.log('\n收尾：node bili.mjs qzone public today（核对这一轮）')
+  if (failed.length) {
+    console.error('有 ' + failed.length + ' 条没成功；同一条别再重试：\n  ' + failed.join('\n  '))
+    process.exit(6)
+  }
+}
+
 // 打分：--scores "1=7,2=3" 一次打一批（左边是列表里的 # 序号或短 id），或 --id + --score 单独一条。
 // 分数只写本地账本（控制台看），不碰 QQ 接口。
 function publicScore() {
@@ -1199,10 +1285,11 @@ async function main() {
     if (action === 'media') { await publicMedia(); return }
     if (action === 'like' || action === 'unlike') { await publicReact(action); return }
     if (action === 'comment') { await publicComment(); return }
+    if (action === 'batch' || action === 'do') { await publicBatch(); return }
     if (action === 'score' || action === 'rate') { publicScore(); return }
     if (action === 'today' || action === 'log') { publicToday(); return }
     if (action === 'shots' || action === 'prune') { publicShots(); return }
-    console.error('qzone public 的子命令只有 list / media / like / unlike / comment / score / today / shots，收到 ' + action)
+    console.error('qzone public 的子命令只有 list / media / like / unlike / comment / batch / score / today / shots，收到 ' + action)
     process.exit(2)
   }
 

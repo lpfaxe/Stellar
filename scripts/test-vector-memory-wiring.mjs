@@ -23,7 +23,7 @@ test('桥接：读 mode / 检索块 / 只在 vector 模式注入，不写向量�
   assert.match(bridge, /await vectorRecallBlockForWake\(key\)/);
   assert.match(bridge, /function vectorEntryVisibleForKey\(key, entry\)/);
   assert.match(bridge, /entryFilter: \(entry\) => vectorEntryVisibleForKey\(key, entry\)/);
-  assert.match(bridge, /buildWakePromptV2\(key, opts\.wakeReason, vectorBlock\)/);
+  assert.match(bridge, /buildWakePromptV2\(key, opts\.wakeReason, vectorBlock, sessionId\)/);
   assert.match(bridge, /memoryCard: memoryDbEngine\(\) \? '' : \(memoryMode\(\) === 'vector' \? '' : memoryCardPromptBlock\(key\)\)/);
   // 2026-11-15 改：engine='db' 时提示语换成新记忆库口径，只有在非 db 分支才走 memoryModeHint。
   assert.match(bridge, /memoryHint: memoryDbEngine\(\) \? '新记忆库（memory\.db）：目录 \+ 重要事实 \+ 侧写' : memoryModeHint\(memoryMode\(\)\)/);

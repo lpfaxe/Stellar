@@ -270,7 +270,8 @@
       "maxOutboundPerTurn": 8,
       "maxDailyCostCNY": 8,
       "perGroupEnabled": false,
-      "perGroupDailyCostCNY": 0
+      "perGroupDailyCostCNY": 0,
+      "globalMaxWakesPerDay": 25
     },
     "wait": {
       "mode": "model",

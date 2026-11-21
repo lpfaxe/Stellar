@@ -182,3 +182,33 @@ npm run test:console-ui    # 离线浏览器回归（含「令牌与花费」页
 省 token 的配置侧默认值（2026-11-08）：`context.recentLimit 60`、`unreadLimit 20`、`contextWindow 15`、
 `wakeMessageLimit 8`、`wakeRecentLimit 3`、`wakeMaxChars 4500`、`history.limit 20`；
 改这些比改模型便宜得多，且不需要重算历史金额。
+
+## 省 token：2026-11-21 的四个开关
+
+先把账算清楚，不然改的地方全是错的。2026-11-21 一天（20.33M token / ¥1.55）：
+
+| 成分 | 量 | 金额 | 占比 |
+| --- | --- | --- | --- |
+| 未命中缓存的输入 | 830,637 | ¥0.83 | 53% |
+| 命中缓存的输入 | 19.41M | ¥0.39 | 25% |
+| 输出 | ≈82k | ¥0.33 | 21% |
+
+结论：钱在**调用次数 × 每步上下文**（同一轮里每多一次工具往返，就要重发一遍整段历史），
+不在回复长度。以下四件都是压往返次数与重复注入，不是让她少说话。
+
+| 开关 | 在哪 | 效果 |
+| --- | --- | --- |
+| `qzone public batch --likes "3,5" --comments "7=…; 2=…"` | `plugins/stellar/tools/commands/qzone.mjs` | 一轮的赞 + 评合成一条命令（原 6 次往返），今日条数/去重/隐私闸照旧 |
+| 人格卡按会话轮换 | `src/bridge.js` 的 `personaWakeBlockV2(key, session)` | 新会话首轮给全文，之后每 10 轮刷新，中间只留角色名 + 指针 |
+| 简报默认 2400 字符 + `stellar_prompt_file` 缓存 | `src/mcp-snowluma-safe.js` | 附件没变就只回「没变」（要全文传 `again=true`） |
+| `socialV2.tokenGuard.globalMaxWakesPerDay`（默认 25，0 = 不限） | `config.json` | 全账号每日主动唤醒总量封顶；被 @/叫到/私聊提问不受影响 |
+
+**别再试这几条**（已验证无效）：压回复长度（输出只占 ¥0.33）、关上下文压缩（一天 fold 次数是 0）、
+换非缓存路由、放宽唤醒阈值（省不到钱，只是让她少说话）；也不要只看总 token，
+要看 `token-usage-state.json` 里**每个会话的调用次数与每步上下文**——
+一个 B站 会话能吃掉全天 bili 的 92%，那才是该动的地方。
+
+**怎么验证真的降了**：`C:/Users/LPF/.dsh/stellar/context-telemetry-plugin.jsonl`（逐事件 JSONL）
+里数 `"tool":"pwsh"` 的次数（B站一天 85 次 → 目标 < 25）、
+数每个 turn 的 `model_call` 次数（B站 12 次/轮 → 目标 < 6）；
+金额看面板「令牌与花费」页或 `stellar_cost`，一天后再对比。

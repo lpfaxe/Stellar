@@ -1360,6 +1360,9 @@ function loadConfig() {
         maxDailyCostCNY: 8,          // 近 24h 全局花费上限；0 = 不限
         perGroupEnabled: false,      // 每会话额度（按群/按私聊单独计当日花费）
         perGroupDailyCostCNY: 0,     // 每会话每日上限；0 = 不限
+        // 全账号每天最多真实唤醒几次（2026-11-21 加）：防「极端一天」。到顶只停主动唤醒，
+        // 被 @/叫到/私聊提问的 direct 唤醒不受影响；0 = 不限。
+        globalMaxWakesPerDay: 25,
       },
       wait: {
         mode: 'model',            // model = 模型在回合里等；bridge = 桥接等（模型说完就散）
@@ -12193,6 +12196,26 @@ function saveSocialV2State() {
       }
     }
     if (g.enabled === false) return null;
+    // 2026-11-21（省 token 的第 7 项）：全局每日唤醒上限。
+    // 以前只有「单会话」次数（群 20 / 私聊 10），群一多总量就没有上限 —— 实测某天 39 次 QQ 唤醒。
+    // 这不是省钱主力，是防「极端一天」：到顶以后她自己不再主动醒，但被 @/叫到/私聊提问这种
+    // direct 唤醒照样放行（不然就是「被叫到还装死」）。0 = 不限。
+    const globalCap = Math.max(0, Number(g.globalMaxWakesPerDay ?? 25) || 0);
+    if (globalCap > 0 && !direct) {
+      const dayStart = localDayStart(Date.now());
+      const usedToday = wakeBudgetTimesOf(st).filter((t) => Number(t) >= dayStart).length;
+      if (usedToday >= globalCap) {
+        return {
+          error: `今天整体已经醒了 ${usedToday}/${globalCap} 次（全局每日上限）` +
+            `（设置路径：config.json → socialV2.tokenGuard.globalMaxWakesPerDay；0 = 不限）` +
+            '，主动唤醒先停，消息留在未读明天再看；被 @/叫到/私聊提问仍会醒来。',
+          retryAfterMs: 0,
+          reason: 'global-wakes',
+          dayCount: usedToday,
+          maxDay: globalCap,
+        };
+      }
+    }
     const r = evaluateWakeBudget({
       key,
       wakeTimes: st?.wakeTimes,
@@ -13810,7 +13833,7 @@ function saveSocialV2State() {
       // 给一个有限等待：sqlite 读一个目录通常 1~3ms，1.2 秒已经非常宽；超时就按现状继续，
       // 绝不因为记忆库慢而让消息发不出去。
       await primeMemoryForWake(key);
-      promptText = buildWakePromptV2(key, opts.wakeReason, vectorBlock);
+      promptText = buildWakePromptV2(key, opts.wakeReason, vectorBlock, sessionId);
       wakeSnapshot = buildWakeSnapshotV2(key);
       wakeMedia = collectWakeMediaV2(wakeState, wakeSnapshot);
       if (wakeSnapshot) {
@@ -15995,7 +16018,12 @@ function saveSocialV2State() {
   // 现在改走 A1：唤醒侧直接印一份人格卡正文，和 qq_get_prompt 同源
   // （都经 composePersonaLayers 组装），不是手抄两遍 —— 改卡不会漂。
   // 预算沿用 role.maxInjectChars（默认 6000 字）；全量 / 场景语气 / 推荐值仍由工具提供。
-  function personaWakeBlockV2(key) {
+  // 2026-11-21（省 token）：人格卡约 2160 字符，是唤醒提示词里最贵的一段，而它每天被重印几十遍。
+  // 现在按「同一个会话里第几次唤醒」轮换：新会话的第一次给全文（那时它确实没有上下文，
+  // 必须知道自己是谁），之后每 10 次刷新一次；中间只留角色名 + 指针（要细节它会自己调 qq_get_prompt）。
+  // 键带会话 id：换了会话计数从 1 开始，不会出现「新会话里只有指针、它不知道自己是谁」。
+  const personaWakeTurns = new Map();
+  function personaWakeBlockV2(key, session = '') {
     const roleState = readRoleState();
     let card = '';
     try {
@@ -16008,6 +16036,13 @@ function saveSocialV2State() {
       return roleState.role ? `【当前角色】${roleState.role}（完整角色卡请调用 qq_get_prompt 查看）\n\n` : '';
     }
     const name = roleState.role || '（未命名角色）';
+    const sig = `${String(session || key || '')}|${name}`;
+    const nth = (personaWakeTurns.get(sig) ?? 0) + 1;
+    personaWakeTurns.set(sig, nth);
+    if (personaWakeTurns.size > 200) personaWakeTurns.clear();
+    if (nth % 10 !== 1) {
+      return `【当前角色】${name}（人设同前，不用重述；完整角色卡 / 场景语气 / 推荐值 / 工具说明调 qq_get_prompt）\n\n`;
+    }
     return `【当前角色】${name}\n${card}\n（完整角色卡 / 场景语气 / 推荐值 / 可用工具：可调用 qq_get_prompt 查看）\n\n`;
   }
 
@@ -16042,9 +16077,9 @@ function saveSocialV2State() {
     } catch { return ''; }
   }
 
-  function buildWakePromptV2(key, reason, vectorBlock = '') {
+  function buildWakePromptV2(key, reason, vectorBlock = '', session = '') {
     const roleState = readRoleState();
-    const roleLine = personaWakeBlockV2(key);
+    const roleLine = personaWakeBlockV2(key, session);
     // B站 记忆简报关掉时（biliBridge.memory.enabled=false），B站 侧的自我锚点会整段消失；
     // 那时补一份自我卡，保证「认得自己的 B站 主页」不依赖记忆同步开关。
     const biliMemoryOn = Boolean(cfg.biliBridge?.enabled) && cfg.biliBridge?.memory?.enabled !== false;
@@ -16096,8 +16131,9 @@ function saveSocialV2State() {
     const closureText = closurePromptLineV2(key, st);
     const closureLine = closureText ? `${closureText}\n\n` : '';
     const replyTiming = replyTimingV2(st);
-    const replyLine = `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_messages(purpose="reply", quietMs=${replyTiming.quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(replyTiming.remainingQuietMs / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。只有明确没说完、你确实要等下文时，才用普通 messages 长等待。\n\n`;
-    const preSleepLine = `【沉睡前强制等待】只用于决定潜水时（首回复、自然收尾都不需要）：先 qq_wait_for_messages(timeoutMs=${preSleepMs}) 观察够 ${Math.round(preSleepMs / 60000)} 分钟，返回 preSleepWaitSatisfied=true 才能睡。期间来新消息先看 newMessages，选择参与回复就下次重新观察；带 preSleepWaitRemainingMs 就按剩余继续等。\n\n`;
+    // 2026-11-21（省 token）：这两段原来各 250~300 字符、每轮都重发 —— 机制一个不丢，只把话写短。
+    const replyLine = `【首回复节奏】先回已有消息。要确认对方说完没：qq_wait_for_messages(purpose="reply", quietMs=${replyTiming.quietMs})（从最后来信计时，还差约 ${Math.ceil(replyTiming.remainingQuietMs / 1000)} 秒）；安静够了直接回，工具会立即返回并补上期间的新消息。只有明确要等下文才用 messages 长等待。\n\n`;
+    const preSleepLine = `【潜水前等待】只用于决定潜水：先 qq_wait_for_messages(timeoutMs=${preSleepMs}) 观察 ${Math.round(preSleepMs / 60000)} 分钟，preSleepWaitSatisfied=true 才能睡；期间来新消息先看 newMessages，参与了回复就下次重新观察（带 preSleepWaitRemainingMs 按剩余等）。\n\n`;
     const lastMsg = [...(Array.isArray(st.recentMessages) ? st.recentMessages : [])].reverse().find((m) => m && !m.isSelf);
     // 参考引擎（方案 B）：命中高情绪才注入，普通闲聊 0 成本；靠 roleState.role 提醒「你还是你自己」。
     // 必须放在 lastMsg 之后——上面已经踩过一次 TDZ（Cannot access 'lastMsg' before initialization）。
