@@ -39,6 +39,7 @@
   <button data-tab="her"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-9.3A4.1 4.1 0 0 1 12 7a4.1 4.1 0 0 1 7 3.7C19 15.6 12 20 12 20z"/></svg></span><span class="tb-label">她</span><span class="tb-wide">她今天</span></button>
   <button data-tab="people"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5"/><circle cx="17.5" cy="9.5" r="2.3"/><path d="M15.5 14.3c2.6.3 4.5 2 4.5 4.7"/></svg></span><span class="tb-label">通讯录</span><span class="tb-wide">通讯录</span></button>
   <button data-tab="memory"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 7.5 12 11l8-3.5M12 11v9"/></svg></span><span class="tb-label">记忆</span><span class="tb-wide">记忆</span></button>
+  <button data-tab="town"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c2.6-3.4 5.4-5 8.4-5 3.6 0 6 2 9.6 5-3.6 3-6 5-9.6 5-3 0-5.8-1.6-8.4-5z"/><circle cx="15.6" cy="10.8" r="0.9" fill="currentColor" stroke="none"/><path d="M3 12 1.4 9.4M3 12 1.4 14.6"/></svg></span><span class="tb-label">小镇</span><span class="tb-wide">鱼缸小镇</span></button>
   <button data-tab="ops"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></span><span class="tb-label">运行</span><span class="tb-wide">运行日志</span></button>
   <button data-tab="settings"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></span><span class="tb-label">设置</span><span class="tb-wide">设置</span></button>
 </nav>
@@ -672,6 +673,42 @@
     <p class="muted small">这些是「演得像个人」的参考片段。开着的才会按情境注入，最多两片、不到 900 字。</p>
     <div id="srList" class="memdb-list"><span class="muted">读取中…</span></div>
   </section>
+  <!-- ══ 小镇 ══ -->
+  <section class="card" id="townHeadCard" data-tab="town">
+    <h2>鱼缸小镇 <span class="hint">她自己过日子，我们只看</span></h2>
+    <label class="switch cap-row" for="townEnabled">
+      <input type="checkbox" id="townEnabled">
+      <span class="cap-body">
+        <b class="cap-name">进小镇</b>
+        <small class="cap-desc" id="townEnabledDesc">关掉之后她不再长轮询、不再收小镇的唤醒，已有的记忆留着不动。</small>
+      </span>
+    </label>
+    <div class="memdb-meta" id="townMeta"><span class="muted">读取中…</span></div>
+    <div class="row wrap">
+      <button id="townRefresh" class="ghost small">刷新</button>
+      <span class="msg" id="townMsg"></span>
+    </div>
+  </section>
+
+  <section class="card" id="townStateCard" data-tab="town">
+    <h2>她现在的小镇 <span class="hint" id="townAt"></span></h2>
+    <div class="memdb-stats" id="townStats"></div>
+    <div class="memdb-meta" id="townState"></div>
+    <div class="memdb-list" id="townBonds"></div>
+  </section>
+
+  <section class="card" id="townNotesCard" data-tab="town">
+    <h2>最近三天 <span class="hint">三天前的一整天会自动忘掉</span></h2>
+    <div class="memdb-list" id="townNotes"><span class="muted">读取中…</span></div>
+  </section>
+
+  <section class="card" id="townDaysCard" data-tab="town">
+    <h2>每天一句 <span class="hint">长期留着，只记感受</span></h2>
+    <div class="memdb-list" id="townDays"></div>
+    <h2>印象 <span class="hint">见过两次以上的人，留 30 天 / 最多 20 人</span></h2>
+    <div class="memdb-list" id="townImpressions"></div>
+  </section>
+
 </main>
 
 <div class="modal-mask" id="topicModal" hidden>
@@ -711,6 +748,7 @@
 <script src="/js/task.js"></script>
 <script src="/js/approvals.js"></script>
 <script src="/js/capabilities.js"></script>
+<script src="/js/town.js"></script>
 <script src="/js/layout.js"></script>
 <script src="/js/clock.js"></script>
 <script src="/js/log.js"></script>

@@ -68,7 +68,11 @@ export const DEFAULTS = {
   //   访问码只在 %DSH_HOME%/fishbowl-town/settings.json（这里不存 fbo_*）。
   //   actions=false 时影子会话只读（status/bonds/lobby/recall），visit/play/goto 一律拒（P3 未接）。
   //   dailyBudgetCNY 是硬上限，softBudgetCNY 是「省着花」的软目标（提示词里提醒她别花满）。
-  town: { enabled: false, fishId: '', wakesPerDay: 3, window: { start: '09:00', end: '23:00' }, minGapMin: 45, collectMin: 10, actions: false, dailyBudgetCNY: 1, softBudgetCNY: 0.3,
+  town: { enabled: false, fishId: '', wakesPerDay: 3, window: { start: '09:00', end: '23:00' }, minGapMin: 45, collectMin: 10,
+    // 动作（2026-11-21）：串门/坐下玩一局/去码头电玩城。每次动作过三道闸（日预算 / 每天几次 / 最小间隔）。
+    // 座位费一局 ¥0.02 在开局时扣，串门免费。**发布版默认关**：想让她自己动手，
+    // 把 actions 改成 true（并把 town.enabled 也打开）。
+    actions: false, actionDailyMax: 3, actionMinGapMin: 15, dailyBudgetCNY: 1, softBudgetCNY: 0.3,
     // 进镇的长轮询（2026-11-21 真机确认）：不挂 /turns 就永远 not_connected，来访/牌局这些事件根本不会产生。
     // wake=true 时有人来找她最多再叫醒 maxWakesPerDay 次（和定时的 3 次分开算）；动作仍然没开。
     turns: { enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 } },

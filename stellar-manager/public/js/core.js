@@ -5,7 +5,7 @@ var dirty = { clock: false, toggles: false };
 function el(id) { return document.getElementById(id); }
 
 // ── 底部标签栏：手机上一次只显示一组卡片 ────────────────────────────────────
-var TABS = ['overview', 'her', 'people', 'memory', 'ops', 'settings'];
+var TABS = ['overview', 'her', 'people', 'memory', 'town', 'ops', 'settings'];
 function switchTab(name) {
   if (TABS.indexOf(name) < 0) name = 'overview';
   state.tab = name;

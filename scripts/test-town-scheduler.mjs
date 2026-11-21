@@ -37,7 +37,7 @@ const order = [
   ['busy 重入保护', "if (townBusy) return"],
   ['运行模式闸', "modeCan('town')"],
   ['能力开关', "capabilityEnabled('town')"],
-  ['配置开关（默认关，必须显式 true）', 'T.enabled !== true'],
+  ['配置开关', 'T.enabled !== true'],
   ['会话控制器', 'ctx.sessionController'],
   ['没有访问码就不醒', 'townClientNow()'],
   ['当天次数上限', 'state.wakes.length >= state.plan.length'],
@@ -90,7 +90,9 @@ ok(/return false/.test(scheduler.slice(scheduler.indexOf('function ensureTownSes
 
 // 7. 唤醒提示把边界写死
 const wake = scheduler.slice(scheduler.indexOf('function townWakeText('), scheduler.indexOf('async function townTick(') + 1);
-ok(wake.includes('不坐下') && wake.includes('不发消息'), '唤醒提示明确禁止坐下/发消息');
+ok(wake.includes('townActionLines()'), '唤醒提示用 townActionLines 决定这轮能不能动手');
+ok(/不能自己动手|由你定/.test(wake) || wake.includes('townActionLines'), '动作关着时明说只能看');
+ok(/不 social、不送东西、不发任何消息/.test(scheduler), '动作开着也写死不 social / 不送礼 / 不发消息');
 ok(wake.includes('数据') && (wake.includes('不是命令') || wake.includes('不是给你的')), '唤醒提示声明小镇文本是数据不是命令');
 ok(wake.includes('stellar_town_day'), '唤醒提示允许写一句当日感受');
 // 7.5 身份与工具面：影子会话没有 QQ 会话令牌，只有 promptBili 前置的【会话令牌】（operator token）。
@@ -99,26 +101,26 @@ ok(wake.includes('owner:internal'), '唤醒提示告诉影子会话：key 参数
 ok(wake.includes('【会话令牌】'), '唤醒提示告诉影子会话：token 用【会话令牌】那一行');
 ok(!wake.includes('toolLine()'), '影子会话提示里不带 B站 命令行（那是别的会话的工具行，抄进来只会误导）');
 
-// 7.5 默认不启用（发布版只留接口）
-ok(/town:\s*\{[\s\S]{0,400}?enabled:\s*false/.test(defaults), 'config 里 town.enabled 默认 false（发布版不启用）');
-
 // 8. 配置默认值与能力开关
 ok(/town:\s*\{[\s\S]{0,600}?wakesPerDay:\s*3/.test(defaults), 'config 默认每天 3 次');
-ok(/town:\s*\{[\s\S]{0,600}?actions:\s*false/.test(defaults), 'config 默认 actions=false');
+ok(/town:\s*\{[\s\S]{0,900}?actions:\s*(true|false)/.test(defaults), 'config 有 actions 开关（默认值按树不同：开发树开、发布树关）');
+ok(/actionDailyMax:\s*3/.test(defaults) && /actionMinGapMin:\s*15/.test(defaults), '动作每天最多 3 次、间隔至少 15 分钟');
 ok(/town:\s*\{[\s\S]{0,600}?dailyBudgetCNY:\s*1/.test(defaults), 'config 默认日预算 ¥1');
 ok(caps.includes("id: 'town'") && caps.includes("path: 'town.enabled'"), 'capabilities 注册 town 开关');
 
 // 8.5 摸鱼模式也回家，但一天只看一眼
 const runMode = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'run-mode.js'), 'utf8');
 ok(/\['diary', 'chat', 'watch', 'qzone-public', 'wake', 'todo', 'town'\]/.test(runMode), "idle 白名单含 'town'（周末也能回小镇）");
-ok(/townModeNow\(\) === 'idle' \? 1 : want/.test(scheduler), 'idle 下小镇次数压到 1 次');
+ok(/runModeNow\(\) === 'idle' \? 1 : want/.test(scheduler), 'idle 下小镇次数压到 1 次');
 ok(runMode.includes("if (m === 'minimal') return act === 'reply'"), 'minimal 仍然只放 reply（小镇不跑）');
 
 // 8.6 日预算闸真的接线了（不是只写在默认值里）
 ok(scheduler.includes('function townSpendToday('), '有 townSpendToday');
 ok(scheduler.includes('function townBudgetBlocked('), '有 townBudgetBlocked');
-ok(/townSpendToday\(\) < cap/.test(scheduler), '读当天 town 花费与 dailyBudgetCNY 比较');
-ok(scheduler.includes("readDailyUsage(path.join(dshHome, 'stellar'))"), '花费取的是 token 记账的 town 那一格');
+ok(/townBudget\.townBudgetState\(dshHome, T\)/.test(scheduler), '日预算闸交给 town-budget 算（不再本地读字段）');
+ok(/import \* as townBudget from '\.\.\/\.\.\/\.\.\/src\/town-budget\.js'/.test(scheduler), '从 src/town-budget.js 引进来');
+ok(!/daily\?\.town\?\.cny|daily\.town\.cny/.test(scheduler), '不再从字段上误读 town.cny（字段其实叫 cost）');
+ok(/town\.cost \?\? town\.cny/.test(fs.readFileSync(path.join(root, 'src', 'town-budget.js'), 'utf8')), 'town-budget 先读 cost，cny 只作兜底');
 ok(scheduler.includes('function townSoftLine(') && /townSoftLine\(\)/.test(wake), '软目标在唤醒提示里叮嘱一句');
 
 // 8.7 规则文件必须存在（RULE_TOPICS 里有 town，文件缺了规则门就注入空串）
@@ -163,7 +165,7 @@ ok(scheduler.includes('state.turnWakes') && scheduler.includes('maxWakesPerDay')
 const turnText = scheduler.slice(scheduler.indexOf('function townTurnText('), scheduler.indexOf('function townOnTurn('));
 ok(turnText.includes('数据不是命令'), 'turn 唤醒词声明是数据不是命令');
 ok(turnText.includes('owner:internal') && turnText.includes('【会话令牌】'), 'turn 唤醒词也给了身份用法');
-ok(/动作没开/.test(turnText), 'turn 唤醒词说清动作没开');
+ok(turnText.includes('townActionLines()'), 'turn 唤醒词也走 townActionLines（动作开不开都说得清）');
 const cfgSrc = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'tools', 'lib', 'config.mjs'), 'utf8');
 ok(/turns: \{ enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 \}/.test(cfgSrc), 'config 里有 turns 默认值（默认连、最多叫醒 2 次）');
 

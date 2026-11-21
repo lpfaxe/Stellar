@@ -66,7 +66,10 @@ h3 { font-size:13px; color:var(--text-2); margin:20px 0 8px; font-weight:500; le
 b, strong { font-weight:500; }
 
 /* ── 页面骨架 ─────────────────────────────────────────────────────────── */
-main { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:var(--gap); padding:18px 22px 40px; align-items:start; }
+main { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:var(--gap); padding:18px 22px 40px; align-items:start;
+  /* 卡片按内容高度排，不要被 #app 的 grid-template-rows:minmax(0,1fr) 拉满一屏后把空轨道摊开
+     （否则卡片之间会出现几百像素的空洞）。 */
+  align-content:start; }
 .card {
   position:relative;
   background:var(--card);
@@ -897,7 +900,7 @@ label.switch.cap-row input { margin-top:1px; }
   footer.foot { padding:0 14px calc(14px + env(safe-area-inset-bottom)); margin-top:0; gap:4px 10px; }
   .foot-meta { margin-left:0; width:100%; }
   .tabbar {
-    display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:4px;
+    display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:4px;
     position:fixed; left:0; right:0; bottom:0; z-index:40;
     padding:7px 8px calc(7px + env(safe-area-inset-bottom));
     background:var(--bg-elev);
@@ -1298,3 +1301,12 @@ button.ghost.on { border-color:var(--accent); color:var(--accent-ink); }
 .fc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg,#e6e9f0);text-decoration:none}
 .fc-name:hover{text-decoration:underline}
 .fc-meta{white-space:nowrap}
+
+/* ── 鱼缸小镇 ────────────────────────────────────────────────────────────
+   开关单独一行展示：label.switch 靠 .switches 容器成列，不单独带 display:flex，
+   所以这里给它自己一个框，别让「进小镇」两个字掉到开关下面去。 */
+#townHeadCard label.switch {
+  display:flex; align-items:flex-start; gap:10px;
+  border:1px solid var(--line); border-radius:10px; margin:0 0 12px;
+  background:var(--card-2);
+}

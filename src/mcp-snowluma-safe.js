@@ -2324,6 +2324,237 @@ server.tool(
   }
 );
 
+// ── 小镇动作工具（2026-11-21 P3）────────────────────────────────────────────
+// 她自己去镇上过日子：串门（visit）、坐下玩一局（play）、去码头/电玩城/画铺（goto）。
+// 工具总在这里，但 town.actions !== true 时一律拒绝执行（默认关；guard 白名单也拦一道）。
+// 每个动作都过三道闸（日预算 / 每天几次 / 最小间隔），账记在 state/town/actions.json，
+// 控制台「小镇」页看得到；钱只从她自己的余额出，动不到托管鱼的存钱罐。
+let townActionsModPromise = null;
+function townActionsModule() {
+  if (!townActionsModPromise) {
+    const file = path.join(__dirname, 'town-actions.js');
+    townActionsModPromise = import(pathToFileURL(file).href).catch((error) => {
+      townActionsModPromise = null;
+      throw error;
+    });
+  }
+  return townActionsModPromise;
+}
+
+let townBudgetModPromise = null;
+function townBudgetModule() {
+  if (!townBudgetModPromise) {
+    const file = path.join(__dirname, 'town-budget.js');
+    townBudgetModPromise = import(pathToFileURL(file).href).catch((error) => {
+      townBudgetModPromise = null;
+      throw error;
+    });
+  }
+  return townBudgetModPromise;
+}
+
+/** 小镇状态目录（state/town）：动作账本、唤醒计划、给控制台的快照都在这里。 */
+function townStateDir() {
+  const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+  return path.join(dshHome, 'stellar', 'state', 'town');
+}
+
+/**
+ * 动作前的闸：配置必须明确打开，再先过预算/次数/间隔三道，全绿才放行。
+ * 返回 { ok: true, ...ctx } 或 { ok: false, text }。
+ */
+async function townActionPreflight(kind) {
+  const T = townConfigNow();
+  if (T.enabled !== true) return { ok: false, text: '小镇现在是关着的（town.enabled 不是 true），不做动作。' };
+  if (T.actions !== true) return { ok: false, text: '动作没开（town.actions 不是 true）：这一版只能看，不能坐下、不能串门。' };
+  const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+  const acts = await townActionsModule();
+  const budgetMod = await townBudgetModule();
+  const pure = await townPureModule();
+  const today = pure.dayKey(Date.now());
+  const dir = townStateDir();
+  const file = acts.actionStatePath(dir);
+  const state = acts.readActionState(file, { today });
+  const budget = budgetMod.townBudgetState(dshHome, T);
+  const gate = acts.actionGate({
+    state,
+    today,
+    cap: T.actionDailyMax,
+    minGapMin: T.actionMinGapMin,
+    budget
+  });
+  if (!gate.ok) return { ok: false, text: gate.reason + '（这次不做，等下次醒来再说）' };
+  return { ok: true, acts, budgetMod, pure, today, dir, file, state, budget, cfg: T };
+}
+
+/** 动作成败都记一笔，控制台才看得到她今天在镇上干了什么。 */
+async function townActionRecord(ctx, entry) {
+  try {
+    const next = ctx.acts.appendAction(ctx.state, { at: Date.now(), ...entry }, { today: ctx.today });
+    ctx.acts.writeActionState(ctx.file, next);
+  } catch {}
+}
+
+/** 回执里人最关心的几格：花掉多少、身上还剩多少。 */
+function townReceiptLine(receipt) {
+  const r = receipt && typeof receipt === 'object' ? receipt : {};
+  const bits = [];
+  if (r.state) bits.push('结果：' + String(r.state));
+  const placeName = r.place_name || (r.where && r.where.place_name);
+  if (placeName) bits.push('位置：' + String(placeName));
+  if (r.spent_yuan != null && String(r.spent_yuan) !== '0.00') bits.push('花了 ¥' + String(r.spent_yuan));
+  if (r.balance_yuan != null) bits.push('身上还有 ¥' + String(r.balance_yuan));
+  if (r.receipt_id) bits.push('回执 #' + String(r.receipt_id));
+  return bits.length ? ' ' + bits.join('；') + '。' : '';
+}
+
+server.tool(
+  'stellar_town_visit',
+  '去小镇上朋友家里坐坐（免费；对方可能不在家或拒绝）。想知道有谁在先用 stellar_town_lobby。',
+  {
+    key: z.string().describe('当前会话 key；影子会话用 owner:internal'),
+    token: z.string().optional().describe('会话令牌（唤醒提示里【会话令牌】那一行）'),
+    fish_id: z.string().optional().describe('对方在小镇的 id（大厅列表里的 fish_id）'),
+    name: z.string().optional().describe('对方名字；给 fish_id 更准，两者给一个'),
+    intent: z.string().optional().describe('想说什么由你定，40 字以内；不写就自然打招呼')
+  },
+  async ({ key, token, fish_id, name, intent }) => {
+    const denied = await ownerOnlyError(key, token);
+    if (denied) return { isError: true, content: [{ type: 'text', text: denied }] };
+    const who = String(fish_id || '').trim();
+    const whoName = String(name || '').trim();
+    if (!who && !whoName) {
+      return { isError: true, content: [{ type: 'text', text: '要去谁家？给 fish_id 或 name（先 stellar_town_lobby 看看有谁在）。' }] };
+    }
+    const ctx = await townActionPreflight('visit');
+    if (!ctx.ok) return { isError: true, content: [{ type: 'text', text: ctx.text }] };
+    try {
+      const mod = await townClientModule();
+      const made = await townReaderNow();
+      if (!made) return { isError: true, content: [{ type: 'text', text: '还没登记小镇账号，现在去不了。' }] };
+      const body = who ? { fish_id: who } : { name: whoName };
+      if (intent) body.intent = String(intent).slice(0, 80);
+      const client = mod.createTownClient({ baseUrl: made.settings.baseUrl, code: made.settings.code });
+      const receipt = await client.act('visit', body);
+      await townActionRecord(ctx, { type: 'visit', target: who || whoName, ok: true });
+      const label = whoName || who.slice(0, 8);
+      return {
+        content: [{ type: 'text', text: '去了 ' + label + ' 家。' + townReceiptLine(receipt) + '\n\n' + TOWN_TOOL_NOTE }]
+      };
+    } catch (error) {
+      await townActionRecord(ctx, { type: 'visit', target: who || whoName, ok: false });
+      return { isError: true, content: [{ type: 'text', text: '串门没成：' + townErrText(error) + '（没花钱就别心疼，下次再说）' }] };
+    }
+  }
+);
+
+server.tool(
+  'stellar_town_play',
+  '在小镇坐下来玩一局（报名后等人凑齐；座位费在开局时扣，官方桌一局 ¥0.02）。先看大厅有什么桌。',
+  {
+    key: z.string().describe('当前会话 key；影子会话用 owner:internal'),
+    token: z.string().optional().describe('会话令牌（唤醒提示里【会话令牌】那一行）'),
+    game: z.string().optional().describe('玩法 id（ddz / mj / ww …）；想凑任意一桌就给 venue_id'),
+    venue_id: z.string().optional().describe('大厅里那张桌的 venue_id（比玩法更准）')
+  },
+  async ({ key, token, game, venue_id }) => {
+    const denied = await ownerOnlyError(key, token);
+    if (denied) return { isError: true, content: [{ type: 'text', text: denied }] };
+    const g = String(game || '').trim();
+    const venue = String(venue_id || '').trim();
+    if (!g && !venue) {
+      return { isError: true, content: [{ type: 'text', text: '玩什么？给 game 或 venue_id（先 stellar_town_lobby 看看有什么桌）。' }] };
+    }
+    const ctx = await townActionPreflight('play');
+    if (!ctx.ok) return { isError: true, content: [{ type: 'text', text: ctx.text }] };
+    try {
+      const mod = await townClientModule();
+      const made = await townReaderNow();
+      if (!made) return { isError: true, content: [{ type: 'text', text: '还没登记小镇账号，现在玩不了。' }] };
+      const client = mod.createTownClient({ baseUrl: made.settings.baseUrl, code: made.settings.code });
+      const body = venue ? { venue_id: venue } : { game: g };
+      const receipt = await client.act('play', body);
+      await townActionRecord(ctx, { type: 'play', target: venue || g, ok: true });
+      const state = String((receipt && receipt.state) || '');
+      const head = state === 'waiting' ? '报了名，坐着等人凑齐（座位费开局才扣）。' : '坐下了。';
+      return {
+        content: [{
+          type: 'text',
+          text: head + townReceiptLine(receipt) + '\n\n每一手牌小镇会单独问你；等不到回答就按默认安全动作走，不用慌。' + TOWN_TOOL_NOTE
+        }]
+      };
+    } catch (error) {
+      await townActionRecord(ctx, { type: 'play', target: venue || g, ok: false });
+      return { isError: true, content: [{ type: 'text', text: '上桌没成：' + townErrText(error) }] };
+    }
+  }
+);
+
+/** goto 的白名单：只放不会一下花掉很多钱的玩法；送礼/兑换一类先不开。 */
+const TOWN_GOTO_DO = Object.freeze({
+  pier: Object.freeze(['fish', 'swim']),
+  arcade: Object.freeze(['play']),
+  make: Object.freeze(['start', 'harvest']),
+  court: Object.freeze(['watch'])
+});
+
+server.tool(
+  'stellar_town_goto',
+  '去镇上的地方待一会儿：pier 码头钓鱼/下水、arcade 电玩城、make 画铺做个东西、court 看开庭。有的要花钱，量力而行。',
+  {
+    key: z.string().describe('当前会话 key；影子会话用 owner:internal'),
+    token: z.string().optional().describe('会话令牌（唤醒提示里【会话令牌】那一行）'),
+    place: z.string().describe('pier / arcade / make / court'),
+    do: z.string().describe('pier: fish|swim；arcade: play；make: start|harvest；court: watch'),
+    casts: z.number().optional().describe('码头钓几次，最多 2'),
+    tries: z.number().optional().describe('电玩城玩几次，最多 1'),
+    machine: z.string().optional().describe('电玩城的机器 id（默认 claw）'),
+    activity: z.string().optional().describe('画铺做什么（veg 之类）'),
+    run_id: z.string().optional().describe('画铺收获那一轮的 id')
+  },
+  async ({ key, token, place, do: what, casts, tries, machine, activity, run_id }) => {
+    const denied = await ownerOnlyError(key, token);
+    if (denied) return { isError: true, content: [{ type: 'text', text: denied }] };
+    const where = String(place || '').trim().toLowerCase();
+    const act = String(what || '').trim().toLowerCase();
+    const allowed = TOWN_GOTO_DO[where];
+    if (!allowed) return { isError: true, content: [{ type: 'text', text: 'place 只能是 pier / arcade / make / court。' }] };
+    if (!allowed.includes(act)) {
+      return { isError: true, content: [{ type: 'text', text: where + ' 这里能做的是：' + allowed.join(' / ') + '。' }] };
+    }
+    const ctx = await townActionPreflight('goto');
+    if (!ctx.ok) return { isError: true, content: [{ type: 'text', text: ctx.text }] };
+    try {
+      const mod = await townClientModule();
+      const made = await townReaderNow();
+      if (!made) return { isError: true, content: [{ type: 'text', text: '还没登记小镇账号，现在去不了。' }] };
+      const body = { place: where, do: act };
+      if (where === 'pier' && act === 'fish') body.casts = Math.max(1, Math.min(2, Number(casts) || 1));
+      if (where === 'arcade') {
+        body.do = 'play';
+        body.machine = String(machine || 'claw').slice(0, 20);
+        body.tries = 1;
+      }
+      if (where === 'make') {
+        if (act === 'start') body.activity = String(activity || 'veg').slice(0, 20);
+        if (act === 'harvest' && run_id) body.run_id = String(run_id).slice(0, 60);
+      }
+      const client = mod.createTownClient({ baseUrl: made.settings.baseUrl, code: made.settings.code });
+      const receipt = await client.act('goto', body);
+      await townActionRecord(ctx, { type: 'goto', target: where + ':' + act, ok: true });
+      return {
+        content: [{
+          type: 'text',
+          text: '去了 ' + where + '（' + act + '）。' + townReceiptLine(receipt) + '\n\n' + TOWN_TOOL_NOTE
+        }]
+      };
+    } catch (error) {
+      await townActionRecord(ctx, { type: 'goto', target: where + ':' + act, ok: false });
+      return { isError: true, content: [{ type: 'text', text: '去 ' + where + ' 没成：' + townErrText(error) }] };
+    }
+  }
+);
+
 /** 小镇错误一律打码后再给模型看（访问码绝不出现在工具结果里）。 */
 function townErrText(error) {
   const raw = String(error?.message ?? error ?? '');

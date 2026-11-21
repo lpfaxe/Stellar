@@ -9,6 +9,7 @@ loadStatus().then(loadCapabilities).then(loadLog).then(loadReports).then(loadTod
   .then(function () { return window.loadDailyTasks ? loadDailyTasks() : null; })
   .then(loadCost)
   .then(function () { return window.loadMemoryDb ? loadMemoryDb() : null; })
+  .then(function () { return window.loadTown ? loadTown() : null; })
   .then(function () { return window.loadProfiles ? loadProfiles() : null; })
   .then(function () { return window.loadStyleRefs ? loadStyleRefs() : null; })
   .then(function () { return window.loadTopics ? loadTopics(0) : null; })
@@ -30,6 +31,7 @@ function every(ms, fn) {
   return p;
 }
 
+every(45000, function () { if (state.tab === 'town' && window.loadTown) loadTown(); });
 every(15000, loadApprovals);
 every(60000, loadCost);
 every(15000, function () { loadStatus(); });

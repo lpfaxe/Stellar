@@ -21,6 +21,7 @@ import { buildVlog, vlogAction, vlogMedia, vlogScript } from './lib/vlog.js'
 import { readAccess, saveAccess } from './lib/access.js'
 import { actOnApproval, readApprovals } from './lib/approvals.js'
 import { capabilitiesSnapshot, saveCapabilities } from './lib/capabilities.js'
+import { buildTown } from './lib/town.js'
 import { clearNamedTunnel, ensureTunnel, resumeTunnel, setNamedTunnel, startTunnel, stopTunnel } from './lib/tunnel.js'
 import { restartDsh, resumeRestartPolling, reconcileRestartState } from './lib/dsh.js'
 import { ensureContacts, loadAllowPrivate, loadContacts, saveContacts, setContactAllow, syncContacts } from './lib/contacts.js'
@@ -296,6 +297,18 @@ const server = http.createServer(async (req, res) => {
       logLine('config patched')
       appendAudit('config-patch', { keys: Object.keys(patch || {}) })
       return sendJson(res, 200, { ok: true, config: summarizeConfig(cfg), mtime: nextMtime })
+    }
+    // ── 鱼缸小镇：她自己的日子（只读快照 + 3 天记忆；开关走 /api/capabilities 的 town）──
+    if (url.pathname === '/api/town' && req.method === 'GET') {
+      const scope = requestScope(req)
+      const snap = capabilitiesSnapshot()
+      const item = (snap.items || []).find((x) => x && x.id === 'town') || null
+      return sendJson(res, 200, {
+        ...buildTown(),
+        cap: { enabled: !!(item && item.enabled), mtime: (item && item.mtime) ?? snap.mtime },
+        scope,
+        canWrite: scope !== 'public'
+      })
     }
     // ── 她的能力：一组真实生效的开关（写 bili.config.json，调度器/MCP 下轮就生效）──
     if (url.pathname === '/api/capabilities' && req.method === 'GET') {

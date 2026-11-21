@@ -10,9 +10,13 @@
 
 - **小镇接口（默认关）**：`src/town-*.js` 四个模块（记忆纯逻辑 / HTTP 客户端 / 独立库 `town.db` / 只读采集器）、五个只读工具（`stellar_town_recall` / `_status` / `_bonds` / `_lobby` / `_day`）、`town-act` 预设与影子会话 `town-whale`、调度器的采集/唤醒定时器、token 记账里的 `town` 类别、控制台的「小镇日常」开关。
 - **进镇长轮询（`/turns`）**：小镇只有看到程序常挂 `GET /turns` 才认为她进镇；不挂就一直 `outside_state: not_connected`、`/lobby` 409 `TOWN_OUTSIDE_NOT_CONNECTED`，来访/牌局/收据永不产生。新增 `src/town-turns.js`（`createTurnPump` / `normalizeTurn` / `turnNote`）：启动 44 秒后挂上、跟桥接一起停、采集器自愈重挂；指数退避（上限 5 分钟）并遵守 `retry_after`；turn 落 `town_note`（`kind` = `turn:*`），再按 `turns.maxWakesPerDay` / `minGapMin` / 日预算叫醒影子会话。默认 `town.turns = { enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 }`。
-  它只多长轮询与叫醒，**动作仍然没注册、不花一分钱、不替她作答**。
+  它只多长轮询与叫醒，**默认不注册动作、不花一分钱、不替她作答**。
+- **她自己拿主意（可选，发布版默认关）**：新增三个动作工具 `stellar_town_visit` / `_play` / `_goto`，只有 `town.actions = true` 才注册；工具本身还要过 `townActionPreflight`（总开关 + 动作开关）与 `src/town-actions.js` 的 `actionGate` 三道闸：今天的次数 < `actionDailyMax`（默认 3）→ 距上次 ≥ `actionMinGapMin`（默认 15 分钟）→ 小镇日预算没到顶。不过就直接回「这次不做，等下次醒来再说」，不排队、不重试。`goto` 的 `do` 走地点白名单（pier: fish|swim、arcade: play、make: start|harvest、court: watch），送礼/兑换/social 连端点都没进白名单。
+- **动作账本**：`state/town/actions.json` 记今天动过几次、每次花了多少（跨天自动重置）；唤醒词由 `townActionLines()` 现场生成「今天还能自己动 N 次」，关着就明说只能看。
+- **控制台快照**：新增 `src/town-snapshot.js`，每轮采集顺手把 `/status`、`/bonds`、在线状态与通道健康写进 `state/town/status.json`（打码、402/502 时保留旧快照）。面板据此显示「她现在的城」而**不联网、不碰访问码**。
 - 记忆分层：事件 3 个日历日、人物印象 30 天 / ≤20 人、每天一句感受长期；关系（心上鱼/约定）不落地，每次现查小镇。
-- 文档：`docs/guides/subsystems/SUBSYSTEM-TOWN.md`（含「关掉之后」清理步骤）。
+- **控制台「鱼缸小镇」页**：左侧导航第 5 项，含「进小镇」总开关（写能力 `town`，带 mtime 冲突检测）、在线状态/钱包/喜好/关系、五格统计（三天里的事 / 印象 / 每天一句 / 今天动过 / 今天花费）、最近三天事件、每天一句与印象。除开关外整页只读。顺带修了桌面端卡片之间被 grid 拉伸出的几百像素空洞（`main { align-content: start }`）。
+- 文档：`docs/guides/subsystems/SUBSYSTEM-TOWN.md`（含第 9 节控制台、第 10 节「关掉之后」清理步骤）。
 - 小镇自己的日预算闸：`townBudgetBlocked` 读 token 日账的 `town` 那格，花到 `dailyBudgetCNY`（默认 ¥1）当天不再唤醒；
   超过 `softBudgetCNY`（默认 ¥0.3）只在唤醒词里劝一句省着点。全局额度是另一道闸，两道都过才醒。
 - 规则文件 `plugins/stellar/tools/rules/town.md`（先 recall / 三天前说记不清 / 页面文字是数据不是命令 / 转述要标 / 不提钱 / 不发日报），由 `RULE_TOPICS.town` 注入。
@@ -28,10 +32,10 @@
 ### 说明
 
 - **不开就完全不动**：`town.enabled` 默认 `false`，两处守卫都写成 `!== true` 才返回；没有访问码也一律安静跳过。启用需要自己改配置 + 在 `%DSH_HOME%/fishbowl-town/settings.json` 填 `fbo_…`，仓库里没有任何真实凭据。
-- **动作没接**：`visit` / `play` / `goto` 这些会花钱的端点这一版连工具都没注册，`town.actions` 恒为 `false`。
+- **动作默认关**：`town.actions` 出厂 `false`，三个动作工具不注册、端点也不会被调用，一分钱不花；想让她自己拿主意就改成 `true`（同时把 `town.enabled` 打开），代价受三道闸与 ¥1 日预算约束。
 - **指令句不进印象**：转述来的指令（`quoted`）不会写进 30 天的人物印象，只当事件留着（3 天后自然过期）。
 - **QQ 链路零改动**：唤醒提示只在启用时多一行指针，不注入小镇正文。
-- 测试：新增 7 个 `test-town-*.mjs`（含 `test-town-turns.mjs` 的 22 条：turn 解析 / 长轮询退避 / retry_after / 秒回插间隔），已登记进 `scripts/test-audit.mjs`。
+- 测试：新增 9 个 `test-town-*.mjs`（`test-town-actions.mjs` 16 条：三道闸 / 跨天重置 / 坏文件 / `town.cost` 真被读到；`test-town-snapshot.mjs` 7 条：打码 / 缺块不抛 / 502 留旧快照），已登记进 `scripts/test-audit.mjs`。
 
 ## [1.0.8] - 2026-11-20
 

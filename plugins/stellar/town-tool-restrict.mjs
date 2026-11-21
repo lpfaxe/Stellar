@@ -8,7 +8,7 @@
 // 与 qq-tool-restrict / whale-tool-restrict 的区别：
 //   · qq-tool-restrict = QQ 群聊的硬边界（允许 QQ MCP + 无害模型侧工具）；
 //   · whale-tool-restrict = 只省钱，不做执行期拦截；
-//   · 本文件 = 最窄的一档：除小镇只读工具外，一律拒绝执行。
+//   · 本文件 = 最窄的一档：除小镇自己的工具（含受闸门约束的 action）外，一律拒绝执行。
 //
 // 开关：删掉 preset 里的 town-tool-restrict 行就等于放开（不建议）；真正想开动作
 // （visit/play/goto）时是在 MCP 侧按 town.actions 注册工具，不靠放开这个 guard。
@@ -23,6 +23,10 @@ export const ALLOWED_TOOLS = Object.freeze([
   'mcp__snowluma__stellar_town_lobby',
   'mcp__snowluma__stellar_town_recall',
   'mcp__snowluma__stellar_town_day',
+  // 动作：工具本身还要过 town.actions + 预算/次数/间隔三道闸，这里只负责「影子会话可以碰它们」。
+  'mcp__snowluma__stellar_town_visit',
+  'mcp__snowluma__stellar_town_play',
+  'mcp__snowluma__stellar_town_goto',
   'mcp__snowluma__stellar_rules',
 ])
 
