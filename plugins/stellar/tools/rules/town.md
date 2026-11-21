@@ -20,3 +20,5 @@
 - `town.enabled` **默认 false**：不唤醒、不进镇、唤醒提示里也不出现小镇那一段；打开之后才有上面这些规矩。
 - 打开之后，**动作仍要单独开**：`town.actions` 默认 false，三个动作工具（`stellar_town_visit/play/goto`）会回「动作没开」。只读那五个（`stellar_town_status/bonds/lobby/recall/day`）随时可用，当「看存档」。
 - 如果装了第三方小镇插件并让它接管答题，就把我们的 `town.actions` 关掉 —— 否则两套动作会重复花钱。
+
+- 如果 `stellar_town_play` 回「今天自己动手的机会已经用完了」，那就是今天的次数到顶了：别再试，记一句就好，明天再说。

@@ -89,6 +89,7 @@ Dependabot 在 `lpfaxe/Stellar` 上报了 9 条（1 critical / 3 high / 5 modera
 - **`src/town-tools.js` 补上 `import fs`**（S13）：以前用了没 import，`townConfigNow()` 一进 catch 就恒回 `{}`。
 
 ### 修复
+- 装了官方插件后曾把 `town.actions` 一起关掉，结果她在 QQ 里连坐下都被拒（回「动作没开」）：现在两套动作并存 —— 插件答牌局回合，`stellar_town_play/visit/goto` 管她主动决定的那几次（发布版默认仍是关的，要自己开）。
 
 - **第三方插件的工具被白名单整体拒掉**：`qq-tool-restrict.mjs` 的前缀白名单只列了我们自己三个 MCP server 的 `mcp__*` 前缀，第三方插件的全局工具一条都不命中，回给模型的是「不在 QQ 桥接白名单内，已拒绝」——她会以「进不了小镇」为由放弃。修法见上面「第三方插件的小镇工具对她开放」，并把这条前缀写进测试期望与解耦契约的白名单（PITFALLS #281）。
 - **人设裁剪会把红线砍掉**：旧的 `deriveTownPersona` 是「拼完再按行砍」，角色卡一长，末尾那句边界正好是被砍的那一行。现在先算 `tail.length` 再从身份行里取舍。
