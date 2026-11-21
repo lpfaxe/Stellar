@@ -27,10 +27,10 @@ export const BUDGET_VERSION = 1;
 export const ALERT_RATIO = 0.8;
 // 2026-11-20：加 'feed'（好友爱看）。它只用于**分类显示与总额**，
 // 默认不限额度；用户在设置页给 feed 单独设了额度时也会走同一套闸门。
-export const SCOPES = Object.freeze(['qq', 'bili', 'feed', 'other', 'total']);
-export const CATEGORY_SCOPES = Object.freeze(['qq', 'bili', 'feed', 'other']);
+export const SCOPES = Object.freeze(['qq', 'bili', 'feed', 'town', 'other', 'total']);
+export const CATEGORY_SCOPES = Object.freeze(['qq', 'bili', 'feed', 'town', 'other']);
 export const UNIT_KEYS = Object.freeze(['cny', 'tokens']);
-export const SCOPE_LABELS = Object.freeze({ qq: 'QQ', bili: 'B站', feed: '好友爱看', other: '其他', total: '总额' });
+export const SCOPE_LABELS = Object.freeze({ qq: 'QQ', bili: 'B站', feed: '好友爱看', town: '鱼缸小镇', other: '其他', total: '总额' });
 export const UNIT_LABELS = Object.freeze({ cny: '元', tokens: 'token' });
 export const BUDGET_FILES = Object.freeze({
   budget: 'token-budget.json',
@@ -47,6 +47,8 @@ export const DEFAULT_LIMITS = Object.freeze({
   qq: Object.freeze({ cny: 8, tokens: null }),
   bili: Object.freeze({ cny: null, tokens: null }),
   feed: Object.freeze({ cny: null, tokens: null }),
+  // 小镇：默认不限（每天 3 次只读，量很小；要收紧就在设置页单独给 town 设额度）。
+  town: Object.freeze({ cny: null, tokens: null }),
   other: Object.freeze({ cny: null, tokens: null }),
   total: Object.freeze({ cny: null, tokens: null })
 });

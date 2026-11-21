@@ -1,6 +1,6 @@
 # 工具面与 preset（AGENT-TOOLS-AND-PRESETS）
 
-> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 36 个 `qq_*` 工具）、**哪些手被绑住**
+> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 78 个工具）、**哪些手被绑住**
 > （五层闸门 + fail-closed 守卫）、**她戴哪张面具**（`qq-chat` / `qq-chat-v2` 两代 preset）、
 > **这些是怎么装进 DSH 的**。
 > **最后核对**：2026-10-26（全仓库逐行梳理）。配套阅读：总纲 [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) · 边界 [BOUNDARIES.md](../operations/BOUNDARIES.md) · 索引 [../README.md](../../README.md)。
@@ -11,7 +11,7 @@
 
 **两个 MCP 手 + 一张面具。**
 
-- `snowluma`（36 个 `qq_*` 工具）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏。
+- `snowluma`（36 个 `qq_*` + 39 个 `stellar_*` 工具）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏、B站/空间/小镇/文件柜。
 - `snowluma-host`（1 个）是探活手：只问 SnowLuma 在不在，**没有启停能力**（EULA）。
 - `web-search-safe`（2 个）是外部信息手：只读搜索与抓取，带 SSRF 防护。
 - preset 决定"她是谁、在哪说话"：`qq-chat`（一代/普通）与 `qq-chat-v2`（二代仿真）。
@@ -22,9 +22,9 @@
 
 | server | 入口 | 工具 | 挂载 | 边界 |
 | --- | --- | --- | --- | --- |
-| `snowluma` | `src/mcp-snowluma-safe.js`（1,410 行） | 36 个 `qq_*` | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
-| `snowluma-host` | `src/mcp-host-server.js`（93 行） | `snowluma_status` | 同上 | **只读探活**；v0.1.5 起移除了 `start_snowluma`/`stop_snowluma` |
-| `web-search-safe` | `src/mcp-web-search-safe.js`（92 行） | `web_search`、`web_fetch` | 同上 | 只读；禁内网/环回/CGNAT；DNS 解析后逐地址校验；重定向每跳复核 |
+| `snowluma` | `src/mcp-snowluma-safe.js`（5,001 行） | 36 个 `qq_*` + 39 个 `stellar_*` | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
+| `snowluma-host` | `src/mcp-host-server.js`（94 行） | `snowluma_status` | 同上 | **只读探活**；v0.1.5 起移除了 `start_snowluma`/`stop_snowluma` |
+| `web-search-safe` | `src/mcp-web-search-safe.js`（128 行） | `web_search`、`web_fetch` | 同上 | 只读；禁内网/环回/CGNAT；DNS 解析后逐地址校验；重定向每跳复核 |
 
 三者都是 **stdio** transport，由 DSH 的 MCP 客户端按 profile 配置拉起，进程生命周期归 DSH 管。
 
@@ -176,6 +176,17 @@
 - 二代**不自动转发文本**。如果工具没挂上，模型会"说了话但群里没反应"——这是最常见的误配症状。
 - 一代的 `[SILENT]` 是潜水信号；二代没有这个约定（用 `mark_read` + `set_wake_config` 潜水）。
 - 二代有 `qq_close_conversation`；一代没有（一代靠状态机自行退场）。
+
+**另外两个只挂在后台会话上的 preset**（不参与 QQ 对话，别混进来）：
+
+| preset | order | 给谁 | 工具面 |
+| --- | --- | --- | --- |
+| `bili-slim` | 12 | `bili-whale-*` / `feed-whale-*` 生物钟会话 | standard 去掉 univer / remote / acp 等无关工具 |
+| `town-act` | 13 | `town-whale`（鱼缸小镇影子，**默认不启用**） | 只有 5 个小镇只读工具 + `stellar_rules`，由 `town-tool-restrict` 兜底 |
+
+`town-act` 的边界是 `plugins/stellar/town-tool-restrict.mjs`（allowlist）：`visit` / `play` / `goto`
+这些会花钱的动作在这一版**连工具都没注册**，所以"绕不过去"不靠提示词，靠工具不存在。
+详见 [SUBSYSTEM-TOWN.md](SUBSYSTEM-TOWN.md)。
 
 ---
 

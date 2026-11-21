@@ -42,7 +42,8 @@
         "./cordis.patch.yml",
         "./presets/qq-chat.patch.yml",
         "./presets/qq-chat-v2.patch.yml",
-        "./presets/bili-slim.patch.yml"
+        "./presets/bili-slim.patch.yml",
+        "./presets/town-act.patch.yml"
       ]
     },
     "client": {

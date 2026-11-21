@@ -14,7 +14,9 @@ import {
 
 // 2026-11-20：加 'feed'（好友爱看 / QQ 空间公开推荐流）。
 // 以前刷动态跑在 B站 会话里，花费全算进 bili，控制台上看着像「免费」；拆成独立会话后要单独记账。
-export const CATEGORY_KEYS = ['qq', 'bili', 'feed', 'other'];
+// 2026-11-21：加 'town'（鱼缸小镇影子会话）。它每天只醒 3 次、只读，单独记一类账，
+// 免得跟 B站 混在一起看不出「小镇花了多少」。
+export const CATEGORY_KEYS = ['qq', 'bili', 'feed', 'town', 'other'];
 export const isPlainObject = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 export const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
 export const clamp0 = (v) => Math.max(0, Number(v) || 0);

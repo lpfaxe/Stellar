@@ -24,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..');
 
 /** 由桥接托管的两个 preset（顺序即 patch 层顺序）。 */
-export const PRESETS = ['qq-chat', 'qq-chat-v2', 'bili-slim'];
+export const PRESETS = ['qq-chat', 'qq-chat-v2', 'bili-slim', 'town-act'];
 
 /** preset 行 id：与 config.id（桥接解析的 preset 名）区分开，方便在 profile patch 里按行定位。 */
 export function presetRowId(name) {
@@ -45,6 +45,7 @@ export const GUARD_SPECIFIER = 'stellar/qq-tool-restrict.mjs';
 /** 源里允许出现的相对行名 → 新机制下的等价引用。其它相对名一律报错（避免静默装不上）。 */
 const RELATIVE_ROW_REWRITES = new Map([
   ['./qq-tool-restrict.mjs', GUARD_SPECIFIER],
+  ['./town-tool-restrict.mjs', 'stellar/town-tool-restrict.mjs'],
 ]);
 
 export const BUNDLE_DIR = path.join(REPO_ROOT, 'plugins', 'stellar');
@@ -105,7 +106,11 @@ function normalizeRows(rows, preset) {
   const normalized = walk(rows, 'plugins');
   // 每个 preset 的必备行：QQ 的硬边界是 qq-tool-restrict；鲸鱼只做省钱，
   // 必备行是 whale-tool-restrict（没有它 bili-slim 就失去意义，静默失效最危险）。
-  const requiredRows = preset === 'bili-slim' ? ['persona', 'whale-tool-restrict'] : ['persona', 'qq-tool-restrict'];
+  const requiredRows = preset === 'bili-slim' ? ['persona', 'whale-tool-restrict']
+    // 小镇影子会话的硬边界是 town-tool-restrict（只放行小镇只读工具），不能缺。
+    : preset === 'town-act' ? ['persona', 'town-tool-restrict']
+    : ['persona', 'qq-tool-restrict'];
+  // 注意：publish 树里这条三元必须与 dev 一致，否则 town-act.patch.yml 生成不了。
   for (const required of requiredRows) {
     if (!seen.has(required)) throw new Error(`${preset}: 行列表缺少 ${required} 行（安全/人格边界不允许缺失）`);
   }
@@ -136,7 +141,7 @@ export function renderPatch(name) {
     `# 本文件由 scripts/build-agent-preset-patches.mjs 生成，请勿手工编辑。`,
     `# 源：dsh/agent-presets/${name}/preset.yml + agent.cordis.yml（人格正文与工具面都在那里改）。`,
     `# 作用：把 ${name} 作为一条 @deepseek-ai/dsh-agent-preset 行插入 profile（DSH 0.1.7+ 的 preset 机制）。`,
-    `# 守卫行 ${name === 'bili-slim' ? 'whale-tool-restrict（省 token，无执行期白名单）' : 'qq-tool-restrict'} 用裸说明符 ${GUARD_SPECIFIER}：子行 name 按 profile 目录解析，`,
+    `# 守卫行 ${name === 'bili-slim' ? 'whale-tool-restrict（省 token，无执行期白名单）' : name === 'town-act' ? 'town-tool-restrict（只放行小镇只读工具）' : 'qq-tool-restrict'} 用裸说明符 ${GUARD_SPECIFIER}：子行 name 按 profile 目录解析，`,
     `# 该包以 link: 依赖注册在 profile package.json（node_modules junction 由 setup-dsh.mjs 维护）。`,
     '',
   ].join('\n');

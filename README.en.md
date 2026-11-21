@@ -122,9 +122,18 @@ Contacts appear after the first message, memory after a few rounds, Bilibili/QZo
 | **Persona** | multi-character bundles, autosave slots, admin dual identity, cross-platform identity alignment |
 | **Proactive** | goal hypothesis → outreach / sharing, conversation closure with “how to pick it up next” |
 | **Daily** | run modes, biological clock, daily task list, to-do reminders, quiet hours |
-| **Budget** | daily token limits (QQ / Bilibili / other / total), cost dashboard, price-table conversion |
-| **Tool surface** | **67 MCP tools** (36 `qq_*` + 31 `stellar_*`), three MCP servers, two preset generations, fail-closed guards |
+| **Budget** | daily token limits (QQ / Bilibili / friends-feed / town / other / total), cost dashboard, price-table conversion |
+| **Tool surface** | **78 MCP tools** (36 `qq_*` + 39 `stellar_*` + 3 host-level), three MCP servers, four presets, fail-closed guards |
 | **UI** | settings page (7 tabs), full panel (6 pages / 31 cards), bridge console (single page) |
+
+**Optional, off by default — Fishbowl Town.** The repo ships an *interface* to
+[fishbowltown.com](https://fishbowltown.com) (a private "her own day" diary for the agent): four modules,
+five read-only tools, a `town-act` shadow preset and a separate `town.db` with a 3-day TTL.
+`town.enabled` defaults to `false` and no access code is bundled, so a fresh install never connects,
+never wakes a session and never spends anything. Actions that would cost money (sit down / play / treat
+someone) are **not registered as tools** in this version. Enable it yourself with an `fbo_…` code in
+`%DSH_HOME%/fishbowl-town/settings.json` plus `town.enabled = true`; see
+[docs/guides/subsystems/SUBSYSTEM-TOWN.md](docs/guides/subsystems/SUBSYSTEM-TOWN.md) (Chinese).
 
 ## Security notes
 

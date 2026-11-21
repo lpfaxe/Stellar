@@ -12055,16 +12055,19 @@ function saveSocialV2State() {
     const bili = snapshot.day === day ? snapshot.bili : { cost: 0, tokens: 0 };
     // 2026-11-20：好友爱看（刷空间公开流）单独一类，跟 bili 一样只在插件快照里有数。
     const feed = snapshot.day === day ? snapshot.feed : { cost: 0, tokens: 0 };
+    // 2026-11-21：鱼缸小镇影子会话单独一类（插件快照里记，桥接只负责合并）。
+    const town = snapshot.day === day ? snapshot.town : { cost: 0, tokens: 0 };
     const merged = {
       day,
       at: snapshot.at,
       qq,
       bili,
       feed: feed ?? { cost: 0, tokens: 0 },
+      town: town ?? { cost: 0, tokens: 0 },
       other,
       total: {
-        cost: (qq.cost ?? 0) + (bili.cost ?? 0) + (feed?.cost ?? 0) + (other.cost ?? 0),
-        tokens: (qq.tokens ?? 0) + (bili.tokens ?? 0) + (feed?.tokens ?? 0) + (other.tokens ?? 0),
+        cost: (qq.cost ?? 0) + (bili.cost ?? 0) + (feed?.cost ?? 0) + (town?.cost ?? 0) + (other.cost ?? 0),
+        tokens: (qq.tokens ?? 0) + (bili.tokens ?? 0) + (feed?.tokens ?? 0) + (town?.tokens ?? 0) + (other.tokens ?? 0),
       },
       source: fresh ? (snapshot.source ?? 'plugin') : 'bridge-ledger',
       stale: !fresh,
@@ -16159,6 +16162,19 @@ function saveSocialV2State() {
     // 两套存储都在后台继续写，这里只决定读哪一份（2026-11-02 用户要求）。
     // 叙事侧必须带 key：dev 的按会话记忆隔离靠 memoryCardPromptBlock(key)。
     // 分层记忆优先：按当前消息检索 Top-K（只给摘要+id），没有命中才退回预渲染记忆卡。
+// 小镇（2026-11-21）：只给一行指针，不注入记忆正文 —— 小镇的事按需现查，
+    // 否则每次唤醒都多背 400 字，而绝大多数唤醒跟小镇无关（教训 #70：长提示词里
+    // 多一段就多一段被裁的风险）。主人问起 / 要写日志发空间时她自己会去查。
+    let townLine = '';
+    try {
+      // town 是「她每天做什么」的旋钮，和 vlog/triple 一样放在 bili.config.json（不是主配置）。
+      let townCfg = null;
+      try { townCfg = JSON.parse(fs.readFileSync(path.join(STELLAR_DIR, 'bili.config.json'), 'utf8'))?.town; } catch {}
+      // 发布版默认不启用：这里必须显式 town.enabled=true 才给指针（接口留着，行为不动）。
+      if (townCfg && townCfg.enabled === true) {
+        townLine = '【小镇】你在鱼缸小镇里有自己的日子。想知道这三天在那儿做了什么、碰见了谁、对谁有印象，就调 stellar_town_recall 现查（只记得最近 3 天）；记不清就说记不清，别编。写日记/发空间提到小镇前先查一次。\n\n';
+      }
+    } catch {}
     const memorySettings = readUnifiedMemorySettings();
     // 先让读侧去刷新（第一次唤醒它给的是上一次的缓存，进程刚起时为空 → 下面自动退回旧卡片）。
     warmMemoryFor(key, lastMsg);
@@ -16207,7 +16223,7 @@ function saveSocialV2State() {
     const conversationLine = conversationIdentityLineV2(key);
     const groupPeopleLine = groupParticipantsLineV2(key, st);
     // 侧写放最前（设计 §7.2）：一句话定调「对方是谁、该怎么说话」，比长记忆卡更省也更有效。
-    const base = profileLineText + roleLine + identityLine + conversationLine + groupPeopleLine + provenanceLine + adminLine + styleRefLine + biliLine + memoryCardLine + memoryFactLine + memoryCatalogLine + memoryDetailLine + tokenLine + imageQuotaText + initialPromptLine + antiAiLine + proactiveLine + closureLine + stickerLine + stickerMatchLine + replyLine + replyPlanText + statusLine + wakeLine + memoryLine + participationLine + fishGuardLine + tokenGuardLine + preSleepLine;
+    const base = profileLineText + roleLine + identityLine + conversationLine + groupPeopleLine + provenanceLine + adminLine + styleRefLine + biliLine + townLine + memoryCardLine + memoryFactLine + memoryCatalogLine + memoryDetailLine + tokenLine + imageQuotaText + initialPromptLine + antiAiLine + proactiveLine + closureLine + stickerLine + stickerMatchLine + replyLine + replyPlanText + statusLine + wakeLine + memoryLine + participationLine + fishGuardLine + tokenGuardLine + preSleepLine;
     lastWakePromptMeta = {
       profile: profileLineText.length,
       role: roleLine.length,

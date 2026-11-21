@@ -87,6 +87,8 @@ function budgetFallbackFromQqConfig(cfg) {
     bili: { cny: null, tokens: null },
     // 好友爱看：默认不限（它跟 B站 一样是后台自己刷的，靠总额兜底）。
     feed: { cny: null, tokens: null },
+    // 小镇影子会话：同样是后台自己醒的，默认不限，靠总额兜底。
+    town: { cny: null, tokens: null },
     other: { cny: null, tokens: null },
     total: { cny: null, tokens: null },
   };
@@ -195,6 +197,8 @@ export function createTokenBudgetService({
     if (/^bili-whale(?:-|$)/.test(id)) return 'bili';
     // 好友爱看（QQ 空间公开推荐流）从 2026-11-20 起跑在自己的会话里，单独记一类账。
     if (/^feed-whale(?:-|$)/.test(id)) return 'feed';
+    // 小镇影子会话（每天 3 次只读）也是后台自己醒的，单独记一类。
+    if (/^town-whale(?:-|$)/.test(id)) return 'town';
     const parent = header.parentSession ?? summary.parentSessionId;
     if (parent) {
       const parentCategory = sessionCategory.get(String(parent)) ?? state.sessions[String(parent)]?.category;
@@ -732,7 +736,7 @@ export function createTokenBudgetService({
   }
 
   function addLimit(scope, unit, amount) {
-    if (!SCOPES.includes(scope)) throw new Error('scope 必须是 qq / bili / feed / other / total');
+    if (!SCOPES.includes(scope)) throw new Error('scope 必须是 qq / bili / feed / town / other / total');
     if (unit !== 'cny' && unit !== 'tokens') throw new Error('unit 必须是 cny / tokens');
     const delta = Number(amount);
     if (!Number.isFinite(delta) || delta <= 0) throw new Error('加额度必须是正数');
@@ -748,6 +752,7 @@ export function createTokenBudgetService({
       qq: { cny: null, tokens: null },
       bili: { cny: null, tokens: null },
       feed: { cny: null, tokens: null },
+      town: { cny: null, tokens: null },
       other: { cny: null, tokens: null },
       total: { cny: null, tokens: null },
     });

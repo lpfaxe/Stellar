@@ -29,8 +29,9 @@ function ok(cond, label) {
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 // 每个 preset 的守卫行：QQ 两个共用 qq-tool-restrict（fail-closed 白名单），
-// bili-slim 只用 whale-tool-restrict（纯省 token，不做执行期拦截）。
-const GUARD_ID = { 'qq-chat': 'qq-tool-restrict', 'qq-chat-v2': 'qq-tool-restrict', 'bili-slim': 'whale-tool-restrict' };
+// bili-slim 只用 whale-tool-restrict（纯省 token，不做执行期拦截）；
+// town-act 用 town-tool-restrict（只放行小镇只读工具的 allowlist）。
+const GUARD_ID = { 'qq-chat': 'qq-tool-restrict', 'qq-chat-v2': 'qq-tool-restrict', 'bili-slim': 'whale-tool-restrict', 'town-act': 'town-tool-restrict' };
 const load = (p) => yaml.load(read(p));
 
 console.log('## 1. 产物与源不漂移（--check 语义）');
@@ -114,6 +115,14 @@ console.log('## 4. bundle 声明与安全边界');
   ok(true, 're-export 壳与权威实现导出同一份 apply/inject');
 
   // 鲸鱼侧：唯一实现，只 restrict、不挂 guard。
+  const townFile = path.join(BUNDLE_DIR, 'town-tool-restrict.mjs');
+  ok(fs.existsSync(townFile), 'town-tool-restrict.mjs 存在（town-act 的唯一实现）');
+  const townMod = await import(pathToFileURL(townFile).href);
+  ok(townMod.name === 'town-tool-restrict' && Array.isArray(townMod.inject) && townMod.inject.includes('tools') && typeof townMod.apply === 'function',
+    'town-tool-restrict 导出 name/inject/apply');
+  ok(Array.isArray(townMod.ALLOWED_TOOLS) && townMod.ALLOWED_TOOLS.every((n) => String(n).startsWith('mcp__snowluma__stellar_town') || n === 'mcp__snowluma__stellar_rules'),
+    'town-tool-restrict 白名单只含小镇工具');
+  ok(Array.isArray(townMod.HIDDEN_TOOLS) && townMod.HIDDEN_TOOLS.length > 30, 'town-tool-restrict 隐藏了重工具');
   const whaleFile = path.join(BUNDLE_DIR, 'whale-tool-restrict.mjs');
   ok(fs.existsSync(whaleFile), 'whale-tool-restrict.mjs 存在（bili-slim 的唯一实现）');
   const whaleMod = await import(pathToFileURL(whaleFile).href);

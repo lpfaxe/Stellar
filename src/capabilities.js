@@ -119,6 +119,14 @@ export const CAPABILITY_DEFS = [
     effect: '关掉后当天不再生成；已经做好的还在控制台等你审核，历史成片不受影响。',
   },
   {
+    id: 'town',
+    group: '鱼缸小镇',
+    name: '小镇日常',
+    path: 'town.enabled',
+    desc: '每天 3 次去小镇看看自己的日子（只读），记下最近三天做了什么、碰见过谁。',
+    effect: '关掉后不再唤醒影子会话，也不再采集小镇近况；已经记下的会按 3 天自然过期。',
+  },
+  {
     id: 'biliListen',
     group: 'B站 · 互动',
     name: '评论区倾听',

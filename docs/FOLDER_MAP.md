@@ -25,7 +25,7 @@
 | 组 | 文件 | 职责 |
 | --- | --- | --- |
 | 入口 | `bridge.js` | 常驻主程序：收发消息、拼唤醒提示、67 条控制台路由 |
-| MCP | `mcp-snowluma-safe.js` / `mcp-host-server.js` / `mcp-web-search-safe.js` | 三个 stdio server，共 67 个工具 |
+| MCP | `mcp-snowluma-safe.js` / `mcp-host-server.js` / `mcp-web-search-safe.js` | 三个 stdio server，共 78 个工具 |
 | DSH 对接 | `dsh-client.js` / `dsh-port.js` / `dsh-health.js` / `dsh-model-follow.js` | 找端口、投提示、探活、跟随默认模型 |
 | 记忆 | `memory-db.js` / `memory-db-schema.sql` / `memory-cache.js` / `memory-read.js` / `memory-worker.js` / `memory-facts.js` | 新记忆库（见 features/MEMORY.md） |
 | 记忆（旧引擎） | `memory-card.js` / `memory-store.js` / `memory-tiers.js` / `memory-blend.js` / `memory-compact.js` / `vector-memory.js` | 只在 `memory.engine=card` 时走 |
@@ -34,13 +34,14 @@
 | B站 | `bili-api.js` / `bili-memory.js` / `bili-dynamics.js` / `bili-card.js` / `bili-share-scheduler.js` | 网络、记忆简报、卡片、分享排期 |
 | 额度 | `token-budget.js` / `token-ledger.js` / `token-guard.js` / `model-prices.js` / `billing-report.js` / `cost-estimate.js` | 每日额度、账本、价目、报表 |
 | 安全 | `identity-guard.js` / `access-audit.js` / `owner-audit.js` / `file-read-guard.js` / `safe-fetch.js` / `safe-text.js` / `state-acl.mjs` | 身份、审计、文件与 URL 白名单、ACL |
+| 鱼缸小镇（可选） | `town-memory-pure.js` / `town-client.js` / `town-store.js` / `town-collector.js` | 只读采集、3 天 TTL、独立 `town.db`；默认不启用，见 subsystems/SUBSYSTEM-TOWN.md |
 | 其他 | `todos.js` / `approvals.js` / `sticker-*.js` / `slang-learner.js` / `outbox.js` / `self-test.js` | 待办、审批、表情、黑话、发件箱、自检 |
 
 ## 三、`scripts/`：命名约定
 
 | 前缀 | 意思 | 举例 |
 | --- | --- | --- |
-| `test-*.mjs` | 回归（**186 个**，`test:audit` 跑其中 159 个） | `test-memory-db.mjs` |
+| `test-*.mjs` | 回归（**203 个**，`test:audit` 跑其中 173 个） | `test-memory-db.mjs` |
 | `probe-*.mjs` | 手工探针（要真环境，不进回归） | `probe-events.mjs` |
 | `verify-*.mjs` | 断言某件事仍然成立 | `verify-dsh-020-adaptation.mjs` |
 | `bootstrap*` | 首次启动引导（幂等，绝不覆盖已有配置） | `bootstrap.mjs` |
@@ -56,6 +57,8 @@
 | --- | --- |
 | `state/` | 控制台令牌、桥接锁、临时请求 |
 | `~/.dsh/stellar/state/` | 未读、额度账本、审计、日志、待办、运行模式 |
+| `~/.dsh/stellar/state/town/` | 小镇唤醒计划 `wake.json`、独立记忆库 `town.db`（默认不启用；不进备份、不进清单） |
+| `%DSH_HOME%/fishbowl-town/settings.json` | 小镇访问码（`fbo_…`，只存在这一处，不进仓库、不进日志） |
 | `~/.dsh/stellar/characters/<角色>/` | 角色卡、B站凭据、`memory/memory.db` |
 | `stellar-manager/panel-token.txt` | 面板口令（自动生成） |
 | `stellar-manager/audit.jsonl` | 面板写操作审计 |
@@ -69,6 +72,7 @@
 | `tools/docs/` + `tools/rules/` | 给 agent 看的命令说明与行为规矩（运行时会被注入） |
 | `persona/` | 分层人格的默认片段 |
 | `presets/` | 由 `dsh/agent-presets/` 生成的 patch（**改源文件后要重跑 build**） |
+| `town-tool-restrict.mjs` | 小镇影子会话（`town-act`）的工具白名单：只放行 5 个只读工具 + `stellar_rules` |
 | `extensions/` | 扩展包（sts2 等） |
 | `locale/` | 界面文案 |
 

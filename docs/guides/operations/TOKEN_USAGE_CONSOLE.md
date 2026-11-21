@@ -164,7 +164,7 @@ npm run test:console-ui    # 离线浏览器回归（含「令牌与花费」页
 
 | 文件 / 项 | 作用 |
 | --- | --- |
-| `~/.dsh/stellar/token-budget.json` 的 `limits.total.cny` | 每天总预算（2026-11-08 起为 ¥10）。`qq` / `bili` / `other` 设为 `null` 表示不单独限，只受 total 约束 |
+| `~/.dsh/stellar/token-budget.json` 的 `limits.total.cny` | 每天总预算（2026-11-08 起为 ¥10）。`qq` / `bili` / `feed` / `town` / `other` 设为 `null` 表示不单独限，只受 total 约束 |
 | `socialV2.tokenGuard.maxDailyCostCNY` | 同一笔账的唤醒闸门：到线后不再投模型回合，消息留在未读 |
 | `socialV2.tokenGuard.maxWakesPerDay` / `privateMaxWakesPerDay` / `minWakeGapMs` | 设为 0 = 不限（`token-guard.js` 用 `> 0` 判断），此时唯一兜底就是每天 ¥10 |
 

@@ -63,6 +63,12 @@ export const DEFAULTS = {
   //   到 time 由调度器直接跑 `bili.mjs triple --go`，不唤醒她（固定动作，省 token、更可靠）；
   //   一天只做一条，做过的记在 state/triple.json（见 commands/triple.mjs）。
   triple: { enabled: true, time: '22:30', coin: 1 },
+  // 鱼缸小镇（2026-11-21）：接口保留，**默认不启用**（发布版只留接口）。
+  //   enabled=false 就完全不醒；fishId 留空 = 用 settings.json 里第一条启用的鱼；
+  //   访问码只在 %DSH_HOME%/fishbowl-town/settings.json（这里不存 fbo_*）。
+  //   actions=false 时影子会话只读（status/bonds/lobby/recall），visit/play/goto 一律拒（P3 未接）。
+  //   dailyBudgetCNY 是硬上限，softBudgetCNY 是「省着花」的软目标（提示词里提醒她别花满）。
+  town: { enabled: false, fishId: '', wakesPerDay: 3, window: { start: '09:00', end: '23:00' }, minGapMin: 45, collectMin: 10, actions: false, dailyBudgetCNY: 1, softBudgetCNY: 0.3 },
   // 每日 vlog（2026-11-10 主人要：谷期看片后自己做一条 1–10 分钟的视频，配乐+解说，
   //   发主人 B站号，先过控制台审核；花费每日 5 元上限；可整体关掉）。
   //   生成在本机做（SVG+ffmpeg+合成音），钱只来自她写脚本那几轮对话。

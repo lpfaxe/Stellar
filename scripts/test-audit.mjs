@@ -141,6 +141,14 @@ const tests = [
   // 好友爱看（刷 QQ 空间公开流）：自己的会话（feed-whale-*）+ 自己的记账类别 + 每日总量硬闸
   // （2026-11-20 主人发现它没单独记账、一天看了上限的 4 倍）。
   'test-feed-whale.mjs',
+  // 鱼缸小镇（2026-11-21）：接口保留、默认不启用。纯逻辑 / 客户端 / 独立库 / 采集器各一份静态契约，
+  // 调度器那份还钉住「守卫顺序 + 先占位再叫醒 + 零动作」，因为那些改坏了是静默出事。
+  'test-town-memory-pure.mjs',
+  'test-town-client.mjs',
+  'test-town-store.mjs',
+  'test-town-collector.mjs',
+  'test-town-scheduler.mjs',
+  'test-town-tools.mjs',
   // 上线补历史消息（socialV2.history）：默认开、水位/去重/黑名单、桥接启动补看离线消息、
   // history 唤醒提示与快照标记（VM 夹具网关，不连真 QQ）。
   'test-history-catchup.mjs',

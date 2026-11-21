@@ -170,7 +170,7 @@ try {
   // totalsOf / normalizeUsage 的幂等性
   check(totalsOf(usage).tokens === usage.total.tokens, 'totalsOf 与 normalizeUsage 一致');
   // 2026-11-20：多了 'feed'（好友爱看）→ 5 个 scope；额度默认值不变。
-  check(SCOPES.length === 5 && SCOPES.includes('feed') && DEFAULT_LIMITS.qq.cny === 8, '导出常量稳定');
+  check(SCOPES.length === 6 && SCOPES.includes('feed') && SCOPES.includes('town') && DEFAULT_LIMITS.qq.cny === 8, '导出常量稳定');
   check(CATEGORY_SCOPES.includes('feed'), '好友爱看是独立类别');
   const feedOnly = normalizeUsage({ feed: { cost: 0.4, tokens: 4000 } });
   check(feedOnly.total.cost === 0.4 && feedOnly.total.tokens === 4000, 'feed 计入总额');

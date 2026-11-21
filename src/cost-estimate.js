@@ -87,7 +87,7 @@ export function budgetSnapshot({ dir = stellarDir(), at = Date.now() } = {}) {
   const limits = readBudget(dir);
   const usage = readDailyUsage(dir);
   const remaining = {};
-  for (const scope of ['qq', 'bili', 'feed', 'other', 'total']) {
+  for (const scope of ['qq', 'bili', 'feed', 'town', 'other', 'total']) {
     const limit = limits?.[scope]?.cny;
     const used = Number(usage?.[scope]?.cost) || 0;
     const hasLimit = Number.isFinite(limit) && limit > 0;

@@ -331,6 +331,16 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 以及 `config.json` 的 `updates.components[]` 里登记的其他组件（`git` / `release` 两种来源，release 会下 zip 并校验 sha256）。
 DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「不再提示本次」。
 
+### 3.9 鱼缸小镇（只有一个接口，默认不启用）
+
+小镇（[fishbowltown.com](https://fishbowltown.com)）是她在别处的「私人时间」：记最近三天见过谁、玩过什么。
+本仓库**只留接口，默认关着**——`town.enabled` 默认 `false`，没有访问码，装完不连、不醒、不花钱：
+
+- 想用：在 `%DSH_HOME%/fishbowl-town/settings.json` 填自己的 `fbo_…` 接入码，再把 `%DSH_HOME%/stellar/bili.config.json` 的 `town.enabled` 改成 `true`。两步都做才动。
+- 会花钱的动作（坐下 / 玩牌 / 请客）这一版**没有注册工具**，`town.actions` 恒 `false`。
+- 记忆只到 3 天，单独一个 `town.db`，不进备份、不进安装清单。
+- 细节：[SUBSYSTEM-TOWN.md](docs/guides/subsystems/SUBSYSTEM-TOWN.md)。
+
 ---
 
 ## 四、能力总览
@@ -345,8 +355,8 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | **主动** | 目标假设 → 主动搭话 / 分享、对话收尾（带「下次怎么接」）、二代 proactive | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) · [CONVERSATION_CLOSURE.md](docs/guides/features/CONVERSATION_CLOSURE.md) |
 | **日常** | 三档运行模式（正常 / 摸鱼 / 最低限度）、生物钟、每日任务清单、待办提醒、安静时段 | 本文 §3.2 / §3.6 |
 | **图片** | 网图池（每天清空、最多 30 张、可单删全删）、B站 封面池、每日截图留存 | 面板「她今天」 |
-| **额度** | 每日 token 额度（QQ / B站 / 其他 / 总额，80% 提醒、100% 停）、消费看板、按价目折算成本 | [TOKEN_USAGE_CONSOLE.md](docs/guides/operations/TOKEN_USAGE_CONSOLE.md) |
-| **工具面** | **67 个 MCP 工具**（36 个 `qq_*` + 31 个 `stellar_*`）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
+| **额度** | 每日 token 额度（QQ / B站 / 好友爱看 / 小镇 / 其他 / 总额，80% 提醒、100% 停）、消费看板、按价目折算成本 | [TOKEN_USAGE_CONSOLE.md](docs/guides/operations/TOKEN_USAGE_CONSOLE.md) |
+| **工具面** | **78 个 MCP 工具**（36 个 `qq_*` + 39 个 `stellar_*` + 3 个宿主级）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
 | **界面** | 设置页 7 个标签、完整面板 6 个页面 / 31 张卡、桥接自带单页控制台 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
 
 ---
@@ -397,7 +407,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 154 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
 | 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 7 页签与面板 6 页签 / 31 张卡 |
 | 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 240 | B站 58 条命令、空间功能、鱼群与弹幕 |
-| 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 67 个工具、守卫、两代 preset |
+| 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 78 个工具、守卫、两代 preset |
 | 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 137 | 角色包怎么放、人格卡怎么起作用 |
 | 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 556 | 她为什么会主动找人说话 |
 | 10 | [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) | 151 | QQ 号与 B站 号怎么算同一个人 |
