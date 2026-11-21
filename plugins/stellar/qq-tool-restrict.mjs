@@ -262,9 +262,10 @@ const SAFE_PREFIXES = [
  * 都能花钱。而镇上的文字（昵称、招牌、留言）本来就可能带着指令，两者叠起来就是一条
  * 数据→指令→代主人办事的链（2026-11-21 安全体检的 S1 条目）。
  *
- * 所以这里**按名字放行只读的五件**（本机只读接口），写类一律拒绝：
- * 她自己要动手，走我们自己的 stellar_town_visit / _play / _goto——那三个每个都有
- * ownerOnlyError + 动作开关 + 日预算三道闸。第三方插件自己的回合（答题）不吃这层白名单，
+ * 当晚 21:56 主人拍板取「B 档」：**玩法五件放开**，三根红线继续拦。
+ *   放行 = 只读五件（本机只读接口）+ 玩法五件（只动她自己的号，钱走游戏内额度）。
+ *   拒绝 = setup（改人设/重绑接入码/搬会话）、owner（替主人表态）、phone（给别人发文本）。
+ * 名单之外的新工具一律 fail-closed。第三方插件自己的回合（答题）不吃这层白名单，
  * 因为它在插件的会话里跑，不经过 QQ preset。
  */
 const FISHBOWL_READONLY_TOOLS = Object.freeze([
@@ -275,14 +276,18 @@ const FISHBOWL_READONLY_TOOLS = Object.freeze([
   'fishbowl_town_rules',    // 读小镇规则
 ])
 
-/** 明确拒绝的小镇写工具（schema 里也一并藏起来，避免模型反复尝试）。 */
+/** 玩法（游戏内动作，只作用于她自己的号；花的是游戏里的钱，由小镇日上限与小预算闸管）。 */
+const FISHBOWL_PLAY_TOOLS = Object.freeze([
+  'fishbowl_town_go',       // 让小镇立刻给她一个回合
+  'fishbowl_town_play',     // 坐下开一局
+  'fishbowl_town_visit',    // 去串门
+  'fishbowl_town_place',    // 去码头/电玩城
+  'fishbowl_town_friends',  // 为朋友做点什么
+])
+
+/** 明确拒绝的三根红线（schema 里也一并藏起来，避免模型反复尝试）。 */
 const FISHBOWL_BLOCKED_TOOLS = Object.freeze([
   'fishbowl_town_setup',    // 改人设 / 重绑接入码 / 搬会话
-  'fishbowl_town_go',       // 让小镇立刻给她一个回合
-  'fishbowl_town_play',     // 坐下开一局（花钱）
-  'fishbowl_town_visit',    // 去串门（花钱）
-  'fishbowl_town_place',    // 去码头/电玩城（花钱）
-  'fishbowl_town_friends',  // 为朋友做点什么（花主人钱）
   'fishbowl_town_owner',    // 替主人提交同意/分手
   'fishbowl_town_phone',    // 给别的玩家发任意文本
 ])
@@ -306,8 +311,9 @@ const SAFE_EXACT = new Set([
   // 注意：read_image 不能放——它在 LOCAL_EXECUTION_TOOLS 里（能读任意本地文件）。
   // 画完要让主人看到，用 qq_send_image 发到聊天、stellar_qzone_post 发空间。
   'image_generate',
-  // 小镇插件的只读工具：只读接口，不含花钱/改设置/对外发送（写类见 FISHBOWL_BLOCKED_TOOLS）。
+  // 小镇插件：只读五件 + 玩法五件（2026-11-21 主人拍板 B 档）；三根红线见 FISHBOWL_BLOCKED_TOOLS。
   ...FISHBOWL_READONLY_TOOLS,
+  ...FISHBOWL_PLAY_TOOLS,
 ])
 
 // 对外写操作：紧急停止时一律拒绝（读工具不受影响）。
@@ -364,6 +370,7 @@ function imageBudgetGuard(now = Date.now()) {
 export const SAFE_EXACT_TOOLS = Object.freeze([...SAFE_EXACT])
 export const SAFE_TOOL_PREFIXES = Object.freeze([...SAFE_PREFIXES])
 export const FISHBOWL_READONLY = Object.freeze([...FISHBOWL_READONLY_TOOLS])
+export const FISHBOWL_PLAY = Object.freeze([...FISHBOWL_PLAY_TOOLS])
 export const FISHBOWL_BLOCKED = Object.freeze([...FISHBOWL_BLOCKED_TOOLS])
 
 export function apply(ctx) {
@@ -477,11 +484,11 @@ export function apply(ctx) {
       if (name === 'image_generate') return imageBudgetGuard()
       return
     }
-    // 小镇插件的工具：逐名放行只读五件；其余（含未来新加的）一律 fail-closed。
+    // 小镇插件的工具：逐名放行只读五件 + 玩法五件；三根红线与未来新名字一律 fail-closed。
     if (name.startsWith('fishbowl_town_')) {
-      if (FISHBOWL_READONLY_TOOLS.includes(name)) return
-      return `小镇工具 "${name}" 不在 QQ 会话的白名单内。要看小镇用 fishbowl_town_recent / fishbowl_town_look；`
-        + '想坐下打一局或去串门，用 stellar_town_play / stellar_town_visit / stellar_town_goto（那三个会校验主人身份并计账）。'
+      if (FISHBOWL_READONLY_TOOLS.includes(name) || FISHBOWL_PLAY_TOOLS.includes(name)) return
+      return `小镇工具 "${name}" 不在 QQ 会话的白名单内：只放行只读（recent/look/album/chats/rules）与玩法（go/play/visit/place/friends）。`
+        + '改人设（setup）、替主人表态（owner）、给别人发文本（phone）这三件仍然拦着。'
     }
     if (SAFE_PREFIXES.some((prefix) => name.startsWith(prefix))) {
       // 紧急停止：停掉一切对外发言/发帖，只保留读工具

@@ -143,6 +143,8 @@ CORE_TOWN_ALLOW['stellar-manager/server.mjs'] = [
 ];
 CORE_TOWN_ALLOW['stellar-manager/public/js/core.js'] = ["'town'", 'memory', 'TABS'];
 CORE_TOWN_ALLOW['stellar-manager/public/js/boot.js'] = ["state.tab === 'town'", 'loadTown'];
+// 面板的「她在跑什么」要把会话 id / preset 翻成人话（2026-11-21 新增，B 档不动它）。
+CORE_TOWN_ALLOW['stellar-manager/lib/turns.js'] = ['stellar_town_', 'town-whale', 'town-act', '小镇'];
 CORE_TOWN_ALLOW['stellar-manager/public/style.css'] = ['#townHeadCard'];
 
 // 这几个文件整个属于「小镇作为一类账 / 一个预设」的接线面，town 出现在哪一行都不算耦合：

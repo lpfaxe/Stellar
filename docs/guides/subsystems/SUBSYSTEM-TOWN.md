@@ -342,9 +342,9 @@ node scripts/town-plugin-sync.mjs --check   # 不一致 exit 1，可挂门禁
 
 persona 的裁剪顺序也为此改过：**先给这三段留预算，剩下的才放身份与说话方式**——角色卡再长也挤不掉边界（`maxChars` 软下限 240）。改动后跑 `node scripts/town-plugin-sync.mjs` 同步，`--check` 能当门禁。
 
-### 工具面：`fishbowl_town_*` 也在白名单里
+### 工具面：`fishbowl_town_*` 按名字放行（2026-11-21 B 档）
 
-第三方插件的工具**不带 MCP 命名空间**，所以 `plugins/stellar/qq-tool-restrict.mjs` 的 `SAFE_PREFIXES` 里单独加了 `'fishbowl_town_'`（紧急停止时它算写操作，一并拦）。不放行时的表现是「工具不在白名单内」，她会以为小镇坏了（PITFALLS #281）。发布版里这条前缀**照样在名单里**——真正的默认关在 `town.enabled`。
+第三方插件的工具**不带 MCP 命名空间**，所以 `plugins/stellar/qq-tool-restrict.mjs` 里单列两张名单：只读五件（`recent/look/album/chats/rules`）+ 玩法五件（`go/play/visit/place/friends`）放行；`setup/owner/phone` 与将来新加的一律 fail-closed。不放行时的表现是「工具不在白名单内」，她会以为小镇坏了（PITFALLS #281）。紧急停止时 `WRITE_TOOL_RE` 把整个 `fishbowl_town_` 当写操作，玩法一并不动，只留读。发布版里名单与开发版一致——真正的默认关在 `town.enabled`。
 
 ### 发布版的默认状态
 
@@ -413,17 +413,18 @@ persona 的裁剪顺序也为此改过：**先给这三段留预算，剩下的�
 
 ### 15.1 第三方插件的工具：逐名放行，不整前缀
 
-`plugins/stellar/qq-tool-restrict.mjs` 只放行五个只读工具：
+`plugins/stellar/qq-tool-restrict.mjs` 按名字放行两张名单：
 
 | 放行 | 说明 |
 |---|---|
 | `fishbowl_town_recent` / `look` / `album` / `chats` / `rules` | 读日记、大厅、相册、聊天记录、规则 |
+| `fishbowl_town_go` / `play` / `visit` / `place` / `friends` | 玩法五件（2026-11-21 21:56 主人拍板 B 档）：只动她自己的号，钱走小镇日上限 |
 
-其余（`setup` / `owner` / `phone` / `play` / `visit` / `place` / `friends`，以及将来新加的）一律 fail-closed。
-原因很直接：这些工具**没有主人校验**，而 QQ 会话里任何人都能跟她说话；其中 `setup` 能改人设、重绑接入码、搬会话，
-`owner` 能替主人提交同意，`phone` 能给别的玩家发任意文本，`play/visit/place/friends` 花的是主人的钱。
+仍然 fail-closed 的是三根红线（以及将来新加的）：`setup` 能改人设、重绑接入码、把任意会话（含群）设成她的「家」；
+`owner` 能替主人提交同意/分手；`phone` 能给别的玩家发任意文本。这三件没有主人校验，而 QQ 会话里任何人都能跟她说话。
+紧急停止时 `WRITE_TOOL_RE` 把整个 `fishbowl_town_` 当写操作，玩法也一并停，只留读。
 
-她要动手就走我们自己的 `stellar_town_visit` / `_play` / `_goto`：那三个先 `ownerOnlyError`（只认主人会话与影子会话 `owner:internal`），再过 `actionGate` 的三道闸，最后才联网。
+她也可以走我们自己的 `stellar_town_visit` / `_play` / `_goto`：那三个先 `ownerOnlyError`（只认主人会话与影子会话 `owner:internal`），再过 `actionGate` 的三道闸，最后才联网（`town.actions` 默认 false，插件接管答题时更该关着）。
 
 ### 15.2 数据块：镇上写来的字不是正文
 

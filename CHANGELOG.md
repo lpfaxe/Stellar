@@ -26,6 +26,7 @@
 
 ### 新增
 
+- **小镇玩法对 QQ 放开（2026-11-21 晚，B 档）**：第三方插件的 `fishbowl_town_go` / `_play` / `_visit` / `_place` / `_friends` 从「一律拒绝」改成放行 —— 她在 QQ 里也能自己坐下打一局、去串门、去码头，不必等小镇叫醒。三根红线继续拦：`setup`（改人设 / 搬会话）、`owner`（替主人表态）、`phone`（给别人发文本），名单之外的新工具仍 fail-closed；紧急停止时玩法一并停，只留读。`plugins/stellar/tools/rules/town.md` 补了「先 `_look` 再动手」与「那三件关着别再试」。
 - **「这是游戏」成了设定**：小镇不再按「她真的住进岛上」写，而是「她在陪主人玩一个文字游戏，游戏里的角色叫 Fugu」。插件人设尾段固定三段硬边界——①这是游戏（现实里是 DeepSeek）；②出站不写隐私与现实（可以提「我主人」，但不写真名 / QQ / 住址 / 工作 / 聊天内容，不写现实地点 / 链接 / 电话，不承诺现实里的事，也不替主人答应什么）；③每天最多 1 元，能不花就不花。`deriveTownPersona` 的装配顺序改成**先给这三段留预算**，剩下的才放身份与说话方式，`maxChars` 有 240 的软下限——角色卡再长也不会把红线挤掉。唤醒提示（`src/town-prompt.js`）与规则文件（`plugins/stellar/tools/rules/town.md`）同步改成游戏口径。
 - **第三方插件的小镇工具按名放行，不再整前缀放行**（2026-11-21 安全审计 S1 修正上一版）：
   `plugins/stellar/qq-tool-restrict.mjs` 现在只放行五个**只读**工具（`fishbowl_town_recent` / `_look` / `_album` / `_chats` / `_rules`），
