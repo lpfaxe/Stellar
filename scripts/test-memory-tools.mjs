@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import yaml from 'js-yaml';
 
-const OWNER = '1000000001';
+const OWNER = '3025145051';
 const OWNER_KEY = 'private:' + OWNER;
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'stellar-memtools-'));
 const PREV_DSH_HOME = process.env.DSH_HOME;
@@ -42,17 +42,15 @@ const REAL_SRC = path.dirname(fileURLToPath(import.meta.url));
 fs.writeFileSync(path.join(ROOT, 'src', 'memory-db.js'),
   'export * from ' + JSON.stringify(pathToFileURL(path.join(REAL_SRC, '..', 'src', 'memory-db.js')).href) + ';\n', 'utf8');
 
-const SRC_URL = pathToFileURL(path.join(REAL_SRC, '..', 'src') + path.sep).href;
-const srcImport = (name) => import(SRC_URL + name);
-const approvals = await srcImport('approvals.js');
-const capabilities = await srcImport('capabilities.js');
-const todos = await srcImport('todos.js');
-const ownerQuestions = await srcImport('owner-questions.js');
-const qqModelView = await srcImport('qq-model-view.js');
-const stickerSemantics = await srcImport('sticker-semantics.js');
-const costEstimate = await srcImport('cost-estimate.js');
-const toolSpill = await srcImport('tool-spill.js');
-const memoryDb = await srcImport('memory-db.js');
+const approvals = await import('file:///D:/桌面/Dsh/Robot/stellar/src/approvals.js');
+const capabilities = await import('file:///D:/桌面/Dsh/Robot/stellar/src/capabilities.js');
+const todos = await import('file:///D:/桌面/Dsh/Robot/stellar/src/todos.js');
+const ownerQuestions = await import('file:///D:/桌面/Dsh/Robot/stellar/src/owner-questions.js');
+const qqModelView = await import('file:///D:/桌面/Dsh/Robot/stellar/src/qq-model-view.js');
+const stickerSemantics = await import('file:///D:/桌面/Dsh/Robot/stellar/src/sticker-semantics.js');
+const costEstimate = await import('file:///D:/桌面/Dsh/Robot/stellar/src/cost-estimate.js');
+const toolSpill = await import('file:///D:/桌面/Dsh/Robot/stellar/src/tool-spill.js');
+const memoryDb = await import('file:///D:/桌面/Dsh/Robot/stellar/src/memory-db.js');
 
 test.after(() => {
   try { memoryDb.closeDb(); } catch {}
@@ -77,12 +75,12 @@ function stripImports(source) {
 const IDENTITIES = {
   'owner-token-aaaa': { key: OWNER_KEY, kind: 'private', isOwner: true },
   'group-token-bbbb': { key: 'group:123456', kind: 'group', isOwner: false },
-  'friend-token-cccc': { key: 'private:1000000003', kind: 'private', isOwner: false }
+  'friend-token-cccc': { key: 'private:2493502782', kind: 'private', isOwner: false }
 };
 
 function loadTools({ mode = 'reserved2' } = {}) {
   const tools = new Map();
-  const source = stripImports(fs.readFileSync(path.join(REAL_SRC, '..', 'src', 'mcp-snowluma-safe.js'), 'utf8'))
+  const source = stripImports(fs.readFileSync('D:/桌面/Dsh/Robot/stellar/src/mcp-snowluma-safe.js', 'utf8'))
     .replace('const __dirname = path.dirname(fileURLToPath(import.meta.url));', "const __dirname = '" + path.join(ROOT, 'src').replace(/\\/g, '/') + "';")
     .replace('await server.connect(new StdioServerTransport());', 'server.connect(new StdioServerTransport());');
   const fetchImpl = async (url, init = {}) => {
@@ -103,6 +101,8 @@ function loadTools({ mode = 'reserved2' } = {}) {
   vm.runInNewContext(source, {
     McpServer,
     StdioServerTransport: class {},
+    // 小镇工具整块在独立模块里（2026-11-21 拆分）：这里给桩，真要测它请跑专测。
+    registerTownTools: () => {},
     z,
     yaml,
     URL,
@@ -186,7 +186,7 @@ test('空库：目录说「还没有这条 owner 的话题」，不报错', asyn
 });
 
 test('朋友用自己的令牌查自己的记忆：放行（主人举的「A 问你知道我生日吗」场景）', async () => {
-  const res = await call(tools, 'stellar_memory_catalog', { key: 'private:1000000003', token: 'friend-token-cccc' });
+  const res = await call(tools, 'stellar_memory_catalog', { key: 'private:2493502782', token: 'friend-token-cccc' });
   assert.equal(res.isError, undefined, '自己的记忆必须能查，否则她只能回「不记得」');
   assert.doesNotMatch(textOf(res), /只有主人/);
 });
@@ -195,7 +195,7 @@ test('朋友借自己的令牌去查主人口子：拒绝（confused deputy）',
   const one = await call(tools, 'stellar_memory_catalog', { key: OWNER_KEY, token: 'friend-token-cccc' });
   assert.equal(one.isError, true);
   assert.match(textOf(one), /只有主人/);
-  const two = await call(tools, 'stellar_memory_catalog', { key: 'private:1000000003', token: 'friend-token-cccc', ownerId: OWNER });
+  const two = await call(tools, 'stellar_memory_catalog', { key: 'private:2493502782', token: 'friend-token-cccc', ownerId: OWNER });
   assert.equal(two.isError, true);
   assert.match(textOf(two), /只有主人/);
 });
@@ -204,19 +204,19 @@ test('stellar_memory_fact 注册了，且写操作仍然只给主人', async () 
   const tool = tools.get('stellar_memory_fact');
   assert.ok(tool, 'stellar_memory_fact 没注册');
   assert.ok(tool.schema.token && tool.schema.key && tool.schema.action);
-  const friend = await call(tools, 'stellar_memory_fact', { key: 'private:1000000003', token: 'friend-token-cccc', action: 'write', text: '生日是1月2日', kind: 'birthday', label: '生日' });
+  const friend = await call(tools, 'stellar_memory_fact', { key: 'private:2493502782', token: 'friend-token-cccc', action: 'write', text: '生日是1月2日', kind: 'birthday', label: '生日' });
   assert.equal(friend.isError, true);
   assert.match(textOf(friend), /只有主人/);
 });
 
 test('塞一条真话题后：目录给 id + 标题，topic 工具读得到双方原话', async () => {
   const a = memoryDb.append({ conversationKey: OWNER_KEY, ownerId: OWNER, speakerId: OWNER, speakerName: '主人', role: 'user', text: '晚上吃点啥', at: Date.now() - 60000 });
-  const b = memoryDb.appendSelf({ conversationKey: OWNER_KEY, speakerId: '1000000002', speakerName: '她', role: 'self', text: '吃火锅吧，冷。', at: Date.now() - 30000 });
+  const b = memoryDb.appendSelf({ conversationKey: OWNER_KEY, speakerId: '2601728971', speakerName: '她', role: 'self', text: '吃火锅吧，冷。', at: Date.now() - 30000 });
   const ins = memoryDb.insertTopic({
     topic: { ownerId: OWNER, conversationKey: OWNER_KEY, title: '晚上吃点啥', summary: '挑晚饭', importance: 0 },
     rows: [
       { id: a.id, role: 'user', speaker_id: OWNER, speaker_name: '主人', text: '晚上吃点啥', at: a.at, ck: OWNER_KEY, oid: OWNER, day_key: memoryDb.dayKey(a.at) },
-      { id: b.id, role: 'self', speaker_id: '1000000002', speaker_name: '她', text: '吃火锅吧，冷。', at: b.at, ck: OWNER_KEY, oid: OWNER, day_key: memoryDb.dayKey(b.at) }
+      { id: b.id, role: 'self', speaker_id: '2601728971', speaker_name: '她', text: '吃火锅吧，冷。', at: b.at, ck: OWNER_KEY, oid: OWNER, day_key: memoryDb.dayKey(b.at) }
     ]
   });
   assert.equal(ins.ok, true);

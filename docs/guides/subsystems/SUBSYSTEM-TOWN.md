@@ -169,6 +169,8 @@ node scripts/test-town-turns.mjs          # turn 解析/去噪、长轮询退避
 node scripts/test-town-tools.mjs          # 工具面、访问码打码、recall 上限、动作三件与白名单
 node scripts/test-town-actions.mjs        # 动作三道闸、跨天重置、坏文件、town.cost 真被读到
 node scripts/test-town-snapshot.mjs       # 面板快照（打码、缺块不抛、402/502 留旧快照）
+node scripts/test-town-decoupling.mjs      # 解耦契约：核心文件里不许有白名单外的 town 引用
+node scripts/town-remove.mjs --json        # 拆除计划（干跑，不删任何东西）
 ```
 
 全部已登记进 `scripts/test-audit.mjs` 的 `tests[]`。
@@ -217,3 +219,44 @@ node scripts/test-town-snapshot.mjs       # 面板快照（打码、缺块不抛
 - `state/town/town.db` 留在原地，已记的按 3 天 TTL 自然过期（不删库也能干净）；
 - 想彻底清掉就删 `%DSH_HOME%/stellar/state/town/` 与 `%DSH_HOME%/fishbowl-town/settings.json`；
 - QQ 链路本来就没接小镇正文，关不关都不影响聊天（唤醒提示里那行指针也会一起消失）。
+
+## 11. 怎么拆掉它
+
+这块是按「迟早要剔除」设计的：所有小镇逻辑集中在三个盒子里，核心文件只留接线，删盒子不改行为。
+
+| 盒子 | 里面是什么 | 核心文件留什么 |
+| --- | --- | --- |
+| `plugins/stellar/lib/town-jobs.js` | 采集 tick、唤醒计划、进镇长轮询、预算判据（约 450 行） | `scheduler.js` 里 `const town = createTownJobs({...})` 一次 + 三条定时器 + `town.stop()` / `town.sessionId` |
+| `src/town-tools.js` | `stellar_town_status/bonds/lobby/day/recall/visit/play/goto` 的注册（约 26 KB） | `mcp-snowluma-safe.js` 里 `registerTownTools(server, {...})` 一行、`RULE_TOPICS.town`、`GATED_TOPICS` 一条 |
+| `src/town-prompt.js` | 唤醒提示里那段小镇指针 | `bridge.js` 里 `const townLine = townPromptLine({ stellarDir });` 一行 + base 拼接里的 `+ townLine` |
+
+另有整块属于它的文件（控制台页、影子预设、白名单、规则、测试、文档）：`stellar-manager/lib/town.js`、`stellar-manager/public/js/town.js`、`plugins/stellar/town-tool-restrict.mjs`、`plugins/stellar/presets/town-act.patch.yml`、`dsh/agent-presets/town-act/`、`plugins/stellar/tools/rules/town.md`、`src/town-*.js` 其余模块、`scripts/test-town-*.mjs`、本文。
+
+先看计划（干跑，只打印不删）：
+
+```bash
+node scripts/town-remove.mjs            # 人看的清单
+node scripts/town-remove.mjs --json     # 机器可读：files / core / unknown / notes
+```
+
+当前计划是 **files 30 / core 70 / unknown 0**——`unknown` 必须一直是 0，出现就说明有新的耦合点，先补白名单或用中文注释改写。
+
+真要删（`fs.rmSync` 后逐个 `existsSync` 复查，沙箱下删除会假成功）：
+
+```bash
+node scripts/town-remove.mjs --apply
+```
+
+拆完还剩两类东西，要不要动由自己定：
+
+- `state/town/`（`town.db` / `wake.json` / `actions.json` / `status.json`）：删了就彻底不留痕，留着也无害（没有代码再读它）；
+- `%DSH_HOME%/fishbowl-town/settings.json`：访问码在这里，小镇彻底不用了就删掉。
+
+拆完必须重启 DSH（改了 `plugins/stellar/**` 与 `src/mcp-*.js` 才生效）；之后再跑 `node scripts/test-town-decoupling.mjs` 会因为盒子文件不存在而跳过对应断言，`scripts/test-audit.mjs` 里的 `test-town-*.mjs` 九条要一起删。
+
+判据（`scripts/test-town-decoupling.mjs`，35 项）：
+
+- 白名单外的 town 引用 = 失败（`unknown` 必须 0）；
+- 三个入口（`townPromptLine` / `registerTownTools` / `createTownJobs`）在核心文件里各只许出现一次；
+- 核心文件里不许出现 `town-client` / `town-store` / `town-memory-pure` / `town-collector` / `town-actions` / `town-budget` / `createTurnPump` / `collectTownOnce`；
+- 每个核心文件的 town 行数有上限（`bridge.js` 10、`mcp-snowluma-safe.js` 8、`scheduler.js` 12、`run-mode.js` 3、`capabilities.js` 2、`config.mjs` 3、`test-audit.mjs` 10，控制台那几个文件单独算）。

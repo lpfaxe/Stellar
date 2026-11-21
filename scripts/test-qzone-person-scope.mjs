@@ -24,25 +24,18 @@ import * as stickerSemantics from '../src/sticker-semantics.js';
 import * as costEstimate from '../src/cost-estimate.js';
 import * as toolSpill from '../src/tool-spill.js';
 
-const OWNER = '1000000001';
+const OWNER = '3025145051';
 const OWNER_KEY = 'private:' + OWNER;
-const FRIEND = '1000000005';
-const TESTER = '1000000003';
+const FRIEND = '3909220047';
+const TESTER = '2493502782';
 const OWNER_TOKEN = 'owner-token-fixture';
 // 主人私聊的会话令牌：桥接 /api/agent/identity 会把它解析成 private:<ownerQQ>。
 const OWNER_IDENTITIES = { [OWNER_TOKEN]: { key: OWNER_KEY, token: OWNER_TOKEN, kind: 'private', isOwner: true } };
 
 const fixtureRoots = [];
-let savedEnv = null; // 第一个 fixture 建立前的 USERPROFILE/HOME，收尾时还原
 test.after(() => {
   for (const dir of fixtureRoots) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-  }
-  if (savedEnv) {
-    for (const [k, v] of Object.entries(savedEnv)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
   }
 });
 
@@ -69,14 +62,7 @@ function makeFixture() {
     allow: { groups: [], private: [OWNER] }
   }), 'utf8');
   // 通讯录 fixture：主人、一个朋友、一个测试号（stranger）
-  // 注意：src/mcp-snowluma-safe.js 的 contactsStateFile() 读的是 %USERPROFILE%/.dsh/stellar/state/friends.json，
-  // 不是仓库里的 state/ —— 所以 fixture 必须挪到这个路径，并把 USERPROFILE 指到 root，
-  // 否则白名单会去读真实机器上的通讯录（会随环境变红）。2026-11-20 修。
-  fs.mkdirSync(path.join(root, '.dsh', 'stellar', 'state'), { recursive: true });
-  if (savedEnv === null) savedEnv = { USERPROFILE: process.env.USERPROFILE, HOME: process.env.HOME };
-  process.env.USERPROFILE = root;
-  process.env.HOME = root;
-  fs.writeFileSync(path.join(root, '.dsh', 'stellar', 'state', 'friends.json'), JSON.stringify({
+  fs.writeFileSync(path.join(root, 'state', 'friends.json'), JSON.stringify({
     people: [
       { uin: OWNER, nickname: '主人', type: 'owner' },
       { uin: FRIEND, nickname: '朋友', type: 'friend' },
@@ -119,6 +105,8 @@ function loadTools({ root, scriptOutput = '', scriptCode = 0, identities = {}, m
   vm.runInNewContext(source, {
     McpServer,
     StdioServerTransport: class {},
+    // 小镇工具整块在独立模块里（2026-11-21 拆分）：这里给桩，真要测它请跑专测。
+    registerTownTools: () => {},
     z, yaml, URL, URLSearchParams, AbortSignal, process, setTimeout, clearTimeout, console, Buffer, path, fs, os,
     // 身份闸：identities 里没有的 token 一律 403（失败关闭），与真实桥接一致。
     fetch: async (url, init = {}) => {

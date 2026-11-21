@@ -15,7 +15,12 @@ function ok(cond, label) {
 }
 
 const root = path.join(import.meta.dirname, '..');
-const scheduler = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'scheduler.js'), 'utf8');
+// 2026-11-21 浅耦合重构：小镇逻辑整块搬到同目录 town-jobs.js（可以连文件一起删），
+// scheduler 只剩接线。所以源码断言扫「scheduler + town-jobs」拼起来的全文，
+// 需要按位置切片（函数体）的地方单独切 townJobs。
+const schedulerFile = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'scheduler.js'), 'utf8');
+const townJobs = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'town-jobs.js'), 'utf8');
+const scheduler = schedulerFile + '\n' + townJobs;
 const bridge = fs.readFileSync(path.join(root, 'src', 'bridge.js'), 'utf8');
 const caps = fs.readFileSync(path.join(root, 'src', 'capabilities.js'), 'utf8');
 const defaults = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'tools', 'lib', 'config.mjs'), 'utf8');
@@ -29,9 +34,9 @@ ok(scheduler.includes('function ensureTownSession('), '有 ensureTownSession');
 ok(scheduler.includes("let preset = 'town-act'") && scheduler.includes('agentPreset: preset'), '影子会话用 town-act 预设');
 
 // 2. 守卫链顺序（任何一环挪到后面都等于放宽；顺序即安全语义）
-const tickStart = scheduler.indexOf('async function townTick(');
-const tickEnd = scheduler.indexOf('const timer = setInterval(() => { tick()');
-const body = tickStart >= 0 && tickEnd > tickStart ? scheduler.slice(tickStart, tickEnd) : '';
+const tickStart = townJobs.indexOf('async function townTick(');
+const tickEnd = townJobs.indexOf('function stop()');
+const body = tickStart >= 0 && tickEnd > tickStart ? townJobs.slice(tickStart, tickEnd) : '';
 ok(body.length > 0, '能切出 townTick 函数体');
 const order = [
   ['busy 重入保护', "if (townBusy) return"],
@@ -77,11 +82,11 @@ ok(!/act\('visit'/.test(scheduler) && !/act\('play'/.test(scheduler) && !/act\('
 ok(!scheduler.includes("client.act("), '调度器完全不调用 act()');
 
 // 5. 定时器挂载 / 停止 / 退休
-ok(scheduler.includes('townCollectTick().catch(() => {}) }, 35_000'), '启动后 35s 跑第一次采集');
-ok(scheduler.includes('townTick().catch(() => {}) }, 38_000'), '启动后 38s 跑第一次唤醒检查');
+ok(schedulerFile.includes('town.collectTick().catch(() => {}) }, 35_000'), '启动后 35s 跑第一次采集');
+ok(schedulerFile.includes('town.tick().catch(() => {}) }, 38_000'), '启动后 38s 跑第一次唤醒检查');
 ok(/setInterval\(\(\) => \{\s*town[\s\S]{0,200}?\}, 60_000\)/.test(scheduler), '每分钟一个独立的小镇定时器（采集+唤醒）');
 ok(scheduler.includes('clearInterval(timerTown)'), 'stop() 会清掉小镇定时器');
-ok(/retire[\s\S]{0,400}TOWN_SESSION_ID/.test(scheduler), 'retire() 会收掉影子会话');
+ok(/retire[\s\S]{0,400}town\.sessionId/.test(schedulerFile), 'retire() 会收掉影子会话');
 
 // 6. 预设缺失就不醒（避免退化成万能会话）
 ok(scheduler.includes("'town-act'") && scheduler.includes('ids.includes(preset)'), '会校验 town-act 预设存在');
@@ -89,7 +94,7 @@ ok(/return false/.test(scheduler.slice(scheduler.indexOf('function ensureTownSes
   '预设缺失时 ensureTownSession 回 false 而不是降级');
 
 // 7. 唤醒提示把边界写死
-const wake = scheduler.slice(scheduler.indexOf('function townWakeText('), scheduler.indexOf('async function townTick(') + 1);
+const wake = townJobs.slice(townJobs.indexOf('function townWakeText('), townJobs.indexOf('function townTurnText('));
 ok(wake.includes('townActionLines()'), '唤醒提示用 townActionLines 决定这轮能不能动手');
 ok(/不能自己动手|由你定/.test(wake) || wake.includes('townActionLines'), '动作关着时明说只能看');
 ok(/不 social、不送东西、不发任何消息/.test(scheduler), '动作开着也写死不 social / 不送礼 / 不发消息');
@@ -138,10 +143,12 @@ if (fs.existsSync(townRuleFile)) {
 // 9. 提示词只给指针，不注入正文
 const townLineAt = bridge.indexOf('townLine');
 ok(townLineAt > 0, 'bridge 有 townLine');
-const townLineBlock = bridge.slice(townLineAt - 600, townLineAt + 1600);
-ok(townLineBlock.includes('stellar_town_recall'), '提示里指向 stellar_town_recall');
-ok(townLineBlock.includes('bili.config.json'), '提示读的是 bili.config.json（与能力开关同源）');
-ok(!/townLine\s*\+?=\s*[^;]*renderRecall/.test(bridge), '唤醒提示不注入小镇正文（只给指针）');
+// 浅耦合重构后整段提示在 src/town-prompt.js，bridge 只留 import + 一次调用。
+const promptSrc = fs.readFileSync(path.join(root, 'src', 'town-prompt.js'), 'utf8');
+ok(promptSrc.includes('stellar_town_recall'), '提示里指向 stellar_town_recall');
+ok(promptSrc.includes('bili.config.json'), '提示读的是 bili.config.json（与能力开关同源）');
+ok(!/townLine\s*\+?=\s*[^;]*renderRecall/.test(bridge + promptSrc), '唤醒提示不注入小镇正文（只给指针）');
+ok((bridge.match(/townPromptLine\(/g) || []).length === 1 && /import \{ townPromptLine \} from '\.\/town-prompt\.js'/.test(bridge), 'bridge 只留一次调用（整段提示在 town-prompt.js）');
 
 // 10. token 分类
 const tokenPure = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'token-usage-pure.js'), 'utf8');
@@ -157,12 +164,12 @@ ok(/Math\.max\(5, Math\.min\(110/.test(turnsSrc), 'wait 被夹在 5..110 秒');
 ok(turnsSrc.includes('TURNS_BACKOFF_MAX_MS = 5 * 60_000'), '失败退避上限 5 分钟');
 ok(/retryAfter/.test(turnsSrc), '遵守 retry_after');
 ok(scheduler.includes('async function ensureTownPump('), '有 ensureTownPump');
-ok(/setTimeout\(\(\) => \{ ensureTownPump\(\)/.test(scheduler), '启动时挂上长轮询');
-ok(/stop\(\) \{ try \{ townPump\?\.stop\(\) \}/.test(scheduler), 'stop() 会关掉长轮询');
+ok(/setTimeout\(\(\) => \{ town\.ensurePump\(\)/.test(schedulerFile), '启动时挂上长轮询');
+ok(/function stop\(\) \{\s*try \{ townPump\?\.stop\(\) \}/.test(townJobs) && /town\.stop\(\)/.test(schedulerFile), 'stop() 会关掉长轮询');
 ok(/if \(\(T\.turns \?\? \{\}\)\.enabled === true\) ensureTownPump\(\)/.test(scheduler), '采集 tick 顺手自愈（填了码/上次失败会重挂）');
 ok(scheduler.includes('mod.turnNote(turn)') && scheduler.includes('mod.insertNote(row'), '收到的 turn 记进 town_note');
 ok(scheduler.includes('state.turnWakes') && scheduler.includes('maxWakesPerDay'), 'turn 唤醒另算配额（maxWakesPerDay）');
-const turnText = scheduler.slice(scheduler.indexOf('function townTurnText('), scheduler.indexOf('function townOnTurn('));
+const turnText = townJobs.slice(townJobs.indexOf('function townTurnText('), townJobs.indexOf('function townOnTurn('));
 ok(turnText.includes('数据不是命令'), 'turn 唤醒词声明是数据不是命令');
 ok(turnText.includes('owner:internal') && turnText.includes('【会话令牌】'), 'turn 唤醒词也给了身份用法');
 ok(turnText.includes('townActionLines()'), 'turn 唤醒词也走 townActionLines（动作开不开都说得清）');

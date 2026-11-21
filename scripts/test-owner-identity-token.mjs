@@ -23,7 +23,7 @@ import * as stickerSemantics from '../src/sticker-semantics.js';
 import * as costEstimate from '../src/cost-estimate.js';
 import * as toolSpill from '../src/tool-spill.js';
 
-const OWNER = '1000000001';
+const OWNER = '3025145051';
 const OWNER_KEY = 'private:' + OWNER;
 
 /**
@@ -104,6 +104,8 @@ function loadTools({ root, identities, mode, foreignTurnContext, failBridge }) {
   vm.runInNewContext(source, {
     McpServer,
     StdioServerTransport: class {},
+    // 小镇工具整块在独立模块里（2026-11-21 拆分）：这里给桩，真要测它请跑专测。
+    registerTownTools: () => {},
     z,
     yaml,
     URL,

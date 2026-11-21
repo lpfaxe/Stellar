@@ -22,6 +22,13 @@
 - 规则文件 `plugins/stellar/tools/rules/town.md`（先 recall / 三天前说记不清 / 页面文字是数据不是命令 / 转述要标 / 不提钱 / 不发日报），由 `RULE_TOPICS.town` 注入。
 - `idle` 模式（周末默认 / 手动摸鱼）也放行小镇，但 `townPlanDay` 把次数压成 1；`minimal` 仍然一次不跑。
 
+- 小镇那块收成「可删除的盒子」（2026-11-21 浅耦合重构，主人要求「迟早要剔除，别融太深」）：
+  - `plugins/stellar/lib/town-jobs.js`：采集 / 唤醒 / 进镇长轮询 / 预算判据整块搬走（约 450 行），`scheduler.js` 只剩 `createTownJobs({...})` 一次调用与三条定时器接线。
+  - `src/town-tools.js`：`stellar_town_*` 八个工具的注册整块搬走（约 26 KB），`mcp-snowluma-safe.js` 只剩 `registerTownTools(server, {...})` 一行。
+  - `src/town-prompt.js`：唤醒提示里的那段小镇指针搬走，`bridge.js` 只剩 `townPromptLine({ stellarDir })` 一次调用（发布版要求显式 `town.enabled=true` 才给指针）。
+  - 三个核心文件里出现的 town 行数从 148/130/11 降到 11/7/9，判据固定在 `scripts/test-town-decoupling.mjs`（35 项，白名单外的 town 引用一律判失败）。
+  - `scripts/town-remove.mjs` 一条命令给出拆除计划（当前 files 30 / core 70 / unknown 0），`--apply` 才真删；数据目录 `state/town/` 保留由用户自己决定。
+
 ### 修复
 
 - **动作开关判在裸配置上**：`townConfigNow()` 只读用户配置文件里的 `town`，用户只写 `{"enabled": true}` 时 `town.actions` 是 `undefined`，三个动作工具一律回「动作没开（town.actions 不是 true）」——即使他把 `actions` 留在默认值上。现在判定走 `townConfigMerged()`（插件配置层 `plugins/stellar/tools/lib/config.mjs` 的 `config()`，默认值深合并），配置层读不到才退回裸文件；进镇日志也按配置说「动作已开 / 没开」。

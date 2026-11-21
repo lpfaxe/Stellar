@@ -17,7 +17,10 @@ function ok(cond, label) {
 }
 
 const root = path.join(import.meta.dirname, '..');
-const mcp = fs.readFileSync(path.join(root, 'src', 'mcp-snowluma-safe.js'), 'utf8');
+// 2026-11-21 浅耦合重构：小镇工具整块搬到 src/town-tools.js，mcp 里只剩 registerTownTools 一行。
+// 静态断言因此扫「mcp + town-tools」两段拼起来的全文。
+const mcp = fs.readFileSync(path.join(root, 'src', 'mcp-snowluma-safe.js'), 'utf8')
+  + '\n' + fs.readFileSync(path.join(root, 'src', 'town-tools.js'), 'utf8');
 const client = fs.readFileSync(path.join(root, 'src', 'town-client.js'), 'utf8');
 
 // 1. 工具清单
@@ -108,9 +111,11 @@ ok(/town-budget\.js/.test(mcp) && /town-actions\.js/.test(mcp), '动作依赖预
 // 3.6 判定必须走「带默认值的配置」（2026-11-21 真机踩到：只读裸文件时 actions 是 undefined）
 ok(mcp.includes('async function townConfigMerged('), '动作判定用 townConfigMerged（合并默认值）');
 ok(mcp.includes('const T = await townConfigMerged();'), 'townActionPreflight 等的就是合并后的配置');
-ok(/const file = path\.join\(__dirname, '\.\.', 'plugins', 'stellar', 'tools', 'lib', 'config\.mjs'\)/.test(mcp), '合并走 plugins/stellar/tools/lib/config.mjs');
+ok(/path\.join\((?:__dirname|SRC_DIR), '\.\.', 'plugins', 'stellar', 'tools', 'lib', 'config\.mjs'\)/.test(mcp), '合并走 plugins/stellar/tools/lib/config.mjs');
 ok(/return mod\.config\(\)\?\.town \?\? townConfigNow\(\)/.test(mcp), '配置层读不到才退回裸文件');
-const sched = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'scheduler.js'), 'utf8');
+// 2026-11-21 浅耦合重构：进镇日志随小镇逻辑搬到了 town-jobs.js，scheduler 只剩接线。
+const sched = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'scheduler.js'), 'utf8')
+  + '\n' + fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'town-jobs.js'), 'utf8');
 ok(/\[town\] 已进镇[\s\S]{0,120}动作' \+ \(townCfg\(\)\.actions === true \? '已开' : '没开'\)/.test(sched) || /(townCfg\(\)\.actions === true \? '已开' : '没开')/.test(sched), '进镇日志按配置说「动作已开/没开」而不是写死');
 
 console.log(failed ? '\n❌ 小镇工具契约：' + passed + ' 通过 / ' + failed + ' 失败' : '\n🎉 小镇工具契约：' + passed + ' 项通过');

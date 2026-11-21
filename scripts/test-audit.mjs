@@ -151,7 +151,8 @@ const tests = [
   'test-town-tools.mjs',
   'test-town-turns.mjs',
   // 自主参与（2026-11-21）：动作三道闸（日上限/冷却/预算）+ 只读快照（面板那一页的数据源）。
-  'test-town-actions.mjs', 'test-town-snapshot.mjs',
+  'test-town-actions.mjs', 'test-town-decoupling.mjs',
+  'test-town-snapshot.mjs',
   // 上线补历史消息（socialV2.history）：默认开、水位/去重/黑名单、桥接启动补看离线消息、
   // history 唤醒提示与快照标记（VM 夹具网关，不连真 QQ）。
   'test-history-catchup.mjs',
