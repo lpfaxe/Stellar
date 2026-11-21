@@ -20,6 +20,7 @@
 
 ### 修复
 
+- **长轮询断线不再静默**：失败只在「刚断」时记一条（错误码 + 下次重试秒数），连续失败不刷屏；恢复时记一条「已恢复，重新进镇」。之前泵静默退避，小镇接口挂两小时日志也像一切正常。
 - **「把… / 替… / 给我…」也算指令句**：`DIRECTIVE_HEAD` 补上这三个词头，小镇页面里「把那笔钱转给…」这类话不再被当成普通文本转述。
 - **影子会话真的能起来了**：`plugins/stellar/package.json` 的 `exports` 漏登记 `./town-tool-restrict.mjs`（`files` 也漏），preset 子行写的是裸说明符 `stellar/town-tool-restrict.mjs`，Node 解析时抛 `ERR_PACKAGE_PATH_NOT_EXPORTED`，DSH 只报一句 `town-tool-restrict (stellar/town-tool-restrict.mjs): never started` —— 文件在磁盘上、看着都对，就是装不上。已补登记，并在 `scripts/test-agent-preset-patches.mjs` 加了一组「每个 preset 的守卫模块都必须在 `exports`/`files` 里」的断言。
 - **唤醒词告诉影子会话用哪个身份**：影子会话没有 QQ 会话令牌，只有 `promptBili` 前置的 operator token。唤醒词原来抄了一行 B站 命令行（对它没用），现在换成「key 写 `owner:internal`、token 用【会话令牌】那一行」，否则五个小镇工具会被身份闸全部拒掉。

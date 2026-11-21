@@ -97,6 +97,7 @@ export function createTurnPump({
   let lastOkAt = 0
   let lastError = null
   let turnsSeen = 0
+  let wasDown = false
 
   async function runOnce() {
     const started = now()
@@ -109,6 +110,7 @@ export function createTurnPump({
       connected = true
       lastOkAt = now()
       lastError = null
+      if (wasDown) { wasDown = false; if (log) log('[town] 长轮询已恢复，重新进镇') }
       for (const turn of turns) {
         turnsSeen += 1
         if (!onTurn) continue
@@ -125,7 +127,12 @@ export function createTurnPump({
       const retryAfter = Number(err && err.retryAfter) || 0
       const exp = baseBackoffMs * Math.pow(2, Math.min(errors - 1, 8))
       backoff = Math.min(maxBackoffMs, Math.max(exp, retryAfter > 0 ? retryAfter * 1000 : 0))
-      return { ok: false, turns: [], ms: now() - started, backoffMs: backoff, code: (err && err.code) || 'error' }
+      const code = (err && err.code) || 'error'
+      if (!wasDown) {
+        wasDown = true
+        if (log) log('[town] 长轮询断了（' + code + '）：' + lastError + '；' + Math.round(backoff / 1000) + ' 秒后重试（这段她不算进镇）')
+      }
+      return { ok: false, turns: [], ms: now() - started, backoffMs: backoff, code }
     }
   }
 

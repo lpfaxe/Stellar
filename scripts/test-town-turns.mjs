@@ -201,5 +201,42 @@ await check('enabled() 为假时不发请求', async () => {
   assert.equal(reads, 0);
 });
 
+console.log('\n## 9. 断线与恢复：日志只记状态变化，不刷屏');
+await check('第一次失败记一条「断了」，连续失败不重复，恢复时记一条「已恢复」', async () => {
+  const logs = [];
+  let mode = 'fail';
+  const client = {
+    async read() {
+      if (mode === 'fail') { const e = new Error('502 Bad Gateway'); e.code = 'http_502'; throw e; }
+      return { turns: [] };
+    },
+  };
+  const pump = createTurnPump({ client, log: (m) => logs.push(m), now: () => NOW });
+  const r1 = await pump.runOnce();
+  assert.equal(r1.ok, false);
+  assert.equal(r1.backoffMs, TURNS_BACKOFF_MIN_MS);
+  const down = logs.filter((l) => l.includes('长轮询断了'));
+  assert.equal(down.length, 1, '第一次失败该记一条，实际 ' + JSON.stringify(logs));
+  assert.match(down[0], /http_502/);
+  assert.match(down[0], /2 秒后重试/);
+  await pump.runOnce();
+  await pump.runOnce();
+  assert.equal(logs.filter((l) => l.includes('长轮询断了')).length, 1, '连续失败不该重复刷日志');
+  mode = 'ok';
+  assert.equal((await pump.runOnce()).ok, true);
+  assert.equal(logs.filter((l) => l.includes('已恢复')).length, 1, '恢复该记一条');
+  await pump.runOnce();
+  assert.equal(logs.filter((l) => l.includes('已恢复')).length, 1, '恢复了就别反复说');
+  assert.equal(pump.stats().connected, true);
+});
+
+await check('没传 log 时静默退避，不抛', async () => {
+  const client = { async read() { throw new Error('boom'); } };
+  const pump = createTurnPump({ client, now: () => NOW });
+  const r = await pump.runOnce();
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'error');
+});
+
 console.log('\n' + (fail ? '❌ ' + fail + ' 失败 / ' + (pass + fail) + ' 条' : '✅ 全部通过 ' + pass + '/' + (pass + fail)));
 process.exit(fail ? 1 : 0);
