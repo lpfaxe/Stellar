@@ -28,14 +28,23 @@ export function emptyActionState(today) {
   return { date: String(today || ''), list: [] };
 }
 
-/** 读账本；跨天自动重置。文件坏了就当空账本（不阻止她今天动一次，但会覆盖写回）。 */
+/**
+ * 读账本；跨天自动重置。
+ *
+ * 文件不存在 = 今天还没动过（空账本，正常）。
+ * 文件存在但读坏 = 带 corrupt 标记的空账本：**额度不知道，就不能算没用过**
+ * （2026-11-21 安全审计 S4：原来按空账本处理等于 fail-open，账本一坏限额就消失）。
+ */
 export function readActionState(file, { today = '' } = {}) {
   const day = String(today || '');
   let raw = null;
-  try { raw = fs.readFileSync(file, 'utf8'); } catch { return emptyActionState(day); }
+  try { raw = fs.readFileSync(file, 'utf8'); } catch (error) {
+    if (error && error.code === 'ENOENT') return emptyActionState(day);
+    return { ...emptyActionState(day), corrupt: true };
+  }
   let parsed = null;
-  try { parsed = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch { return emptyActionState(day); }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return emptyActionState(day);
+  try { parsed = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch { return { ...emptyActionState(day), corrupt: true }; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ...emptyActionState(day), corrupt: true };
   const date = String(parsed.date || '');
   const list = Array.isArray(parsed.list) ? parsed.list.filter((x) => x && Number.isFinite(Number(x.at))) : [];
   // 日期对不上 = 新的一天（或时钟被改），旧记录不参与今天的额度。
@@ -66,9 +75,16 @@ export function listActionsToday(state, today = '') {
 
 /**
  * 动作前的三道闸。返回 { ok:true } 或 { ok:false, code, reason }。
- * code: 'bad_action' | 'budget' | 'cap' | 'gap'
+ * code: 'state' | 'bad_action' | 'budget' | 'cap' | 'gap'
  */
 export function actionGate({ state, today = '', now = Date.now(), cap = DEFAULT_ACTION_DAILY_MAX, minGapMin = DEFAULT_ACTION_MIN_GAP_MIN, budget = null } = {}) {
+  if (state && state.corrupt) {
+    return {
+      ok: false,
+      code: 'state',
+      reason: '动作账本读不出来（state/town/actions.json 坏了），今天用了多少不知道，先不动手。修好或删掉这份账本再说。'
+    };
+  }
   const todayList = listActionsToday(state, today);
   if (budget && budget.blocked) {
     return {
@@ -93,17 +109,45 @@ export function actionGate({ state, today = '', now = Date.now(), cap = DEFAULT_
   return { ok: true };
 }
 
-/** 记一笔动作。返回新账本（不落盘）。 */
+/**
+ * 记一笔动作。返回新账本（不落盘）。
+ *
+ * entry.pending === true 表示「先占住一个名额，结果还没回来」：动作要联网，
+ * 预检到落账之间有几秒空窗，不先占名额的话连点几次就都能过闸（2026-11-21 审计 S4）。
+ * 结果回来用 settleAction 改这一笔。
+ */
 export function appendAction(state, entry, { today = '' } = {}) {
   const day = String(today || (state && state.date) || '');
   const base = state && String(state.date || '') === day ? state : emptyActionState(day);
   const list = Array.isArray(base.list) ? base.list.slice() : [];
-  list.push({
+  const item = {
     at: Number(entry && entry.at) || Date.now(),
     type: String((entry && entry.type) || ''),
     target: String((entry && entry.target) || '').slice(0, 60),
     ok: entry && entry.ok === false ? false : true,
     note: String((entry && entry.note) || '').slice(0, 120)
+  };
+  if (entry && entry.pending === true) item.pending = true;
+  list.push(item);
+  return { date: day, list };
+}
+
+/** 把先占住的那一笔改成结果（按 at 精确匹配；找不到就原样返回）。 */
+export function settleAction(state, at, patch = {}, { today = '' } = {}) {
+  const day = String(today || (state && state.date) || '');
+  const base = state && String(state.date || '') === day ? state : emptyActionState(day);
+  const want = Number(at);
+  const list = (Array.isArray(base.list) ? base.list : []).map((item) => {
+    if (Number(item && item.at) !== want) return item;
+    const next = {
+      ...item,
+      ok: patch.ok === false ? false : true,
+      type: String(patch.type != null ? patch.type : item.type || '').slice(0, 20),
+      target: String(patch.target != null ? patch.target : item.target || '').slice(0, 60),
+      note: String(patch.note != null ? patch.note : '').slice(0, 120)
+    };
+    delete next.pending;
+    return next;
   });
   return { date: day, list };
 }

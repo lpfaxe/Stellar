@@ -128,6 +128,38 @@ export function pluginTakesTurns(settings, fishId = '') {
   return Boolean(String(fish.code || '').trim());
 }
 
+/** 备份留几份：这份文件里有小镇访问码，备份越多、留在盘上的副本越多。 */
+export const PLUGIN_BACKUP_KEEP = 3;
+
+/**
+ * 清掉同名备份里最旧的几份（2026-11-21 安全审计 S3）。
+ *
+ * settings.json 里存着 fbo_ 访问码；每改一次人设就 copyFileSync 一份备份，
+ * 而备份**永远不会被谁清理** —— 本机已经躺着 4 份，等于访问码在盘上有 4 个副本。
+ * 只留最近 N 份，够回滚，也不至于越攒越多。失败不抛错（备份清理不该阻塞写盘）。
+ */
+export function prunePluginBackups(file, { keep = PLUGIN_BACKUP_KEEP } = {}) {
+  const dir = path.dirname(file);
+  const base = path.basename(file);
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { return { removed: [] }; }
+  const cands = [];
+  for (const name of names) {
+    if (name === base || !name.startsWith(base + '.bak')) continue;
+    const full = path.join(dir, name);
+    let st = null;
+    try { st = fs.statSync(full); } catch { continue; }
+    if (st.isFile()) cands.push({ full, mtime: st.mtimeMs });
+  }
+  cands.sort((a, b) => b.mtime - a.mtime);
+  const limit = Math.max(0, Number(keep) || 0);
+  const removed = [];
+  for (const item of cands.slice(limit)) {
+    try { fs.unlinkSync(item.full); removed.push(item.full); } catch { /* 留给下次 */ }
+  }
+  return { removed };
+}
+
 /**
  * 写回插件设置：读-改-写，未知键原样保留，先备份再原子替换。
  * mutate(settings) 直接改传进去的对象；返回 {file, changed, backup}。
@@ -147,6 +179,7 @@ export function writePluginSettings(dshHome, mutate, { now = Date.now() } = {}) 
   const tmp = file + '.tmp-' + process.pid + '-' + Date.now();
   fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', 'utf8');
   fs.renameSync(tmp, file);
+  prunePluginBackups(file);
   return { file, changed: true, backup };
 }
 

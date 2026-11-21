@@ -988,15 +988,17 @@ server.listen(PORT, HOST, () => {
   console.log('    她的世界 · QQ / B站 / 空间 / 守护')
   console.log('')
   console.log('Stellar 控制台: ' + local)
+  // 口令一律不打印（2026-11-21 安全审计 S10）：console 会被重定向进 panel.log，
+  // 而 panel.log 的 ACL 不由本程序控制，同机别的账户可能读得到（PITFALLS #208）。
+  // 需要口令时读 panel-token.txt，或在面板「手机访问」里点复制链接生成一次性登录码。
   // 只听本机时，局域网地址没意义（别的设备连不上），所以不打印。
   const loopbackOnly = ['127.0.0.1', 'localhost', '::1'].includes(String(HOST))
   if (!loopbackOnly) {
-    for (const u of lan) console.log('手机访问: ' + u + '  口令: ' + currentToken())
-    console.log('手机口令: ' + currentToken() + '（在面板「手机访问」里点复制链接生成 5 分钟有效的一次性登录码）')
+    for (const u of lan) console.log('手机访问: ' + u + '（口令见 panel-token.txt，或在面板里点复制登录链接）')
   } else {
     console.log('只监听本机（127.0.0.1）。想让同一 WiFi 的手机连，设 STELLAR_PANEL_HOST=0.0.0.0 再启动。')
   }
-  console.log('本机入口（免输入口令）: ' + local + '/?code=' + currentToken())
+  console.log('本机入口: ' + local + '（快捷方式里带 ?code=<panel-token.txt 里的口令>）')
   // 不要把口令写进日志：panel.log 的 ACL 不受这里控制，同机别的账户可能读得到（PITFALLS #208）
   logLine('panel started on ' + PORT + ' host=' + HOST + ' lan=' + lan.join(','))
   resumeRestartPolling()

@@ -65,6 +65,10 @@ export const SENSITIVE_BASENAMES = new Set([
   'panel-sessions.json',
   // Cloudflare 命名隧道 token = 直接能把隧道带到你账号里的凭据（2026-11-13）
   'cloudflare-tunnel-token.txt',
+  // 小镇插件设置：fish[].code 就是 fbo_ 访问码（谁拿到就能以她的身份进镇花钱）
+  'settings.json',
+  // 小镇记忆库：镇上谁来过、她说过什么，别人读到就是读她的私事
+  'town.db',
 ]);
 
 /** 这个路径是不是需要写完收紧的敏感文件。 */

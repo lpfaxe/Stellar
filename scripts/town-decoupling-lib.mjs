@@ -94,11 +94,39 @@ export const CORE_TOWN_ALLOW = {
 
 // 控制台（发布树里的 stellar-manager 副本）：只允许路由挂载与开关那几行
 // 白名单本身就是「谁能用这份插件」的声明，前缀必须原样写在这里；只允许这两行。
+// 2026-11-21 安全审计 S1 之后，这里从「整前缀放行」变成「逐名放行只读五件 + 其余 fail-closed」，
+// 所以白名单本身也要认领新写的那些行（工具名清单、守卫分支、注释）。
 CORE_TOWN_ALLOW['plugins/stellar/qq-tool-restrict.mjs'] = [
-  "'fishbowl_town_',",
-  'fishbowl_town_)/i'
+  'FISHBOWL_READONLY_TOOLS',
+  'FISHBOWL_BLOCKED_TOOLS',
+  'FISHBOWL_READONLY',
+  'FISHBOWL_BLOCKED',
+  "name.startsWith('fishbowl_town_')",
+  'fishbowl_town_)/i',
+  'fishbowl_town_',
+  'fishbowl-town',
+  'stellar_town_',   // 拒绝时提示「改用我们自己的动作工具」
+  '小镇'
 ];
-CORE_TOWN_ALLOW['scripts/test-preset-local-tools.mjs'] = ["'fishbowl_town_',"];
+CORE_TOWN_ALLOW['scripts/test-preset-local-tools.mjs'] = [
+  'FISHBOWL_READONLY',
+  'fishbowl_town_',
+  '小镇'
+];
+// 敏感文件白名单里多了两项（插件设置含 fbo_、town.db 是她的私事）：只认领这两行与注释。
+CORE_TOWN_ALLOW['src/state-acl.mjs'] = [
+  "'settings.json',",
+  "'town.db',",
+  '小镇插件设置',
+  '小镇记忆库'
+];
+
+// 敏感文件白名单的测试：town.db 只是被测的路径样本，不是小镇逻辑
+CORE_TOWN_ALLOW['scripts/test-sensitive-acl-hardening.mjs'] = [
+  'town.db 是她在镇上的私事',
+  "'town.db'",
+  "state/town/town.db"
+];
 
 CORE_TOWN_ALLOW['stellar-manager/server.mjs'] = [
   "import { buildTown } from './lib/town.js'",

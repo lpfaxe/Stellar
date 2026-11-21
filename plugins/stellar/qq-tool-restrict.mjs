@@ -239,7 +239,7 @@ export const SCHEMA_SLIM_TOOL_NAMES = Object.freeze([...SCHEMA_SLIM_GLOBAL_TOOLS
 /** restrict 实际下发的全部名字（危险名单 + 精简名单 + 未进群时的群聊工具，去重）。 */
 function restrictAll() {
   const slim = groupModeEnabled() ? SCHEMA_SLIM_GLOBAL_TOOLS : [...SCHEMA_SLIM_GLOBAL_TOOLS, ...GROUP_GLOBAL_TOOLS]
-  return [...new Set([...KNOWN_DANGEROUS_GLOBAL_TOOLS, ...slim])]
+  return [...new Set([...KNOWN_DANGEROUS_GLOBAL_TOOLS, ...slim, ...FISHBOWL_BLOCKED_TOOLS])]
 }
 
 // 供 test-preset-local-tools.mjs 导入并与 DSH 真实工具名对账，避免两份名单漂移。
@@ -251,12 +251,41 @@ const SAFE_PREFIXES = [
   'mcp__snowluma__',
   'mcp__snowluma-host__',
   'mcp__web-search-safe__',
-  // 2026-11-21 主人要求放开第三方插件注册的全局工具（下一行那个前缀，不带 MCP 命名空间）：
-  // 「Fugu 是她玩的游戏角色」，进不进、玩不玩由她自己定。不放行时她只会看到
-  // 「工具不在白名单内」，以为小镇坏了（PITFALLS #281）。
-  // 边界不在这一层：钱由插件侧的每天 1 元上限挡，出站红线写在插件人设与对应 rules 文件里。
-  'fishbowl_town_',
 ]
+
+/**
+ * 第三方小镇插件（dsh-fishbowl-town）注册的全局工具，名字不带 MCP 命名空间。
+ *
+ * 2026-11-21 安全审计：整前缀放行等于把 13 个**没有 owner 校验**的工具递给她——
+ * 其中 setup 能持久改写人设、重绑接入码、把任意会话（含群）设成她的「家」；
+ * owner 能替主人提交恋爱同意；phone 能给别的玩家发任意文本；go/play/visit/place
+ * 都能花钱。而镇上的文字（昵称、招牌、留言）本来就可能带着指令，两者叠起来就是一条
+ * 数据→指令→代主人办事的链（HANDOFF-Stellar-security-token-2026-11-21.md 的 S1）。
+ *
+ * 所以这里**按名字放行只读的四件**（本机只读接口），写类一律拒绝：
+ * 她自己要动手，走我们自己的 stellar_town_visit / _play / _goto——那三个每个都有
+ * ownerOnlyError + 动作开关 + 日预算三道闸。第三方插件自己的回合（答题）不吃这层白名单，
+ * 因为它在插件的会话里跑，不经过 QQ preset。
+ */
+const FISHBOWL_READONLY_TOOLS = Object.freeze([
+  'fishbowl_town_recent',   // 读她的日记本与小镇此刻状态
+  'fishbowl_town_look',     // 读大厅：有哪些桌、哪些活动、哪些地方
+  'fishbowl_town_album',    // 读相册
+  'fishbowl_town_chats',    // 读聊天记录
+  'fishbowl_town_rules',    // 读小镇规则
+])
+
+/** 明确拒绝的小镇写工具（schema 里也一并藏起来，避免模型反复尝试）。 */
+const FISHBOWL_BLOCKED_TOOLS = Object.freeze([
+  'fishbowl_town_setup',    // 改人设 / 重绑接入码 / 搬会话
+  'fishbowl_town_go',       // 让小镇立刻给她一个回合
+  'fishbowl_town_play',     // 坐下开一局（花钱）
+  'fishbowl_town_visit',    // 去串门（花钱）
+  'fishbowl_town_place',    // 去码头/电玩城（花钱）
+  'fishbowl_town_friends',  // 为朋友做点什么（花主人钱）
+  'fishbowl_town_owner',    // 替主人提交同意/分手
+  'fishbowl_town_phone',    // 给别的玩家发任意文本
+])
 
 // 无害模型侧工具：ask_user_question 用于把问题转给管理员/用户，
 // todo_write 仅维护任务列表。若后续 preset 不再挂载这些工具，保留无害。
@@ -277,6 +306,8 @@ const SAFE_EXACT = new Set([
   // 注意：read_image 不能放——它在 LOCAL_EXECUTION_TOOLS 里（能读任意本地文件）。
   // 画完要让主人看到，用 qq_send_image 发到聊天、stellar_qzone_post 发空间。
   'image_generate',
+  // 小镇插件的只读工具：只读接口，不含花钱/改设置/对外发送（写类见 FISHBOWL_BLOCKED_TOOLS）。
+  ...FISHBOWL_READONLY_TOOLS,
 ])
 
 // 对外写操作：紧急停止时一律拒绝（读工具不受影响）。
@@ -332,6 +363,8 @@ function imageBudgetGuard(now = Date.now()) {
 // 给「插件兼容性体检」读取的只读快照：不要在别处再抄一份白名单。
 export const SAFE_EXACT_TOOLS = Object.freeze([...SAFE_EXACT])
 export const SAFE_TOOL_PREFIXES = Object.freeze([...SAFE_PREFIXES])
+export const FISHBOWL_READONLY = Object.freeze([...FISHBOWL_READONLY_TOOLS])
+export const FISHBOWL_BLOCKED = Object.freeze([...FISHBOWL_BLOCKED_TOOLS])
 
 export function apply(ctx) {
   // 1) 把已知危险全局工具从 schema 隐藏（restrict 只影响继承的全局层，
@@ -443,6 +476,12 @@ export function apply(ctx) {
       // 2026-11-11 主人：开放生图，不再请示管理员；只剩每日 3 张的硬闸。
       if (name === 'image_generate') return imageBudgetGuard()
       return
+    }
+    // 小镇插件的工具：逐名放行只读五件；其余（含未来新加的）一律 fail-closed。
+    if (name.startsWith('fishbowl_town_')) {
+      if (FISHBOWL_READONLY_TOOLS.includes(name)) return
+      return `小镇工具 "${name}" 不在 QQ 会话的白名单内。要看小镇用 fishbowl_town_recent / fishbowl_town_look；`
+        + '想坐下打一局或去串门，用 stellar_town_play / stellar_town_visit / stellar_town_goto（那三个会校验主人身份并计账）。'
     }
     if (SAFE_PREFIXES.some((prefix) => name.startsWith(prefix))) {
       // 紧急停止：停掉一切对外发言/发帖，只保留读工具

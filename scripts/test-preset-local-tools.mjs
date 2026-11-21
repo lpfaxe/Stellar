@@ -112,8 +112,18 @@ const EXPECTED_SAFE_PREFIXES = [
   'mcp__snowluma__',
   'mcp__snowluma-host__',
   'mcp__web-search-safe__',
-  // 第三方小镇插件的全局工具（不带 MCP 前缀，2026-11-21 主人放开）
-  'fishbowl_town_',
+  // 第三方小镇插件的工具**不再整前缀放行**（2026-11-21 安全审计 S1）：
+  // 那 13 个工具里 setup/owner/phone/play 能干「改人设、替主人同意、对外发文本、花钱」，
+  // 而 QQ 会话里没有任何主人校验。现在逐名放行只读五件，其余 fail-closed（见下面单独的断言）。
+];
+
+/** 插件侧允许她在 QQ 会话里用的只读工具（与 qq-tool-restrict.mjs 的导出保持一致）。 */
+const FISHBOWL_READONLY = [
+  'fishbowl_town_recent',
+  'fishbowl_town_look',
+  'fishbowl_town_album',
+  'fishbowl_town_chats',
+  'fishbowl_town_rules',
 ];
 
 function readPreset(id) {
@@ -275,6 +285,18 @@ test('守卫仍放行 QQ MCP 命名空间与无害模型侧工具', async () => 
     }
     for (const name of ['ask_user_question', 'todo_write']) {
       assert.equal(fakeTools._guard({ name }), undefined, `${id}: ${name} 应放行`);
+    }
+    // 小镇插件的只读五件放行；写类与**将来新加的**一律拒（S1：整前缀放行过宽）。
+    for (const name of FISHBOWL_READONLY) {
+      assert.equal(fakeTools._guard({ name }), undefined, `${id}: 只读工具 ${name} 应放行`);
+    }
+    for (const name of [
+      'fishbowl_town_setup', 'fishbowl_town_owner', 'fishbowl_town_phone',
+      'fishbowl_town_play', 'fishbowl_town_visit', 'fishbowl_town_place',
+      'fishbowl_town_go', 'fishbowl_town_friends', 'fishbowl_town_some_new_tool',
+    ]) {
+      assert.ok(typeof fakeTools._guard({ name }) === 'string',
+        `${id}: 小镇写类工具 ${name} 必须被拒绝（fail-closed）`);
     }
     // 未知工具名必须 fail-closed。
     for (const name of ['', null, undefined, 'mcp__unknown__x', 'totally_new_tool']) {

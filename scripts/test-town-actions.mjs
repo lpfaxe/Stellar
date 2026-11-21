@@ -15,7 +15,7 @@ import {
 import {
   TOWN_ACTIONS, DEFAULT_ACTION_DAILY_MAX, DEFAULT_ACTION_MIN_GAP_MIN, actionStatePath,
   emptyActionState, readActionState, writeActionState, listActionsToday, actionGate, appendAction,
-  summarizeActions,
+  settleAction, summarizeActions,
 } from '../src/town-actions.js';
 
 let pass = 0, fail = 0;
@@ -151,6 +151,33 @@ await check('摘要：没动过 / 动过几次都说得出来', () => {
 await check('listActionsToday 按时间正序', () => {
   const s = { date: day, list: [{ at: 30, type: 'goto' }, { at: 10, type: 'visit' }, { at: 20, type: 'play' }] };
   assert.deepEqual(listActionsToday(s, day).map((x) => x.type), ['visit', 'play', 'goto']);
+});
+
+await check('账本坏了就 fail-closed：先占名额，不能当没用过（S4）', () => {
+  const file = path.join(TMP, 'corrupt.json');
+  fs.writeFileSync(file, '{not json', 'utf8');
+  const s = readActionState(file, { today: day });
+  assert.equal(s.corrupt, true);
+  const gate = actionGate({ state: s, today: day, cap: 3, minGapMin: 0 });
+  assert.equal(gate.ok, false);
+  assert.equal(gate.code, 'state');
+  assert.match(gate.reason, /账本/);
+  // 文件不存在 ≠ 坏：今天还没动过是正常的。
+  const empty = readActionState(path.join(TMP, 'nope.json'), { today: day });
+  assert.equal(empty.corrupt, undefined);
+  assert.equal(actionGate({ state: empty, today: day, cap: 3, minGapMin: 0 }).ok, true);
+});
+
+await check('先占名额再联网：pending 也算次数，结果回来改成终态', () => {
+  let s = emptyActionState(day);
+  s = appendAction(s, { at: 100, type: 'visit', target: '鱼丸·柚', pending: true, note: '进行中' }, { today: day });
+  assert.equal(s.list[0].pending, true);
+  const blocked = actionGate({ state: s, today: day, cap: 1, minGapMin: 0 });
+  assert.equal(blocked.code, 'cap', '占名额的那一笔必须算进次数');
+  s = settleAction(s, 100, { ok: false, type: 'visit', target: '鱼丸·柚', note: '对方不在家' }, { today: day });
+  assert.equal(s.list[0].pending, undefined);
+  assert.equal(s.list[0].ok, false);
+  assert.equal(s.list[0].note, '对方不在家');
 });
 
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}

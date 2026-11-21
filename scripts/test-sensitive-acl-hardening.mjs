@@ -81,11 +81,15 @@ test('resolveAclUser 在环境变量缺失时回退到 os.userInfo（DSH 子进�
 test('敏感文件白名单就这几个名字，且大小写不敏感', () => {
   // 2026-11-13 加第 4 项：cloudflare-tunnel-token.txt 是能把隧道带进账号的凭据
   // 2026-11-16 加第 5 项：panel-sessions.json 里是面板会话 sid（读到就能冒充已登录）
-  assert.deepEqual([...SENSITIVE_BASENAMES].sort(), ['bili.config.json', 'cloudflare-tunnel-token.txt', 'config.json', 'panel-sessions.json', 'panel-token.txt']);
+  // 2026-11-21 加第 6/7 项（安全审计 S11）：小镇插件的 settings.json 里有 fbo_ 访问码，
+  // town.db 是她在镇上的私事（谁来过、说过什么）——两者都只该当前账户能读。
+  assert.deepEqual([...SENSITIVE_BASENAMES].sort(), ['bili.config.json', 'cloudflare-tunnel-token.txt', 'config.json', 'panel-sessions.json', 'panel-token.txt', 'settings.json', 'town.db']);
   assert.equal(isSensitiveFile('C:\\x\\config.json'), true);
   assert.equal(isSensitiveFile('C:/x/PANEL-TOKEN.TXT'), true);
   assert.equal(isSensitiveFile('C:/x/bili.config.json'), true);
   assert.equal(isSensitiveFile('C:/x/Cloudflare-Tunnel-Token.txt'), true);
+  assert.equal(isSensitiveFile('C:/x/settings.json'), true);
+  assert.equal(isSensitiveFile('C:/x/state/town/town.db'), true);
   assert.equal(isSensitiveFile('C:/x/notes.json'), false);
   assert.equal(isSensitiveFile('C:/x/config.json.bak'), false);
   assert.equal(isSensitiveFile(''), false);

@@ -11,6 +11,7 @@ import path from 'node:path';
 import {
   PLUGIN_ID, PERSONA_MAX_CHARS, pluginSettingsPath, detectPlugin, findPluginInstall,
   pluginFishList, pluginFish, pluginTakesTurns, writePluginSettings, setPluginEnabled,
+  prunePluginBackups, PLUGIN_BACKUP_KEEP,
   roleSections, deriveTownPersona, roleNameFromFile, syncPersona, pluginStatus,
 } from '../src/town-plugin.js';
 import { parseArgs, defaultDshHome, resolveRoleFile } from './town-plugin-sync.mjs';
@@ -297,6 +298,21 @@ await check('pluginStatus 汇总面板要看的那几个数', () => {
   assert.equal(st.personaChars, 30);
   assert.equal(st.takesTurns, true);
   assert.equal(/fbo_/.test(JSON.stringify(st)), false, '状态里不许有访问码');
+});
+
+await check('插件设置的备份只留最近几份（S3：每份都含 fbo_ 访问码）', () => {
+  writeSettings({ fish: [{ id: 'whale', code: 'fbo_secret_code_123456', persona: 'p'.repeat(20), enabled: true }] });
+  const file = pluginSettingsPath(home);
+  assert.equal(fs.existsSync(file), true);
+  for (let i = 0; i < 6; i += 1) {
+    writePluginSettings(home, (s) => { s.fish[0].persona = 'p'.repeat(20 + i); }, { now: Date.now() + i * 1000 });
+  }
+  const backups = fs.readdirSync(path.dirname(file)).filter((n) => n.startsWith('settings.json.bak'));
+  assert.ok(backups.length <= PLUGIN_BACKUP_KEEP, '备份最多 ' + PLUGIN_BACKUP_KEEP + ' 份，实际 ' + backups.length);
+  const res = prunePluginBackups(file, { keep: 1 });
+  assert.equal(res.removed.length >= 1, backups.length > 1);
+  const left = fs.readdirSync(path.dirname(file)).filter((n) => n.startsWith('settings.json.bak'));
+  assert.equal(left.length <= 1, true);
 });
 
 await check('PERSONA_MAX_CHARS 是 800（插件每步都带它，别越写越长）', () => {

@@ -139,6 +139,7 @@ ok(/\[town\] 已进镇[\s\S]{0,120}动作' \+ \(townCfg\(\)\.actions === true \?
     const text = (res && res.content ? res.content : []).map((c) => c.text || '').join('');
     ok(text.length > 0, 'stellar_town_recall 真调一次不抛（返回 ' + text.length + ' 字）');
     const status = handlers.get('stellar_town_status');
+    // 不联网也要能进到「读设置」这一步：没有访问码时必须给一句人话，不能是 ReferenceError。
     const res2 = status ? await status({}) : null;
     const text2 = (res2 && res2.content ? res2.content : []).map((c) => c.text || '').join('');
     ok(text2.length > 0, 'stellar_town_status 在没有访问码时也返回人话（' + text2.length + ' 字）');
@@ -154,6 +155,16 @@ ok(/\[town\] 已进镇[\s\S]{0,120}动作' \+ \(townCfg\(\)\.actions === true \?
     try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch {}
   }
 }
+
+// 3.8 安全审计（2026-11-21 S1/S2/S4/S5）的落点
+ok(mcp.includes('function townDataText(') && mcp.includes('<town_data untrusted>'), '小镇数据包成 <town_data untrusted> 块');
+ok(/return TOWN_TOOL_NOTE +/.test(mcp), '提示在数据**前面**（不是事后补一句）');
+ok(!/townBrief\(data\)[\s\S]{0,40}TOWN_TOOL_NOTE/.test(mcp), '没有「先给数据再补提示」的残留写法');
+ok(mcp.includes('async function townActionReserve(') && mcp.includes('pending: true'), '动作用前先占名额（防预检→落账的 TOCTOU）');
+ok(mcp.includes('TOWN_RESERVE_FAILED') && /if \(!\(await townActionReserve\(ctx/.test(mcp), '记不上账就不动手');
+ok(mcp.includes('ctx.acts.settleAction'), '结果回来改成成功/失败，而不是再记一笔');
+ok(mcp.includes("guard.json") && mcp.includes("rec.code === 'daily'"), '动作前读本地熔断记录（镇里真钱，S5）');
+ok(mcp.includes('node:fs'), 'fs 真的 import 了（S13：以前用了没 import）');
 
 console.log(failed ? '\n❌ 小镇工具契约：' + passed + ' 通过 / ' + failed + ' 失败' : '\n🎉 小镇工具契约：' + passed + ' 项通过');
 process.exit(failed ? 1 : 0);
