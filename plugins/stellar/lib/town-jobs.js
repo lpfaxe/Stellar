@@ -35,13 +35,14 @@ export function createTownJobs(deps = {}) {
   /** 小镇相关模块按需加载：town-store 依赖 node:sqlite，不能被插件静态 import 连带拖死。 */
   async function townRuntime() {
     if (townRuntimeCache) return townRuntimeCache
-    const [clientMod, storeMod, collectMod, pureMod, turnsMod, snapMod] = await Promise.all([
+    const [clientMod, storeMod, collectMod, pureMod, turnsMod, snapMod, pluginMod] = await Promise.all([
       import('../../../src/town-client.js'),
       import('../../../src/town-store.js'),
       import('../../../src/town-collector.js'),
       import('../../../src/town-memory-pure.js'),
       import('../../../src/town-turns.js'),
       import('../../../src/town-snapshot.js'),
+      import('../../../src/town-plugin.js'),
     ])
     townRuntimeCache = {
       readTownSettings: clientMod.readTownSettings,
@@ -54,6 +55,7 @@ export function createTownJobs(deps = {}) {
       createTurnPump: turnsMod.createTurnPump,
       turnNote: turnsMod.turnNote,
       writeTownSnapshot: snapMod.writeTownSnapshot,
+      pluginStatus: pluginMod.pluginStatus,
       dayKey: pureMod.dayKey,
     }
     return townRuntimeCache
@@ -61,6 +63,27 @@ export function createTownJobs(deps = {}) {
 
   function townCfg() {
     try { return config().town ?? {} } catch { return {} }
+  }
+
+  // ── 官方插件在场时让位（2026-11-21）─────────────────────────────────────────
+  //   装了 dsh-fishbowl-town、其中一条鱼开着且有接入码，就由它挂长轮询答题。
+  //   同一接入码只允许一个长轮询（新的会顶掉旧的），所以我们的泵必须停；
+  //   唤醒/动作也一起停 —— 否则一个局面两边各动一次。只读采集照旧（我们不写小镇）。
+  //   只查文件系统，不 import 插件：它随时可以被整个剔掉。
+  let townPluginCacheAt = 0
+  let townPluginCache = false
+  let townPluginYieldLogged = false
+  function townPluginActive() {
+    if (townPluginCacheAt && Date.now() - townPluginCacheAt < 60_000) return townPluginCache
+    townPluginCacheAt = Date.now()
+    try {
+      const mod = townRuntimeCache
+      const status = mod && mod.pluginStatus ? mod.pluginStatus({ dshHome, fishId: townCfg().fishId }) : null
+      townPluginCache = Boolean(status && status.installed && status.takesTurns)
+    } catch {
+      townPluginCache = false
+    }
+    return townPluginCache
   }
 
   /** 读登记鱼 + 造客户端；没有码（或鱼被禁用）回 null —— 绝不偷换别的鱼、绝不报错叫醒。 */
@@ -193,6 +216,7 @@ export function createTownJobs(deps = {}) {
           actionsFile: path.join(TOWN_DIR, 'actions.json'),
           townConfig: T,
           pump: townPump ? townPump.stats() : null, // stats 是函数，不是属性（2026-11-21 修）
+          plugin: mod.pluginStatus ? mod.pluginStatus({ dshHome, fishId: T.fishId }) : null,
           log,
         })
       } catch (error) {
@@ -359,6 +383,13 @@ export function createTownJobs(deps = {}) {
     const T = townCfg()
     const W = T.turns ?? {}
     if (T.enabled !== true || W.enabled !== true) return null
+    if (townPluginActive()) {
+      if (!townPluginYieldLogged) {
+        townPluginYieldLogged = true
+        log('[town] 官方插件在答题（它自己挂着长轮询），我们的 /turns 泵让位，只做只读采集')
+      }
+      return null
+    }
     if (townPump) return townPump
     const made = await townClientNow()
     if (!made) {
@@ -400,6 +431,8 @@ export function createTownJobs(deps = {}) {
     const T = townCfg()
     // 默认关：只有配置里明确写了 town.enabled=true 才动（发布版缺省就是 false）。
     if (T.enabled !== true) return
+    // 官方插件在答题时不再叫醒影子会话：同一个局面不该两边各动一次。
+    if (townPluginActive()) return
     if (!ctx.sessionController) return
     let made = null
     try { made = await townClientNow() } catch (error) { log('[town] 读登记鱼失败：' + redactTownText(error).slice(0, 120)); return }

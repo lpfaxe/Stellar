@@ -51,6 +51,15 @@
 - **QQ 链路零改动**：唤醒提示只在启用时多一行指针，不注入小镇正文。
 - 测试：新增 9 个 `test-town-*.mjs`（`test-town-actions.mjs` 16 条：三道闸 / 跨天重置 / 坏文件 / `town.cost` 真被读到；`test-town-snapshot.mjs` 7 条：打码 / 缺块不抛 / 502 留旧快照），已登记进 `scripts/test-audit.mjs`。
 
+- **官方插件在场时我们让位**（2026-11-21）。小镇的牌局回合是 25 秒硬时限，我们的唤醒链赶不上，
+  官方 `dsh-fishbowl-town` 专门干这活。新增 `src/town-plugin.js`（只读它的 settings 与 profiles，不 import 它）：
+  插件在答题时我们不挂 `/turns` 泵、不叫醒影子会话、动作工具直接拒绝，只留只读采集/快照/面板/`stellar_town_recall`。
+  人设**不手写**：`scripts/town-plugin-sync.mjs` 从 `roles/*.md` 派生 `persona`（只用「你是谁」+「说话方式」，
+  去掉群聊与工具相关的句子），只改这一个字段，写前备份、原子替换，`--check` 可挂门禁。
+  面板「进小镇」开关改成一次写两处（我们的 `town.enabled` + 插件那条鱼的 `enabled`），并显示「答题：官方插件 / 我们自己」。
+  插件那三个「嘴」（`townBrief` / `tellMe` / `decideInChat`）装的时候要关掉，否则 QQ 会多一个声音。
+  发布版 `town.enabled` 与 `town.actions` 仍然默认关。测试 `scripts/test-town-plugin.mjs`（29 项）已进 `test-audit`。
+
 ## [1.0.8] - 2026-11-20
 
 她自己能存文件了；群聊里的记忆不再混成一锅粥；好友爱看从 B 站的话费账单里拆了出来，还加了每日上限。
@@ -68,6 +77,14 @@
 
 ### 变更
 
+- **官方插件在场时我们让位**（2026-11-21）。小镇的牌局回合是 25 秒硬时限，我们的唤醒链赶不上，
+  官方 `dsh-fishbowl-town` 专门干这活。新增 `src/town-plugin.js`（只读它的 settings 与 profiles，不 import 它）：
+  插件在答题时我们不挂 `/turns` 泵、不叫醒影子会话、动作工具直接拒绝，只留只读采集/快照/面板/`stellar_town_recall`。
+  人设**不手写**：`scripts/town-plugin-sync.mjs` 从 `roles/*.md` 派生 `persona`（只用「你是谁」+「说话方式」，
+  去掉群聊与工具相关的句子），只改这一个字段，写前备份、原子替换，`--check` 可挂门禁。
+  面板「进小镇」开关改成一次写两处（我们的 `town.enabled` + 插件那条鱼的 `enabled`），并显示「答题：官方插件 / 我们自己」。
+  插件那三个「嘴」（`townBrief` / `tellMe` / `decideInChat`）装的时候要关掉，否则 QQ 会多一个声音。
+  发布版 `town.enabled` 与 `town.actions` 仍然默认关。测试 `scripts/test-town-plugin.mjs`（29 项）已进 `test-audit`。
 - **控制台上传走流式**：`/api/files/upload` 支持原始字节流（`content-type` 不是 JSON 时），前端按 `File` 直接 `fetch`，不再 base64 塞进 JSON——60 MB 的文件以前会被 2 MB 的请求体上限卡死。声明长度与实际长度不符、上传中断、超出上限都会清掉临时文件并明确回「没存」。
 - **面板文件柜上限同步 512 MB**，并把 `fs.rmSync({force:true})` 改成「删完再 `existsSync` 复查 + `unlinkSync` 补刀」——本机上它偶尔返回成功但文件还在。
 

@@ -125,6 +125,30 @@ await check('预算读的是数据目录里的 town 桶（不重复拼 stellar�
   assert.equal(snap.budget.cap, 1);
 });
 
+await check('插件状态进快照（谁在答题），且不带访问码', async () => {
+  const dir = path.join(TMP, 'plugin-snap', 'stellar', 'state', 'town');
+  fs.mkdirSync(dir, { recursive: true });
+  const fake = { read: (name) => Promise.resolve(name === 'status' ? { ...status } : {}) };
+  await writeTownSnapshot({
+    dir, client: fake, now: Date.now(), townConfig: {},
+    plugin: { installed: true, version: '0.9.5', hasFish: true, fishEnabled: true, personaChars: 512, takesTurns: true, code: 'fbo_secret' },
+  });
+  const snap = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
+  assert.equal(snap.plugin.installed, true);
+  assert.equal(snap.plugin.version, '0.9.5');
+  assert.equal(snap.plugin.takesTurns, true);
+  assert.equal(snap.plugin.personaChars, 512);
+  assert.equal(/fbo_/.test(JSON.stringify(snap)), false, '快照里不许出现访问码');
+});
+
+await check('没有插件时 plugin 是 null（面板据此说「我们自己答题」）', async () => {
+  const dir = path.join(TMP, 'no-plugin', 'stellar', 'state', 'town');
+  fs.mkdirSync(dir, { recursive: true });
+  const fake = { read: () => Promise.resolve(null) };
+  const res = await writeTownSnapshot({ dir, client: fake, now: Date.now(), townConfig: {} });
+  assert.equal(res.snapshot.plugin, null);
+});
+
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
 console.log(fail ? '\n❌ 小镇快照：' + pass + ' 通过 / ' + fail + ' 失败' : '\n🎉 小镇快照：' + pass + ' 项通过');
 process.exit(fail ? 1 : 0);

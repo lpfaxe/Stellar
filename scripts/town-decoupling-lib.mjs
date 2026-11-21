@@ -13,6 +13,7 @@ export const TOWN_OWNED_PATTERNS = [
   /^src\/town-[a-z-]+\.js$/,
   /^scripts\/test-town-[a-z-]+\.mjs$/,
   /^scripts\/town-remove\.mjs$/,
+  /^scripts\/town-plugin-sync\.mjs$/,
   /^scripts\/town-decoupling-lib\.mjs$/,
   /^plugins\/stellar\/lib\/town-jobs\.js$/,
   /^plugins\/stellar\/tools\/rules\/town\.md$/,
@@ -76,12 +77,16 @@ export const CORE_TOWN_ALLOW = {
     "'test-town-memory-pure.mjs', 'test-town-client.mjs', 'test-town-store.mjs',",
     "'test-town-collector.mjs', 'test-town-scheduler.mjs', 'test-town-tools.mjs', 'test-town-turns.mjs',",
     "'test-town-actions.mjs', 'test-town-snapshot.mjs',",
+    // 官方插件（dsh-fishbowl-town）那一层：让位 + 人设同步
+    '官方插件（dsh-fishbowl-town）',
+    "'test-town-plugin.mjs',",
     // 解耦契约自己也要在 tests[] 里（它守着这份清单）
     "'test-town-decoupling.mjs',",
     // 发布树的 tests[] 是每行一条（历史原因），逐条认领
     "'test-town-memory-pure.mjs',", "'test-town-client.mjs',", "'test-town-store.mjs',",
     "'test-town-collector.mjs',", "'test-town-scheduler.mjs',", "'test-town-tools.mjs',", "'test-town-turns.mjs',",
     "'test-town-actions.mjs',", "'test-town-snapshot.mjs',", "'test-town-decoupling.mjs',",
+    "'test-town-plugin.mjs',", '官方插件（dsh-fishbowl-town）',
     '鱼缸小镇（2026-11-21）'
   ]
 };
@@ -89,6 +94,13 @@ export const CORE_TOWN_ALLOW = {
 // 控制台（发布树里的 stellar-manager 副本）：只允许路由挂载与开关那几行
 CORE_TOWN_ALLOW['stellar-manager/server.mjs'] = [
   "import { buildTown } from './lib/town.js'",
+  "import { buildTown, townPluginStatus, setTownPluginEnabled } from './lib/town.js'",
+  'await townPluginStatus()',
+  'hasOwnProperty.call(body.updates, \'town\')',
+  'plugin = await setTownPluginEnabled(Boolean(body.updates.town))',
+  "appendAudit('town-plugin-switch'",
+  "logLine('town plugin switch -> '",
+  '「进镇」这个开关要写两处',
   "鱼缸小镇：她自己的日子（只读快照",
   "'/api/town'",
   "x.id === 'town'"
@@ -100,6 +112,7 @@ CORE_TOWN_ALLOW['stellar-manager/public/style.css'] = ['#townHeadCard'];
 // 这几个文件整个属于「小镇作为一类账 / 一个预设」的接线面，town 出现在哪一行都不算耦合：
 // 账目分类是多处枚举 + 面板色板，预设构建器是 town-act 的 patch 生成器。
 export const CORE_TOWN_ALLOW_ANY = [
+  'package.json',                       // 只挂一个 npm script（town:plugin:sync）
   'plugins/stellar/package.json',
   'plugins/stellar/lib/token-budget-service.js',
   'plugins/stellar/lib/token-usage-pure.js',

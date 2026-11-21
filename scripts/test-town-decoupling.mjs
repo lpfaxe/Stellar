@@ -44,8 +44,10 @@ const limits = {
   'plugins/stellar/lib/run-mode.js': 3,
   'src/capabilities.js': 2,
   'plugins/stellar/tools/lib/config.mjs': 3,
-  'scripts/test-audit.mjs': 10,
-  'stellar-manager/server.mjs': 5,
+  // 官方插件那一层让位（2026-11-21）：audit 多两行（注释 + test-town-plugin），
+  // 面板 server 多 5 行（插件状态查询 + 开关双写）——都是接线，不是逻辑。
+  'scripts/test-audit.mjs': 12,
+  'stellar-manager/server.mjs': 10,
   'stellar-manager/public/js/core.js': 1,
   'stellar-manager/public/js/boot.js': 1,
 };

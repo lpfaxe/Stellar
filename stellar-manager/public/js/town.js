@@ -48,7 +48,7 @@ function townRenderStats(d) {
   ];
   box.innerHTML = cells.map(function (c) {
     return '<div class="memdb-cell"><span class="k">' + townEsc(c[0]) + '</span><b>' + townEsc(c[1]) + '</b><span class="hint">' + townEsc(c[2]) + '</span></div>';
-  }).join('');
+  }).join('') + '<div class="muted small town-cost-note">这里的钱只算我们这一侧记的账；官方插件自己那半（它开的会话）在额度页的「小镇」里。</div>';
 }
 
 function townRenderMeta(d) {
@@ -60,6 +60,13 @@ function townRenderMeta(d) {
     bits.push(d.hasDb ? '记忆库在 ' + d.dir : '还没有 town.db' + (d.notesReason ? '：' + d.notesReason : ''));
     bits.push(d.hasSnapshot ? '快照 ' + townClock(snap.at) : '还没有状态快照（调度器采集过才会有）');
     if (pump) bits.push('进镇通道：' + (pump.connected ? '连着' : '没连上') + (pump.lastOkAt ? ' · 上次成功 ' + townClock(pump.lastOkAt) : ''));
+    var plug = d.plugin || snap.plugin || null;
+    if (plug && plug.installed) {
+      bits.push('答题：官方插件' + (plug.version ? ' ' + plug.version : '') + (plug.takesTurns ? '（它挂着长轮询）' : '（这条鱼没接上）'));
+      if (plug.hasFish && !plug.personaChars) bits.push('人设还没同步：镇上那个她只是分身，跑一次 scripts/town-plugin-sync.mjs');
+    } else {
+      bits.push('答题：我们自己（没装官方插件）');
+    }
     box.innerHTML = '<div class="memdb-meta-row"><span class="muted small">' + bits.map(townEsc).join(' · ') + '</span></div>';
   }
   var at = el('townAt');

@@ -293,6 +293,14 @@ export function registerTownTools(server, { dshHome, z, ownerOnlyError, log = ()
     if (T.enabled !== true) return { ok: false, text: '小镇现在是关着的（town.enabled 不是 true），不做动作。' };
     if (T.actions !== true) return { ok: false, text: '动作没开（town.actions 不是 true）：这一版只能看，不能坐下、不能串门。' };
     const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+    // 官方插件在场并答题时，这一局由它出手：我们这边再动一次就是同一个她动两回。
+    try {
+      const plugin = await townPluginModule();
+      const status = plugin.pluginStatus({ dshHome, fishId: T.fishId });
+      if (status.installed && status.takesTurns) {
+        return { ok: false, text: '小镇这局是官方插件在答（它自己挂长轮询），这次不用我们动手；想自己动手，把插件那条鱼关掉再重启。' };
+      }
+    } catch {}
     const acts = await townActionsModule();
     const budgetMod = await townBudgetModule();
     const pure = await townPureModule();

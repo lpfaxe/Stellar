@@ -260,3 +260,70 @@ node scripts/town-remove.mjs --apply
 - 三个入口（`townPromptLine` / `registerTownTools` / `createTownJobs`）在核心文件里各只许出现一次；
 - 核心文件里不许出现 `town-client` / `town-store` / `town-memory-pure` / `town-collector` / `town-actions` / `town-budget` / `createTurnPump` / `collectTownOnce`；
 - 每个核心文件的 town 行数有上限（`bridge.js` 10、`mcp-snowluma-safe.js` 8、`scheduler.js` 12、`run-mode.js` 3、`capabilities.js` 2、`config.mjs` 3、`test-audit.mjs` 10，控制台那几个文件单独算）。
+
+## 12. 官方插件在场时（dsh-fishbowl-town）
+
+有一件事我们做不了：小镇的牌局/串门回合是**25 秒硬时限**，超时小镇就用引擎默认动作代打并记「超时代打」。
+我们的唤醒链是分钟级的，永远赶不上；官方插件 `dsh-fishbowl-town` 专门干这活（它自己 23 秒内作答、按 `turn_id` 去重）。
+所以定位是：**手脚交给插件，身份、记忆、出声留在我们这边。**
+
+### 我们让位什么
+
+插件装上并在答题时（`pluginStatus().installed && takesTurns`，60 秒缓存一次）：
+
+| 我们的东西 | 插件在场时 |
+| --- | --- |
+| `/turns` 长轮询泵 | 不挂。同一个接入码只允许一个长轮询有效，两边都挂会互相顶掉。日志只记一次「官方插件在答题…我们的 /turns 泵让位」 |
+| 影子会话唤醒（`townTick`） | 不叫醒。它本来就是为了「有人找她」才醒，现在有人替她答了 |
+| 三个动作工具 | 直接回「这局是官方插件在答，这次不用我们动手」 |
+| 只读采集 / 快照 / 面板 / `stellar_town_recall` | **照旧**。我们只监听数据 |
+
+想自己动手（不装插件，或把它那条鱼关掉）就自动恢复，不用改代码。
+
+### 身份只有一份：从角色卡派生
+
+插件配置里的 `persona` 为空时，镇上的她「没有你的性格和记忆」，等于一个分身。所以人设**不手写**，从角色的唯一真相（`roles/*.md`）派生：
+
+```bash
+node scripts/town-plugin-sync.mjs --dry     # 只看会写成什么
+node scripts/town-plugin-sync.mjs           # 写入插件 settings.json 的 fish[i].persona
+node scripts/town-plugin-sync.mjs --check   # 不一致 exit 1，可挂门禁
+```
+
+派生规则在 `src/town-plugin.js`：取「你是谁」到 6 行 + 「说话方式」到 8 行，去掉群聊/@/潜水这类只在 QQ 成立的句子、
+去掉查资料/引用工具这类只在有工具时成立的句子，末尾固定一句「在小镇里你还是同一个人，不是分身，也不是客服」。
+**只改 `persona` 一个字段**，settings 里的其它键（`code`、`bridgeChat`…）原样保留；写前备份 `.bak-<时间戳>`，tmp + rename 原子替换。
+角色卡改了要再跑一次，`--check` 会红。
+
+### 出声只有一张嘴
+
+插件有三个默认开着的「嘴」，装完必须关（否则 QQ 会多出一个声音，或者回合记账错乱）：
+
+| 键 | 默认 | 我们设 | 它做什么 |
+| --- | --- | --- | --- |
+| `townBrief` | true | **false** | 往主 QQ 会话插一轮「小镇发生了什么」 |
+| `tellMe` | false | **false** | 用 `agent.followup` 主动跟主人说话 |
+| `decideInChat` | true | **false** | 借主聊天的上下文替她拿主意 |
+| `townRecap` | true | 留 true | 只在 `agent/pre-step` 往这一轮消息里追加一条背景，不触发新回合 |
+
+`townRecap` 留着是为了「同一个她」：插件答题时能看到最近的聊天，语气不至于漂。
+
+### 开关写两处
+
+面板那个「进小镇」开关一次写两边：我们的 `town.enabled`（`bili.config.json`）+ 插件 settings 里 `fish[i].enabled`。
+只关一边的后果是「面板关了但它还在进镇」。开关响应里带 `plugin` 结果，失败会在面板上说清原因。
+
+### 花费要看两个地方
+
+面板「今天花费」只算我们这侧记进 `token-usage-daily.json` 的 `town` 桶；插件自己开的会话算在面板额度页的「小镇」里。
+两边加起来才是真的花掉多少 —— 面板上那行小字写的就是这个。
+
+### 怎么判断它当前是谁在答题
+
+`GET /api/town` 的 `plugin` 字段（也进 `state/town/status.json`）：
+
+```json
+{ "installed": true, "version": "0.9.5", "hasFish": true, "fishEnabled": true, "personaChars": 512, "takesTurns": true }
+```
+
+`personaChars: 0` 就是提醒你去跑 `town-plugin-sync.mjs`。这些字段里**不含访问码**。

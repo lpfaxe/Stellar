@@ -8,11 +8,44 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { SURF } from './paths.js'
+import { pathToFileURL } from 'node:url'
+import { SURF, REPO, DSH_HOME } from './paths.js'
 
 export const TOWN_DIR = path.join(SURF, 'state', 'town')
 const STATUS_FILE = path.join(TOWN_DIR, 'status.json')
 const DB_FILE = path.join(TOWN_DIR, 'town.db')
+
+// 官方插件（dsh-fishbowl-town）那点事都收在仓库的 src/town-plugin.js 里 —— 面板不自己再写一份，
+// 免得两处判断不一致。仓库文件不在就当没有（面板照样能看，只是开关只能写我们这一半）。
+let pluginModPromise = null
+function pluginModule() {
+  if (!pluginModPromise) {
+    const file = path.join(REPO, 'src', 'town-plugin.js')
+    pluginModPromise = import(pathToFileURL(file).href)
+      .then((mod) => {
+        if (!mod || typeof mod.pluginStatus !== 'function') throw new Error('src/town-plugin.js 里没有 pluginStatus')
+        return mod
+      })
+      .catch(() => { pluginModPromise = null; return null })
+  }
+  return pluginModPromise
+}
+
+/** 插件在场不在场（读文件，不联网、不看访问码）。仓库文件缺失就回 null。 */
+export async function townPluginStatus() {
+  const mod = await pluginModule()
+  if (!mod) return null
+  try { return mod.pluginStatus({ dshHome: DSH_HOME }) } catch { return null }
+}
+
+/** 面板那个「进镇」开关的另一半：插件里这条鱼开/关。 */
+export async function setTownPluginEnabled(on) {
+  const mod = await pluginModule()
+  if (!mod) return { ok: false, skipped: true, reason: '仓库里没有 src/town-plugin.js' }
+  try { return mod.setPluginEnabled(DSH_HOME, Boolean(on)) } catch (e) {
+    return { ok: false, reason: String((e && e.message) || e) }
+  }
+}
 
 function readJsonSafe(file, dflt) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')) } catch { return dflt }

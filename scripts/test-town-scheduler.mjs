@@ -177,5 +177,23 @@ ok(turnText.includes('townActionLines()'), 'turn 唤醒词也走 townActionLines
 const cfgSrc = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'tools', 'lib', 'config.mjs'), 'utf8');
 ok(/turns: \{ enabled: true, wait: 45, wake: true, maxWakesPerDay: 2, minGapMin: 30 \}/.test(cfgSrc), 'config 里有 turns 默认值（默认连、最多叫醒 2 次）');
 
+// 8.9 官方插件在场时让位（dsh-fishbowl-town）：同一接入码只允许一个长轮询，两边各动一次更糟
+const pluginSrc = fs.readFileSync(path.join(root, 'src', 'town-plugin.js'), 'utf8');
+const toolsSrc = fs.readFileSync(path.join(root, 'src', 'town-tools.js'), 'utf8');
+const snapSrc = fs.readFileSync(path.join(root, 'src', 'town-snapshot.js'), 'utf8');
+ok(townJobs.includes("import('../../../src/town-plugin.js')"), '插件检测是动态 import（它随时能被整个剔掉）');
+ok(/if \(townPluginActive\(\)\) \{\s*if \(!townPluginYieldLogged\)/.test(townJobs), '插件在答题时我们的普通泵不挂');
+ok((townJobs.match(/if \(townPluginActive\(\)\)/g) || []).length >= 2, '叫醒（townTick）也一并让位');
+ok(townJobs.includes('plugin: mod.pluginStatus'), '快照里带上插件状态（谁在答题）');
+ok(toolsSrc.includes('townPluginModule') && /status\.installed && status\.takesTurns/.test(toolsSrc), '动作工具在插件答题时拒绝执行');
+ok(/plugin: plugin && typeof plugin === 'object'/.test(snapSrc), '快照结构里有 plugin 块');
+ok(pluginSrc.includes('dsh-fishbowl-town'), '检测的是官方插件包名');
+ok(pluginSrc.includes("path.join(home, PROFILE_ROOT)") || pluginSrc.includes("'profiles'"), '按 profiles/*/node_modules 找插件');
+ok(!/fbo_/.test(pluginSrc.slice(pluginSrc.indexOf('export function pluginStatus'))), '状态里不带访问码');
+const syncScript = fs.readFileSync(path.join(root, 'scripts', 'town-plugin-sync.mjs'), 'utf8');
+ok(syncScript.includes('deriveTownPersona') && syncScript.includes('syncPersona'), '同步脚本从角色卡派生并写入');
+ok(syncScript.includes('--check') && syncScript.includes('--dry'), '同步脚本能只看不写、能给门禁用');
+ok(/角色卡/.test(syncScript) && /唯一真相/.test(fs.readFileSync(path.join(root, 'src', 'town-plugin.js'), 'utf8')), '人设只有一份真相（角色卡）');
+
 console.log(failed ? '\n❌ 小镇调度契约：' + passed + ' 通过 / ' + failed + ' 失败' : '\n🎉 小镇调度契约：' + passed + ' 项通过');
 process.exit(failed ? 1 : 0);

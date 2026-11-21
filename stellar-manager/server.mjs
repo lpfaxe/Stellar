@@ -21,7 +21,7 @@ import { buildVlog, vlogAction, vlogMedia, vlogScript } from './lib/vlog.js'
 import { readAccess, saveAccess } from './lib/access.js'
 import { actOnApproval, readApprovals } from './lib/approvals.js'
 import { capabilitiesSnapshot, saveCapabilities } from './lib/capabilities.js'
-import { buildTown } from './lib/town.js'
+import { buildTown, townPluginStatus, setTownPluginEnabled } from './lib/town.js'
 import { clearNamedTunnel, ensureTunnel, resumeTunnel, setNamedTunnel, startTunnel, stopTunnel } from './lib/tunnel.js'
 import { restartDsh, resumeRestartPolling, reconcileRestartState } from './lib/dsh.js'
 import { ensureContacts, loadAllowPrivate, loadContacts, saveContacts, setContactAllow, syncContacts } from './lib/contacts.js'
@@ -303,9 +303,19 @@ const server = http.createServer(async (req, res) => {
       const scope = requestScope(req)
       const snap = capabilitiesSnapshot()
       const item = (snap.items || []).find((x) => x && x.id === 'town') || null
+      const ours = !!(item && item.enabled)
+      const data = buildTown()
+      // 快照里那份是「调度器上次采集时看到的」，插件刚装/刚关时不新鲜，所以先问文件。
+      const plugin = (await townPluginStatus()) || (data.snapshot && data.snapshot.plugin) || null
       return sendJson(res, 200, {
-        ...buildTown(),
-        cap: { enabled: !!(item && item.enabled), mtime: (item && item.mtime) ?? snap.mtime },
+        ...data,
+        plugin,
+        cap: {
+          enabled: ours || Boolean(plugin && plugin.takesTurns),
+          mtime: (item && item.mtime) ?? snap.mtime,
+          ours,
+          plugin: Boolean(plugin && plugin.takesTurns),
+        },
         scope,
         canWrite: scope !== 'public'
       })
@@ -336,8 +346,16 @@ const server = http.createServer(async (req, res) => {
         appendAudit('capability-save', { by: clientIp(req), updated: r.updated })
         logEvent('capability-save', { by: clientIp(req), count: r.updated.length })
         logLine('capabilities updated: ' + r.updated.map((x) => x.id + '=' + x.enabled).join(','))
+        // 「进镇」这个开关要写两处：我们的 town.enabled + 官方插件那条鱼的 enabled。
+        // 只写一边的后果是「面板关了但它还在镇里」。
+        let plugin = null
+        if (body && body.updates && Object.prototype.hasOwnProperty.call(body.updates, 'town')) {
+          plugin = await setTownPluginEnabled(Boolean(body.updates.town))
+          appendAudit('town-plugin-switch', { on: Boolean(body.updates.town), result: plugin && (plugin.ok ? (plugin.changed ? 'written' : 'same') : 'failed') })
+          logLine('town plugin switch -> ' + (plugin && plugin.ok ? (plugin.changed ? 'written' : 'same') : 'skipped/failed'))
+        }
         invalidateStatus()
-        return sendJson(res, 200, { ...capabilitiesSnapshot(), ...r })
+        return sendJson(res, 200, { ...capabilitiesSnapshot(), ...r, ...(plugin ? { plugin } : {}) })
       } catch (e) {
         appendAudit('capability-save-rejected', { by: clientIp(req), error: String(e && e.message || e) })
         return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })

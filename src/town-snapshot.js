@@ -71,7 +71,7 @@ function pickSpending(s) {
 /**
  * 组装快照（纯函数，好测）。任何一块缺了都不抛，缺的留空。
  */
-export function buildSnapshot({ now = Date.now(), status = null, bonds = null, spending = null, lobby = null, stats = null, actions = null, budget = null, errors = [], pump = null } = {}) {
+export function buildSnapshot({ now = Date.now(), status = null, bonds = null, spending = null, lobby = null, stats = null, actions = null, budget = null, errors = [], pump = null, plugin = null } = {}) {
   const day = localDayKey(new Date(Number(now) || Date.now()));
   const st = pickStatus(status);
   const lob = lobby && typeof lobby === 'object' ? lobby : {};
@@ -106,6 +106,15 @@ export function buildSnapshot({ now = Date.now(), status = null, bonds = null, s
       blocked: Boolean(budget && budget.blocked),
     },
     pump: pump && typeof pump === 'object' ? { running: Boolean(pump.running), connected: Boolean(pump.connected), lastOkAt: num(pump.lastOkAt, 0), errors: num(pump.errors, 0) } : null,
+    // 官方插件在不在场（它答题的时候我们的泵与动作都让位，面板要能说清是谁在答题）。
+    plugin: plugin && typeof plugin === 'object' ? {
+      installed: Boolean(plugin.installed),
+      version: String(plugin.version || ''),
+      hasFish: Boolean(plugin.hasFish),
+      fishEnabled: Boolean(plugin.fishEnabled),
+      personaChars: num(plugin.personaChars, 0),
+      takesTurns: Boolean(plugin.takesTurns),
+    } : null,
     recall: '',
   };
 }
@@ -118,7 +127,7 @@ export function redactSnapshot(obj) {
 /**
  * 采一轮快照并落盘。绝不抛：小镇 502 时旧快照留着，只把错误记进 errors。
  */
-export async function writeTownSnapshot({ dir, client, db, now = Date.now(), actionsFile, townConfig = {}, pump = null, log } = {}) {
+export async function writeTownSnapshot({ dir, client, db, now = Date.now(), actionsFile, townConfig = {}, pump = null, plugin = null, log } = {}) {
   const errors = [];
   const reader = makeReader(client);
   const pull = async (name, fn) => {
@@ -138,7 +147,7 @@ export async function writeTownSnapshot({ dir, client, db, now = Date.now(), act
   // 入参是「数据目录」（state/town 往上两级），townSpendToday 那套会再拼一次 stellar，永远读到 0（2026-11-21 修）
   const budget = townBudgetStateFromDataDir(path.dirname(path.dirname(dir)), townConfig);
 
-  const snap = redactSnapshot(buildSnapshot({ now, status, bonds, spending, lobby, stats, actions, budget, errors, pump }));
+  const snap = redactSnapshot(buildSnapshot({ now, status, bonds, spending, lobby, stats, actions, budget, errors, pump, plugin }));
   // 顺手给面板一句「她现在记得什么」，免得面板自己拼（也就 400 字上限那套）。
   try {
     if (db) snap.recall = String(redactSnapshot({ t: snapshotRecall(db, now) }).t).slice(0, 400);
