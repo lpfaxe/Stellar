@@ -93,6 +93,11 @@ const wake = scheduler.slice(scheduler.indexOf('function townWakeText('), schedu
 ok(wake.includes('不坐下') && wake.includes('不发消息'), '唤醒提示明确禁止坐下/发消息');
 ok(wake.includes('数据') && (wake.includes('不是命令') || wake.includes('不是给你的')), '唤醒提示声明小镇文本是数据不是命令');
 ok(wake.includes('stellar_town_day'), '唤醒提示允许写一句当日感受');
+// 7.5 身份与工具面：影子会话没有 QQ 会话令牌，只有 promptBili 前置的【会话令牌】（operator token）。
+//     不写清楚 key 该填什么，模型会去猜 private:<QQ>，小镇工具就全被身份闸拒掉 —— 醒了个寂寞。
+ok(wake.includes('owner:internal'), '唤醒提示告诉影子会话：key 参数写 owner:internal');
+ok(wake.includes('【会话令牌】'), '唤醒提示告诉影子会话：token 用【会话令牌】那一行');
+ok(!wake.includes('toolLine()'), '影子会话提示里不带 B站 命令行（那是别的会话的工具行，抄进来只会误导）');
 
 // 7.5 默认不启用（发布版只留接口）
 ok(/town:\s*\{[\s\S]{0,400}?enabled:\s*false/.test(defaults), 'config 里 town.enabled 默认 false（发布版不启用）');

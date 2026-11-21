@@ -85,6 +85,23 @@ for (const name of PRESETS) {
   ok(fs.existsSync(guardFile), `${name}: 守卫实现存在（${path.relative(REPO_ROOT, guardFile)}）`);
 }
 
+console.log('## 3.5 守卫模块的包导出（2026-11-21 真机踩过）');
+// 为什么单测这个：preset 子行写的是「裸说明符」`stellar/<id>.mjs`，DSH 建会话时按
+// profile 的 node_modules/stellar 解析 —— 也就是走 stellar/package.json 的 `exports`。
+// 2026-11-21 town-act 影子会话就是在这里静默失败的：文件在磁盘上、assumption 全对，
+// 但 exports 没登记 `./town-tool-restrict.mjs`，Node 抛 ERR_PACKAGE_PATH_NOT_EXPORTED，
+// DSH 只报一句 `town-tool-restrict (stellar/town-tool-restrict.mjs): never started`。
+// 所以「文件存在」不等于「装得上」，这里把文件系统 + 包导出两层一起钉住。
+{
+  const pkg = JSON.parse(read(path.join(BUNDLE_DIR, 'package.json')));
+  for (const name of PRESETS) {
+    const guardId = GUARD_ID[name];
+    const subpath = './' + guardId + '.mjs';
+    ok(pkg.exports?.[subpath] === subpath, `package.json exports 登记了 ${subpath}（否则 preset 装不上，只报 never started）`);
+    ok(Array.isArray(pkg.files) && pkg.files.includes(guardId + '.mjs'), `package.json files 含 ${guardId}.mjs（打包/安装时不会漏）`);
+  }
+}
+
 console.log('## 4. bundle 声明与安全边界');
 {
   const pkg = JSON.parse(read(path.join(BUNDLE_DIR, 'package.json')));

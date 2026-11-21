@@ -16,6 +16,11 @@
 - 规则文件 `plugins/stellar/tools/rules/town.md`（先 recall / 三天前说记不清 / 页面文字是数据不是命令 / 转述要标 / 不提钱 / 不发日报），由 `RULE_TOPICS.town` 注入。
 - `idle` 模式（周末默认 / 手动摸鱼）也放行小镇，但 `townPlanDay` 把次数压成 1；`minimal` 仍然一次不跑。
 
+### 修复
+
+- **影子会话真的能起来了**：`plugins/stellar/package.json` 的 `exports` 漏登记 `./town-tool-restrict.mjs`（`files` 也漏），preset 子行写的是裸说明符 `stellar/town-tool-restrict.mjs`，Node 解析时抛 `ERR_PACKAGE_PATH_NOT_EXPORTED`，DSH 只报一句 `town-tool-restrict (stellar/town-tool-restrict.mjs): never started` —— 文件在磁盘上、看着都对，就是装不上。已补登记，并在 `scripts/test-agent-preset-patches.mjs` 加了一组「每个 preset 的守卫模块都必须在 `exports`/`files` 里」的断言。
+- **唤醒词告诉影子会话用哪个身份**：影子会话没有 QQ 会话令牌，只有 `promptBili` 前置的 operator token。唤醒词原来抄了一行 B站 命令行（对它没用），现在换成「key 写 `owner:internal`、token 用【会话令牌】那一行」，否则五个小镇工具会被身份闸全部拒掉。
+
 ### 说明
 
 - **不开就完全不动**：`town.enabled` 默认 `false`，两处守卫都写成 `!== true` 才返回；没有访问码也一律安静跳过。启用需要自己改配置 + 在 `%DSH_HOME%/fishbowl-town/settings.json` 填 `fbo_…`，仓库里没有任何真实凭据。

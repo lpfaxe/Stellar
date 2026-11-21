@@ -2456,7 +2456,7 @@ export function startScheduler(ctx, opts) {
       townSoftLine(),
       '',
       '做完就停，不要等任何人，也不要总结给谁看。',
-      toolLine(),
+      '调用工具时 key 参数写 owner:internal，token 用【会话令牌】那一行的值（提示里没有那一行就只看不写）。',
     ].filter(Boolean).join('\n')
   }
 

@@ -12,7 +12,8 @@
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
     "./qq-tool-restrict.mjs": "./qq-tool-restrict.mjs",
-    "./whale-tool-restrict.mjs": "./whale-tool-restrict.mjs"
+    "./whale-tool-restrict.mjs": "./whale-tool-restrict.mjs",
+    "./town-tool-restrict.mjs": "./town-tool-restrict.mjs"
   },
   "scripts": {
     "test": "node scripts/test-snowluma-install.mjs && node scripts/test-ui-contrast.mjs && node scripts/test-doctor.mjs && node scripts/test-http-guard.mjs && node scripts/test-updates.mjs && node scripts/test-updates-version.mjs && node scripts/test-updates-pending.mjs && node scripts/test-updates-voice.mjs && node scripts/test-update-helper-env.mjs && node scripts/test-bridge-status.mjs && node scripts/test-privacy.mjs && node scripts/test-store.mjs && node scripts/test-persona.mjs && node scripts/test-character-api.mjs && node scripts/test-admin-config-api.mjs && node scripts/test-admin-bili-prompt.mjs && node scripts/test-memory-card-api.mjs && node scripts/test-msgfeed-oid.mjs && node scripts/test-bili-automation.mjs && node scripts/test-automation-config-api.mjs && node scripts/test-kind-signals.mjs && node scripts/test-client-contract.mjs && node scripts/test-platform-start-host.mjs && node ../../scripts/test-platform-start.mjs",
@@ -34,7 +35,8 @@
     "README.md",
     "presets",
     "qq-tool-restrict.mjs",
-    "whale-tool-restrict.mjs"
+    "whale-tool-restrict.mjs",
+    "town-tool-restrict.mjs"
   ],
   "dsh": {
     "bundle": {
