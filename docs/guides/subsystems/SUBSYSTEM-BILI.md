@@ -67,7 +67,8 @@ B站 那条 DSH 会话默认 `danger-full-access`（`bili.config.json` 的 `agen
 
 另有 `night.maxWakesPerDay`（默认 6，硬上限 3 是单窗口的旧限制）、`skipChance` 0.3（有 30% 概率这一拍跳过）、`minGapMin` 20（两次醒来至少隔 20 分钟）、`videoTargetPerDay` 40（每天目标视频数）、`weeklyMax` 140。
 
-「摸鱼模式」会把这套覆盖成：每天醒来 ≤12 次、目标视频 60 个、最小间隔 15 分钟（见 `lib/run-mode.js` 的 `modeLimits`）。「最低限度运行模式」不叫醒她，只回消息。
+「摸鱼模式」只把这套的**频率**改掉：每天醒来 ≤12 次、最小间隔 15 分钟（见 `lib/run-mode.js` 的 `modeLimits`）；
+目标视频数**不覆盖**（2026-11-22 起回落到配置里的平常值）——摸鱼日省下的时间是给小镇的。「最低限度运行模式」不叫醒她，只回消息。
 
 ### 2.3 会话隔离
 
