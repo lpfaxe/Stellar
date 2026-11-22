@@ -28,6 +28,11 @@ function voiceFetch(path, opts) {
         if (!window.__panelRelogin) { window.__panelRelogin = true; location.reload(); }
         throw new Error('需要口令，正在重新打开登录页');
       }
+      if (res.status === 404) {
+        // 404 不是「文件坏了」，是**面板进程还是旧代码**：路由是后加的，进程不重启就一直 404。
+        // 这条以前只会显示「HTTP 404」，主人看不出该去重启控制台。
+        throw new Error('控制台进程还是旧代码，重启一次控制台（或等 keepalive 拉起）后再保存');
+      }
       if (!res.ok) {
         var e = new Error(voiceErrText(data) || ('HTTP ' + res.status));
         e.payload = data;
