@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.1.0",
   "source": "git:HEAD",
-  "generatedAt": "2026-11-22T07:12:35.734Z",
+  "generatedAt": "2026-11-22T07:12:54.045Z",
   "files": {
     ".gitattributes": "651ca90b38ff7d94fb771f222a3a1c63e1a2ab836dce5fde9229525c2f0abbac",
     ".gitignore": "8b9f29ff92a9fe879ea6aca909e2e3500d443e8f64eda067164fa5b78340e3be",
@@ -738,7 +738,7 @@
     "stellar-manager/public/js/todos.js": "d7476ff83f10d8f35edf50f9bbd9dc21fe16d04e0b1bdf6386fad2da32939049",
     "stellar-manager/public/js/town.js": "85a164a01216b0fd509ad3649e438d84f92a92bbaa01f1ab25674697f10febca",
     "stellar-manager/public/js/vlog.js": "04bdd1d6eb416cb290c34f11583887957d3ee5b3e419aa01b58854ecbbcf6d48",
-    "stellar-manager/public/js/voice.js": "f13557f2d97c97689d151e40c1bfa2c802213acc9bd0bc6a0c0dfa54e6dc389e",
+    "stellar-manager/public/js/voice.js": "e22279b32bea63d8585fa3147e13f841b89efec4c483ec2277b0123119410eda",
     "stellar-manager/public/js/web-images.js": "c574ecc4b0891800c66a962789dc7af0be501114484bb275e70c44495f91d8a5",
     "stellar-manager/public/login.css": "4481768c79588de666060e417db2094ece612e2204d2bd49913a44d8e73a9ff6",
     "stellar-manager/public/login.js": "1d42ac6249f7cf902e5f85e703ba6431aeba1d4dc1bc6a84888c584373a80198",
