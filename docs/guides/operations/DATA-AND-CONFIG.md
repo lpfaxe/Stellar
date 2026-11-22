@@ -26,6 +26,7 @@
 | `consolePort` / `consoleToken` | 桥接自带控制台 | 默认 3100；令牌为空时自动生成到 `state/console-token` |
 | `socialV2.selfImage` | 她自己的形象图（`qq_get_self_image` 用） | 留空则找 `assets/self-image.png` / `.jpg` / `.webp`；都没有就回「还没有形象图片」 |
 | `socialV2.*` | 回复策略、唤醒条件、表情、收尾、图片额度 | 见各功能篇 |
+| `socialV2.send.allowBiliLinksInGroups` | 群里能不能发 B站 视频链接 | **默认 `false`**：群聊出站一律剥掉 `bilibili.com` / `b23.tv` 链接与 `BV` 号，纯链接拒发（`GROUP_BILI_LINK`）、正文里的回 `linksStripped`；改 `true` 才放行。私聊不受影响（`src/group-link-guard.js`） |
 | `memory.engine` | `db` / `card` | **记忆总开关**：`db`=记忆库（`memory.db`）唯一真相，旧记忆卡与向量记忆两条管线**整体不启动**（2026-11-22）；`card`=旧行为。当前是 `db` |
 | `memory.*` | 其余记忆子块 | 见 [../features/MEMORY.md](../features/MEMORY.md) |
 | `memoryCard` | 旧记忆卡配置 | `memory.engine='db'` 时整段不生效（定时器不启动、维护早退），数据文件保留 |

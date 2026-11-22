@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { townPromptLine } from './town-prompt.js';
 import { normalizeMemoryEngine, resolveMemoryConfigFile } from './unified-memory-config.js';
 import { voiceStylePrompt, recordVoiceStats, voiceStyleFile, voiceStatsFile } from './voice-style.js';
+import { guardGroupMessages, guardGroupSegments, stripBiliLinks, GROUP_LINK_HINT } from './group-link-guard.js';
 import { SnowLumaWebSocketClient, text } from '@snowluma/sdk';
 import { NodeApiClient, unwrap, createTurnCollector, discoverDshLaunchToken } from './dsh-client.js';
 import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-plain.js';
@@ -7568,6 +7569,22 @@ function maybeApproveImageRequest(text, key) {
             sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403);
             return;
           }
+          // 群聊不发 B站 视频链接（2026-11-22 主人要求）：入口先剥，别等发出去再撤回。
+          // 全被剥空说明这条只有链接 —— 直接拒绝，让她知道要改说法，而不是替她丢一条空消息。
+          let groupLinksStripped = 0;
+          if (kind === 'group' && groupLinkPolicyOn()) {
+            const guarded = applyGroupLinkGuard(messages);
+            if (guarded.dropped) {
+              sendJson({ ok: false, code: 'GROUP_BILI_LINK', error: '群聊不发 B站 视频链接（主人要求）：这条只有链接，没有可发的内容' }, 400);
+              return;
+            }
+            if (guarded.changed) {
+              messages.length = 0;
+              for (const m of guarded.messages) messages.push(m);
+              groupLinksStripped = guarded.removed.length;
+              log('[群链接闸] ' + key + ' 入口剥掉 ' + groupLinksStripped + ' 个 B站链接');
+            }
+          }
           const sendCfg = cfg.socialV2?.send ?? {};
           const maxMsgs = Math.max(1, Number(sendCfg.burstMaxMessages) || 8);
           const maxChars = Math.max(1, Number(sendCfg.maxMessageChars) || 500);
@@ -7614,7 +7631,7 @@ function maybeApproveImageRequest(text, key) {
             const burstHint = messages.length >= 3 ? '你已经连发了多条，确认是必要的吗？真人很少一口气补完。' : undefined;
             const spaceWarn = findCjkSpaceWarning(messages);
             const splitWarn = findSplitBoundaryWarning(messages);
-            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(splitWarn ? { splitWarn } : {}) });
+            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(groupLinksStripped ? { linksStripped: groupLinksStripped, hint: GROUP_LINK_HINT } : {}), ...(splitWarn ? { splitWarn } : {}) });
           } catch (error) {
             if (error?.sent?.length) {
               recordSentMessagesV2(key, error.sent);
@@ -7706,6 +7723,22 @@ function maybeApproveImageRequest(text, key) {
             sendJson({ ok: false, error: 'replyToMessageId 必须是非零整数（消息 id 可能为负数）' }, 400);
             return;
           }
+          // 群聊不发 B站 视频链接（2026-11-22 主人要求）：入口先剥，别等发出去再撤回。
+          // 全被剥空说明这条只有链接 —— 直接拒绝，让她知道要改说法，而不是替她丢一条空消息。
+          let groupLinksStripped = 0;
+          if (kind === 'group' && groupLinkPolicyOn()) {
+            const guarded = applyGroupLinkGuard(messages);
+            if (guarded.dropped) {
+              sendJson({ ok: false, code: 'GROUP_BILI_LINK', error: '群聊不发 B站 视频链接（主人要求）：这条只有链接，没有可发的内容' }, 400);
+              return;
+            }
+            if (guarded.changed) {
+              messages.length = 0;
+              for (const m of guarded.messages) messages.push(m);
+              groupLinksStripped = guarded.removed.length;
+              log('[群链接闸] ' + key + ' 入口剥掉 ' + groupLinksStripped + ' 个 B站链接');
+            }
+          }
           const sendCfg = cfg.socialV2?.send ?? {};
           const maxMsgs = Math.max(1, Number(sendCfg.burstMaxMessages) || 8);
           const maxChars = Math.max(1, Number(sendCfg.maxMessageChars) || 500);
@@ -7771,7 +7804,7 @@ function maybeApproveImageRequest(text, key) {
             const burstHint = messages.length >= 3 ? '你已经连发了多条，确认是必要的吗？真人很少一口气补完。' : undefined;
             const spaceWarn = findCjkSpaceWarning(messages);
             const splitWarn = findSplitBoundaryWarning(messages);
-            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, delays, quoted: quotedInfo, ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(splitWarn ? { splitWarn } : {}) });
+            sendJson({ ok: true, key, sent: sentMessages.length, failed: messages.length - sentMessages.length, delays, quoted: quotedInfo, ...(burstHint ? { hint: burstHint } : {}), ...(spaceWarn ? { warn: spaceWarn } : {}), ...(groupLinksStripped ? { linksStripped: groupLinksStripped, hint: GROUP_LINK_HINT } : {}), ...(splitWarn ? { splitWarn } : {}) });
           } catch (error) {
             if (error?.sent?.length) {
               recordSentMessagesV2(key, error.sent);
@@ -8122,7 +8155,7 @@ function maybeApproveImageRequest(text, key) {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
           const imageSource = String(body.imagePath ?? body.image ?? body.url ?? body.imageUrl ?? '').trim();
-          const caption = String(body.caption ?? body.message ?? '').trim();
+          let caption = String(body.caption ?? body.message ?? '').trim();
           const replyToMessageId = body.replyToMessageId;
           const atUserId = body.atUserId ?? null;
           if (!key || !imageSource) { sendJson({ ok: false, error: 'key 和 imagePath 不能为空' }, 400); return; }
@@ -8141,6 +8174,17 @@ function maybeApproveImageRequest(text, key) {
           }
           if (kind === 'private' && atUserId) { sendJson({ ok: false, error: '私聊不需要 @' }, 400); return; }
           if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
+          // 群聊不发 B站 视频链接（2026-11-22 主人要求）：图片的配文也要过同一道闸。
+          // 配文被剥空不拦图片本身 —— 图还是可以发，只是不再替她贴链接。
+          let groupLinksStripped = 0;
+          if (kind === 'group' && groupLinkPolicyOn() && caption) {
+            const guarded = applyGroupLinkGuard([caption]);
+            if (guarded.changed) {
+              caption = guarded.messages[0] ?? '';
+              groupLinksStripped = guarded.removed.length;
+              log('[群链接闸] ' + key + ' 配文剥掉 ' + groupLinksStripped + ' 个 B站链接');
+            }
+          }
           const sendCfg = cfg.socialV2?.send ?? {};
           const maxChars = Math.max(1, Number(sendCfg.maxMessageChars) || 500);
           if (caption.length > maxChars) { sendJson({ ok: false, error: '配文不能超过 ' + maxChars + ' 字' }, 400); return; }
@@ -8212,7 +8256,7 @@ function maybeApproveImageRequest(text, key) {
             log('[image] 工具发送图片 ' + key + ': ' + image.from + ' ' + Math.round(image.buffer.length / 1024) + 'KB');
             appendActivity(key + ' [image] 工具发送图片');
             appendOutbound({ key, image: image.from, messageId, source: 'send-image' });
-            sendJson({ ok: true, key, messageId, bytes: image.buffer.length, from: image.from, quoted: quotedInfo });
+            sendJson({ ok: true, key, messageId, bytes: image.buffer.length, from: image.from, quoted: quotedInfo, ...(groupLinksStripped ? { linksStripped: groupLinksStripped, hint: GROUP_LINK_HINT } : {}) });
           } catch (error) {
             const st = getSocialV2State(key);
             const idx = st.sendTimes.indexOf(now);
@@ -9451,7 +9495,7 @@ function maybeApproveImageRequest(text, key) {
           const isPrivate = url.pathname === '/api/send/private';
           const isReply = url.pathname === '/api/send/reply';
           const targetId = isPrivate ? String(body.userId ?? '').trim() : String(body.groupId ?? '').trim();
-          const message = unquoteJsonString(String(body.message ?? '').trim());
+          let message = unquoteJsonString(String(body.message ?? '').trim());
           // 引用 id 与端点无关：/api/send/reply 与另两个端点都允许带（是否真的引用由下游按 id 判断）。
           // 旧写法 `isReply ? body.replyToMessageId : body.replyToMessageId` 两个分支一模一样，
           // 保留 isReply 变量只是为了下面的端点语义判断，别再让人以为这里有过分支逻辑。
@@ -9506,6 +9550,20 @@ function maybeApproveImageRequest(text, key) {
             quotedInfo = resolved.info;
             actualReplyToMessageId = resolved.messageId;
           }
+          // 群聊不发 B站 视频链接（2026-11-22 主人要求）：老的 qq_send_group_message 也走这里。
+          let groupLinksStripped = 0;
+          if (kind === 'group' && groupLinkPolicyOn()) {
+            const guarded = applyGroupLinkGuard([message]);
+            if (guarded.dropped) {
+              sendJson({ ok: false, code: 'GROUP_BILI_LINK', error: '群聊不发 B站 视频链接（主人要求）：这条只有链接，没有可发的内容' }, 400);
+              return;
+            }
+            if (guarded.changed) {
+              message = guarded.messages[0] ?? '';
+              groupLinksStripped = guarded.removed.length;
+              log('[群链接闸] ' + key + ' 入口剥掉 ' + groupLinksStripped + ' 个 B站链接');
+            }
+          }
           const sendCfg = cfg.socialV2?.send ?? {};
           const maxChars = Math.max(1, Number(sendCfg.maxMessageChars) || 500);
           if (message.length > maxChars) { sendJson({ ok: false, error: `单条消息不能超过 ${maxChars} 字；内容太长先总结/挑重点，不要拆成 10 条刷屏` }, 400); return; }
@@ -9535,7 +9593,7 @@ function maybeApproveImageRequest(text, key) {
             log(`[send] ${url.pathname} ${key}: 成功 ${sentMessages.length}/1 条`);
             appendActivity(`${key} [send] 成功 ${sentMessages.length}/1 条：${message.slice(0, 80)}`);
             if (sentMessages.length > 0) scheduleReplyCheckV2(key);
-            sendJson({ ok: true, key, sent: sentMessages.length, failed: sentMessages.length ? 0 : 1, quoted: quotedInfo });
+            sendJson({ ok: true, key, sent: sentMessages.length, failed: sentMessages.length ? 0 : 1, quoted: quotedInfo, ...(groupLinksStripped ? { linksStripped: groupLinksStripped, hint: GROUP_LINK_HINT } : {}) });
           } catch (error) {
             if (error?.sent?.length) {
               recordSentMessagesV2(key, error.sent);
@@ -9790,12 +9848,36 @@ function maybeApproveImageRequest(text, key) {
     }
   }
 
+  // 群聊不发 B站 视频链接（2026-11-22 主人要求）：默认开闸，只有
+  // config.socialV2.send.allowBiliLinksInGroups === true 才放开（留给以后想开的人）。
+  function groupLinkPolicyOn() {
+    return cfg.socialV2?.send?.allowBiliLinksInGroups !== true;
+  }
+
+  function applyGroupLinkGuard(messages) {
+    return guardGroupMessages(messages, { allow: !groupLinkPolicyOn() });
+  }
+
   function sendToQQ(key, msg) {
     const assertSendAllowed = captureSendGuard(key);
     const safeMsg = redactKnownTokensOnly(msg);
     const [kind, id] = key.split(':');
     if (kind === 'group') recordFishWindow(key, '我', selfUserId, { isSelf: true });
-    const parts = splitForQQ(safeMsg);
+    // 内部调度（分享卡、主动找人、提醒）也走这条出口，因此在最底层再兜一次；
+    // 入口那几处只是为了让工具响应能带 hint，不能只靠入口。
+    let guardedMsg = safeMsg;
+    if (kind === 'group' && groupLinkPolicyOn()) {
+      const guarded = stripBiliLinks(safeMsg);
+      if (guarded.removed.length) {
+        guardedMsg = guarded.text;
+        log('[群链接闸] ' + key + ' 去掉 ' + guarded.removed.length + ' 个 B站链接');
+      }
+      if (!guardedMsg.trim()) {
+        log('[群链接闸] ' + key + ' 剥完链接没有内容，本条未发送');
+        return;
+      }
+    }
+    const parts = splitForQQ(guardedMsg);
     lastSendFailed.delete(key);
     for (const part of parts) {
       sendChain = sendChain
@@ -10129,6 +10211,16 @@ function maybeApproveImageRequest(text, key) {
   // 这样限速、审计和会话守卫不被绕过。
   async function onebotSendSegments(kind, id, segments) {
     if (!Array.isArray(segments) || !segments.length) throw new Error('消息段为空');
+    // 群聊不发 B站 视频链接（2026-11-22 主人要求）：B站 分享卡与图片配文都走这一层，
+    // 所以在最底层再剥一次；剥完没有可发的段就报错，别让调用方以为发成功了。
+    if (kind === 'group' && groupLinkPolicyOn()) {
+      const guarded = guardGroupSegments(segments, { allow: false });
+      if (guarded.dropped) throw new Error('群聊不发 B站 视频链接（主人要求）：这条只有链接，已取消发送');
+      if (guarded.changed) {
+        segments = guarded.segments;
+        log('[群链接闸] group:' + id + ' 消息段剥掉 ' + guarded.removed.length + ' 个 B站链接');
+      }
+    }
     const action = kind === 'private' ? 'send_private_msg' : 'send_group_msg';
     const params = kind === 'private' ? { user_id: Number(id), message: segments } : { group_id: Number(id), message: segments };
     const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');

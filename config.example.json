@@ -246,6 +246,7 @@
       "maxSendPerMinute": 8,
       "maxSendPerHour": 60,
       "maxSendPerDay": 0,
+      "allowBiliLinksInGroups": false,
       "maxMessageChars": 500,
       "maxGapMs": 10000,
       "gapBaseMs": 800,
