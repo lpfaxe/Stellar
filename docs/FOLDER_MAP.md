@@ -42,7 +42,7 @@
 
 | 前缀 | 意思 | 举例 |
 | --- | --- | --- |
-| `test-*.mjs` | 回归（**212 个**，`test:audit` 跑其中 182 个） | `test-memory-db.mjs` |
+| `test-*.mjs` | 回归（**213 个**，`test:audit` 跑其中 183 个） | `test-memory-db.mjs` |
 | `probe-*.mjs` | 手工探针（要真环境，不进回归） | `probe-events.mjs` |
 | `verify-*.mjs` | 断言某件事仍然成立 | `verify-dsh-020-adaptation.mjs` |
 | `bootstrap*` | 首次启动引导（幂等，绝不覆盖已有配置） | `bootstrap.mjs` |

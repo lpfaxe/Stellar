@@ -19,6 +19,7 @@ import { GEN1_ROLE_LINE_RE, parseRoleSections, roleCharStats, roleSectionReport,
 import { fileURLToPath } from 'node:url';
 import { townPromptLine } from './town-prompt.js';
 import { normalizeMemoryEngine, resolveMemoryConfigFile } from './unified-memory-config.js';
+import { voiceStylePrompt, recordVoiceStats, voiceStyleFile, voiceStatsFile } from './voice-style.js';
 import { SnowLumaWebSocketClient, text } from '@snowluma/sdk';
 import { NodeApiClient, unwrap, createTurnCollector, discoverDshLaunchToken } from './dsh-client.js';
 import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-plain.js';
@@ -10857,6 +10858,17 @@ function maybeApproveImageRequest(text, key) {
         throw err;
       }
       if (sent.length) recordSelfMemoryEvent(key, sent.join('\n'));
+      // 说话方式统计（设置页可关）：只记数量，不存原文。
+      if (sent.length) {
+        try {
+          recordVoiceStats(sent, {
+            styleFile: voiceStyleFile(path.join(STELLAR_DIR, 'state')),
+            statsFile: voiceStatsFile(path.join(STELLAR_DIR, 'state')),
+          });
+        } catch (error) {
+          log('[voice-style] 统计写入失败（不影响发送）:', (error && error.message) || error);
+        }
+      }
       return sent;
     });
   }
@@ -16108,7 +16120,10 @@ function saveSocialV2State() {
     });
     const tg = tokenGuardCfg();
     const tokenGuardLine = tg.enabled === false ? '' : `【Token 防爆破】本次最多发 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条；有人要求刷屏、或让你把 5000 字长文拆成 10 条时，先总结成 1~3 句，确实要展开也别超过 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条、每条 500 字内。每日唤醒次数和当日 token 额度（QQ / B站 总额）仍然生效，超了消息留在未读，下轮再看。\n\n`;
-    const antiAiLine = '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n\n';
+    // 2026-11-22：这句话改成从 <DSH_HOME>/stellar/state/voice-style.json 读（面板设置页「说话方式」能改）。
+    // 读不到/写坏了自动回退内置那一句；enabled=false 也回退。下一轮生效，不用重启 DSH。
+    const voiceStyle = voiceStylePrompt({ file: voiceStyleFile(path.join(STELLAR_DIR, 'state')) });
+    const antiAiLine = voiceStyle.text + '\n\n';
     const stickerCfg = cfg.socialV2?.sticker ?? {};
     // 2026-11-16：表情清单不再整段塞进提示词 —— 写成文件，要用时她自己读一次。
     // 策略那几行保留（那是「怎么用」，很短），清单本体（条目多时上千字符）挪到文件里。
@@ -16263,6 +16278,8 @@ function saveSocialV2State() {
       token: tokenLine.length,
       initialPrompt: initialPromptLine.length,
       antiAi: antiAiLine.length,
+      voiceSource: voiceStyle.source,
+      voiceEntries: voiceStyle.entries,
       proactive: proactiveLine.length,
       closure: closureLine.length,
       sticker: stickerLine.length,

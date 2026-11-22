@@ -32,6 +32,7 @@ import { readRunMode, saveRunMode } from './lib/run-mode.js'
 import { buildWebImages, clearWebImages, deleteWebImage, webImageFile } from './lib/web-images.js'
 import { deleteFile as deleteCabinetFile, filePath as cabinetFilePath, listFiles as listCabinetFiles, saveFile as saveCabinetFile, saveStream as saveCabinetStream } from './lib/files.js'
 import { buildMemoryDb, clearZoneNotes, deleteFact, deleteZoneNote, forgetMemory, listFacts, listFragments, listProfiles, listStyleRefs, listTopics, listZoneNotes, readTopicDetail, requestMemoryJob, runMemoryJob, saveFact, saveProfile, setMemoryTier, setStyleRefEnabled } from './lib/memory-db.js'
+import { readVoicePanel, restoreVoicePanel, saveVoicePanel } from './lib/voice-style.js'
 import { MANIFEST, servePublic } from './lib/static.js'
 import { logEvent, metricsSnapshot, recordRequest } from './lib/metrics.js'
 
@@ -297,6 +298,39 @@ const server = http.createServer(async (req, res) => {
       logLine('config patched')
       appendAudit('config-patch', { keys: Object.keys(patch || {}) })
       return sendJson(res, 200, { ok: true, config: summarizeConfig(cfg), mtime: nextMtime })
+    }
+    // ── 说话方式（「鱼八股」，2026-11-22）：她每轮唤醒都会看到的那段话，由主人在这里改 ──
+    //    数据落 <DSH_HOME>/stellar/state/voice-style.json，桥接每轮读一次（改完下一轮生效，不用重启）。
+    //    写盘只能走这里：她没有任何写配置的工具，群友诱导不了她改自己的说话方式。
+    if (url.pathname === '/api/voice-style' && req.method === 'GET') {
+      return sendJson(res, 200, await readVoicePanel())
+    }
+    if (url.pathname === '/api/voice-style' && req.method === 'POST') {
+      // 公网隧道只读：改她说话的方式算改配置，必须本机或同一 WiFi
+      if (!requireWrite(req, res)) return
+      const bad = crossSite(req)
+      if (bad) return sendJson(res, 403, { ok: false, message: bad })
+      const body = await readBody(req)
+      const r = await saveVoicePanel(body || {})
+      const st = r.style || (body && typeof body === 'object' ? body : {}) || {}
+      appendAudit('voice-style-save', {
+        ok: r.ok,
+        enabled: st.enabled !== false,
+        stats: st.stats !== false,
+        principles: Array.isArray(st.principles) ? st.principles.length : 0,
+        entries: Array.isArray(st.entries) ? st.entries.length : 0,
+      })
+      logLine('voice-style save ' + (r.ok ? 'ok' : 'rejected'))
+      return sendJson(res, r.ok ? 200 : 400, r)
+    }
+    if (url.pathname === '/api/voice-style/restore' && req.method === 'POST') {
+      if (!requireWrite(req, res)) return
+      const bad = crossSite(req)
+      if (bad) return sendJson(res, 403, { ok: false, message: bad })
+      const r = await restoreVoicePanel()
+      appendAudit('voice-style-restore', { ok: r.ok, restored: String(r.restored || '') })
+      logLine('voice-style restore ' + (r.ok ? 'ok' : 'rejected'))
+      return sendJson(res, r.ok ? 200 : 400, r)
     }
     // ── 鱼缸小镇：她自己的日子（只读快照 + 3 天记忆；开关走 /api/capabilities 的 town）──
     if (url.pathname === '/api/town' && req.method === 'GET') {

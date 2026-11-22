@@ -21,6 +21,7 @@
 | QQ 号与 B站 号怎么算同一个人 | [features/CROSS_PLATFORM_IDENTITY.md](guides/features/CROSS_PLATFORM_IDENTITY.md) |
 | B站 那套（刷视频/发动态/评论） | [subsystems/SUBSYSTEM-BILI.md](guides/subsystems/SUBSYSTEM-BILI.md) |
 | 界面：插件设置页与浏览器面板 | [subsystems/UI-AND-CONSOLE.md](guides/subsystems/UI-AND-CONSOLE.md) |
+| 她说话的方式（鱼八股：原则 + 词条，面板可改） | [subsystems/SUBSYSTEM-VOICE-STYLE.md](guides/subsystems/SUBSYSTEM-VOICE-STYLE.md) |
 | 84 个工具、以及它们怎么被放进 DSH | [subsystems/AGENT-TOOLS-AND-PRESETS.md](guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
 | 鱼缸小镇（可选，默认不启用） | [subsystems/SUBSYSTEM-TOWN.md](guides/subsystems/SUBSYSTEM-TOWN.md) |
 | 配置项、状态文件都在哪 | [operations/DATA-AND-CONFIG.md](guides/operations/DATA-AND-CONFIG.md) |

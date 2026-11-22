@@ -11,6 +11,7 @@ loadStatus().then(loadCapabilities).then(loadLog).then(loadReports).then(loadTod
   .then(function () { return window.loadMemoryDb ? loadMemoryDb() : null; })
   .then(function () { return window.loadTown ? loadTown() : null; })
   .then(function () { return window.loadProfiles ? loadProfiles() : null; })
+  .then(function () { return window.loadVoiceCard ? loadVoiceCard() : null; })
   // 参考库已停用（2026-11-22）：不再拉 /api/style-refs，少一个开局请求。要恢复就把这行换回 loadStyleRefs()
   .then(function () { return null; })
   .then(function () { return window.loadTopics ? loadTopics(0) : null; })

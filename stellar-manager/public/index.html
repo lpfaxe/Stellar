@@ -668,6 +668,45 @@
     </div>
     <p class="muted" id="accessHint">第一次打开会要口令；电脑本机打开不需要。页面可「添加到主屏幕」，像 App 一样用。</p>
   </section>
+  <!-- 说话方式（「鱼八股」，2026-11-22）：她每轮唤醒都看到的「原则 + 词条」，写 state/voice-style.json。
+       注意别加 hidden：switchTab 给当前页卡片加 .active{display:block}，会把 hidden 盖掉（styleCard 踩过这个坑）。 -->
+  <section class="card" id="voiceCard" data-tab="settings">
+    <h2>说话方式 <span class="hint">鱼八股 · 她每轮都会看到</span></h2>
+    <p class="muted small">把她常说的「AI 腔」换成你们的说法。这些会在她每次醒来时随提示词一起带过去（最多 600 字），改完下一轮生效，不用重启。</p>
+    <label class="switch cap-row" for="voiceEnabled">
+      <input type="checkbox" id="voiceEnabled">
+      <span class="cap-body">
+        <b class="cap-name">启用这份词表</b>
+        <small class="cap-desc">关掉 = 回到原来写死的那一句（不删你的词条）</small>
+      </span>
+    </label>
+    <label class="switch cap-row" for="voiceStats">
+      <input type="checkbox" id="voiceStats">
+      <span class="cap-body">
+        <b class="cap-name">记今天用量</b>
+        <small class="cap-desc">只数数量（发送条数/破折号/三点列举/客服腔/撞上原句/用上改法），不存原文</small>
+      </span>
+    </label>
+    <div class="memdb-meta" id="voiceStatsRow"><span class="muted">读取中…</span></div>
+    <h3 class="voice-sub">原则 <span class="muted small">（骨架，最多 6 条）</span></h3>
+    <div id="voicePrinciples" class="voice-list"></div>
+    <div class="row wrap"><button id="voiceAddPrinciple" class="ghost small">＋ 加一条原则</button></div>
+    <h3 class="voice-sub">词条 <span class="muted small">（最多 60 条；左边 = 她常说的话，右边 = 换成什么，多个用 / 隔开）</span></h3>
+    <div id="voiceEntries" class="voice-list"></div>
+    <div class="row wrap"><button id="voiceAddEntry" class="ghost small">＋ 加一条词条</button></div>
+    <div class="voice-meter"><i id="voiceMeterBar"></i></div>
+    <p class="muted small" id="voiceChars">0 / 600 字</p>
+    <details class="voice-preview-wrap">
+      <summary>她实际会看到的那段</summary>
+      <pre class="voice-preview" id="voicePreview"></pre>
+    </details>
+    <div class="row wrap">
+      <button id="voiceSave" class="primary">保存</button>
+      <button id="voiceRestore" class="ghost">回滚到上一版</button>
+      <button id="voiceRefresh" class="ghost small">刷新</button>
+      <span class="msg" id="voiceMsg"></span>
+    </div>
+  </section>
   <!-- 2026-11-22 主人要求关闭：参考库（style_slice）不再注入，面板这块隐藏（DOM 留着方便回滚） -->
   <section class="card" id="styleCard" data-tab="settings" hidden>
     <h2>参考库 <span class="hint">已停用</span></h2>
@@ -761,6 +800,7 @@
 <script src="/js/approvals.js"></script>
 <script src="/js/capabilities.js"></script>
 <script src="/js/town.js"></script>
+<script src="/js/voice.js"></script>
 <script src="/js/layout.js"></script>
 <script src="/js/clock.js"></script>
 <script src="/js/log.js"></script>

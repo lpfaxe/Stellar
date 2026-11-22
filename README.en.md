@@ -106,7 +106,7 @@ Details: [`INSTALL.md`](docs/guides/getting-started/INSTALL.md) and [`DSH_SETUP.
   "Her" holds the three run modes (normal / slack-off / minimal), the reminder list, and the proactive-talk settings; watch history is folded into the Bilibili tab.
 - **Bridge modes** — `chat` (plain group member), `closed-agent` (admin only), `reserved` (v1 simulation), `reserved2` (v2 simulation, default: everything is a tool — read, send, wait, sleep, close).
 - **Run modes** — a second, independent layer: `normal` (full daily tasks), `idle` (logs only, more browsing and chatting; the default on weekends), `minimal` (replies only, then sleeps).
-- **Dashboards** — the full panel on `http://127.0.0.1:3300/` (7 pages, 37 cards) and the bridge’s own single-page console on `http://127.0.0.1:3100/?token=<consoleToken>` (19 sections).
+- **Dashboards** — the full panel on `http://127.0.0.1:3300/` (7 pages, 38 cards) and the bridge’s own single-page console on `http://127.0.0.1:3100/?token=<consoleToken>` (19 sections).
 
 The panel is empty on a fresh install — it reads `~/.dsh/stellar/` and `config.json`, which do not exist yet.
 Contacts appear after the first message, memory after a few rounds, Bilibili/QZone after the scheduler runs once.
@@ -124,7 +124,7 @@ Contacts appear after the first message, memory after a few rounds, Bilibili/QZo
 | **Daily** | run modes, biological clock, daily task list, to-do reminders, quiet hours |
 | **Budget** | daily token limits (QQ / Bilibili / friends-feed / town / other / total), cost dashboard, price-table conversion |
 | **Tool surface** | **84 MCP tools** (`src/mcp-snowluma-safe.js` 71: 36 `qq_*` + 35 `stellar_*`; `src/town-tools.js` 10 `stellar_town_*`; 1 host-level + 2 web-search — 45 `stellar_*` in total), three MCP servers, four presets, fail-closed guards |
-| **UI** | settings page (7 tabs), full panel (7 pages / 37 cards), bridge console (single page) |
+| **UI** | settings page (7 tabs), full panel (7 pages / 38 cards), bridge console (single page) |
 
 **Optional, off by default — Fishbowl Town.** The repo ships an *interface* to
 [fishbowltown.com](https://fishbowltown.com) (a private "her own day" diary for the agent): a handful of
@@ -167,7 +167,7 @@ stellar/
 ## Testing
 
 ```bash
-node scripts/test-audit.mjs        # offline regression suite, no credentials / DSH / QQ needed (182 specs of 212 scripts;
+node scripts/test-audit.mjs        # offline regression suite, no credentials / DSH / QQ needed (183 specs of 213 scripts;
                                    # the few that need the dev panel auto-SKIP in the public repo)
 npm run test:regressions           # bridge / protocol regressions
 npm run privacy-scan:strict        # must report zero hits before publishing

@@ -1325,3 +1325,17 @@ button.ghost.on { border-color:var(--accent); color:var(--accent-ink); }
 .town-album-item img { display: block; width: 100%; height: 120px; object-fit: cover; }
 .town-album-item figcaption { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 8px; }
 
+/* 说话方式（2026-11-22）：一行一条原则/词条，删在右边 */
+.voice-sub { font-size: 13px; margin: 14px 0 6px; font-weight: 600; }
+.voice-list { display: flex; flex-direction: column; gap: 6px; }
+.voice-row { display: flex; align-items: center; gap: 6px; }
+.voice-in { flex: 1 1 auto; min-width: 0; }
+.voice-row .voice-in[data-kind="from"] { flex: 0 1 38%; }
+.voice-arrow { color: var(--muted, #8a8f98); flex: 0 0 auto; }
+.voice-meter { height: 4px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 12px; }
+.voice-meter > i { display: block; height: 100%; width: 0; background: #2fa3ae; transition: width .2s; }
+.voice-meter.over > i { background: #d08a3e; }
+.voice-preview { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.6; padding: 10px; border-radius: 8px; background: rgba(255,255,255,.04); max-height: 260px; overflow: auto; }
+.voice-preview-wrap { margin: 10px 0 4px; }
+
+

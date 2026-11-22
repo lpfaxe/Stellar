@@ -91,6 +91,9 @@
 | `current-role.json` | 桥接 | 当前角色指针 | **别删**，删了她不知道自己是谁 |
 | `state/town/album/`（`index.json` + 原图/缩略图） | 插件 | 小镇相册镜像（60 张 / 120 MB 双限，单张 >8 MB 只留缩略图） | 能（下次采集重建索引，照片本身在小镇侧） |
 | `turn-context.json` / `turn-context/` | 桥接 | 本轮是谁在说话（15 分钟过期） | 能 |
+| `state/voice-style.json` | 插件侧 `DSH_HOME/stellar/state/`（面板保存时建；桥接按 `mtimeMs:size` 读） | 她每轮看到的「说话方式」原则与词条（≤600 字硬上限；文件不存在按默认 3 条渲染） | 能（等于回到内置那句） |
+| `state/voice-stats.json` | 同上 | 今天的说话方式计数（条数/破折号/三点列举/客服腔/撞上原句/用上改法），只记数量不存原文 | 能 |
+| `state/voice-style.bak/` | 同上 | 每次保存前的旧版，只留最新 10 份 | 能 |
 | `purpose-outreach.json` | 角色目录 `characters/<id>/`，写不进才回退桥接 `state/`（`src/bridge.js:2265-2267`） | 主动搭话的状态 | 能 |
 | `plugin.log` | 插件（`DSH_HOME/stellar/`） | 插件半的日志 | 能 |
 | `bridge.log` / `qq-activity.log` | 桥接 | 桥接与 QQ 活动日志 | 能 |
