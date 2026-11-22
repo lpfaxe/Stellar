@@ -39,7 +39,12 @@ assert.match(scheduler, /memoryCardBlockForBili\(\)/, 'B站记忆卡块没有接
 // 3) 插件：定时维护 + 控制台 API + 生命周期清理。
 assert.match(index, /startMemoryCardTimer\(\{ log: pluginLog, callBridge \}\)/, '插件没有启动记忆卡定时维护');
 assert.match(memoryPlugin, /function cardRetiredNow\(/, '插件没有判断旧卡是否退役');
-assert.match(memoryPlugin, /if \(retired\) \{/, '退役后没有清空注入产物');
+// 2026-11-22：退役判定改成与桥接同一个配置源（原来读 $DSH_HOME 旧壳，engine=db 只生效一半）。
+assert.match(memoryPlugin, /return memoryPipelineRetiredNow\(\);/, '插件退役判定没有走共享的 memory-engine');
+// 退役后维护函数直接早退，并清空三份注入产物（这一步不能省，否则「停了但提示词还在」）。
+assert.match(memoryPlugin, /retired: true, changed, status: memoryCardStatusNow\(config\)/, '退役后维护函数没有早退并清空产物');
+assert.match(memoryPlugin, /function clearPromptOutputs\(now\)/, '退役后没有清空注入产物');
+assert.match(memoryPlugin, /started: false, retired: true/, '退役后定时器仍然启动');
 assert.match(memoryPlugin, /if \(cardRetiredNow\(\)\) return '';/, '退役后 memoryCardPromptBlock 仍返回旧卡');
 assert.match(index, /\/memory-card/, '插件缺少记忆卡 API 路由');
 assert.match(index, /handleMemoryCard/, '插件缺少记忆卡处理器');

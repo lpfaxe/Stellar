@@ -31,13 +31,14 @@
 | 花了多少钱、额度怎么算 | [operations/BILLING.md](guides/operations/BILLING.md) |
 | 面板里那张花费卡怎么看 | [operations/TOKEN_USAGE_CONSOLE.md](guides/operations/TOKEN_USAGE_CONSOLE.md) |
 | 在外面用手机连回面板 | [operations/REMOTE-ACCESS-TAILSCALE.md](guides/operations/REMOTE-ACCESS-TAILSCALE.md) |
-| 把向量记忆的索引灌进去 | [features/EMBEDDING_PACKS.md](guides/features/EMBEDDING_PACKS.md) |
+| 看旧的向量记忆 / embedding 包（`engine=db` 时已停，2026-11-22） | [features/EMBEDDING_PACKS.md](guides/features/EMBEDDING_PACKS.md) |
 | 出问题怎么把日志给我 | [development/ERROR-REPORTING.md](guides/development/ERROR-REPORTING.md) |
 | 想改代码 / 跑回归 | [RELEASE.md](RELEASE.md) |
 
 ## 三条先说清楚的事实
 
 1. **记忆存在 `memory.db`（SQLite）。** 聊天进缓冲表 → 后台切成话题、抽出事实 → 唤醒只喂目录与事实。
+   `memory.engine='db'` 时旧的记忆卡与向量记忆两条管线整体不启动（2026-11-22），数据保留、不再增长。
    详见 [features/MEMORY.md](guides/features/MEMORY.md)。
 2. **只发文字和图片。** 不合成语音，也不发图片以外的富媒体；设置页与面板里没有这类开关。
 3. **形象图要自己放。** 仓库不带任何默认头像/立绘；把图片放 `assets/self-image.png`，

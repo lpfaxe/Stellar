@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { BACKUP_DIR, QQ_CONFIG, QQ_STATE_DIR, maskPath } from './paths.js';
+import { memoryPipelineRetiredNow } from './memory-engine.js';
 import {
   activeMemoryPaths, activePlatformStateDir,
 } from '../../../src/character-persona.js';
@@ -31,17 +32,42 @@ const TICK_MS = 10 * 60 * 1000;
 
 /**
  * 旧记忆卡是否已退役（config.json 的 memory.engine === 'db'）。
- * 2026-11-15 用户要求「完全剔除旧卡」：engine=db 时新记忆库（memory.db）是唯一真相，
- * 旧卡不再渲染提示词、不再发容量告警；但**归档不停**（inbox 仍要被消费、
- * memory-card-full.jsonl 仍要 append），否则原料会无限堆积、历史也补不回来。
+ * 2026-11-15 用户要求「完全剔除旧卡」；2026-11-22 进一步要求「停掉整条管线」：
+ * engine=db 时记忆库（memory.db）是唯一真相，旧卡不渲染、不告警、不归档、不跑定时器。
+ * 判定走 ./memory-engine.js —— 与桥接读同一份配置（原来这里读 $DSH_HOME 的旧壳，
+ * 于是 B站 侧一直以为没退役，PITFALLS #303）。数据文件保留不删，恢复办法见文档。
  */
 function cardRetiredNow() {
+  return memoryPipelineRetiredNow();
+}
+
+/** 退役时把三份注入产物清成空（幂等：已经是空的就不再写，免得每 10 分钟刷 mtime）。 */
+function clearPromptOutputs(now) {
+  let changed = false;
+  const writeIfDifferent = (file, next) => {
+    let current = '';
+    try { current = fs.readFileSync(file, 'utf8'); } catch { current = ''; }
+    if (current === next) return;
+    try { writeTextAtomic(file, next); changed = true; } catch {}
+  };
+  writeIfDifferent(pathsNow().promptQq, '');
+  writeIfDifferent(pathsNow().promptBili, '');
+  const groupsFile = path.join(pathsNow().dir, 'memory-card-prompt-qq-groups.json');
+  let groupsStale = true;
   try {
-    const unified = readUnified().config ?? {};
-    return String(unified?.memory?.engine || '').trim().toLowerCase() === 'db';
+    const current = JSON.parse(fs.readFileSync(groupsFile, 'utf8'));
+    groupsStale = !(current && current.retired === true && Object.keys(current.blocks || {}).length === 0);
   } catch {
-    return false;
+    groupsStale = true;
   }
+  if (groupsStale) {
+    try {
+      writeTextAtomic(groupsFile, `${JSON.stringify({ version: 1, updatedAt: new Date(now).toISOString(), retired: true, blocks: {} }, null, 2)}\n`);
+      changed = true;
+    } catch {}
+  }
+  if (changed) promptCache = new Map();
+  return changed;
 }
 
 /** 分层记忆配置：读合体层 config.json 的 memory.tiers（缺省用内置默认值）。 */
@@ -333,6 +359,13 @@ export function fullMemoryCardSnapshot({ q = '', limit = 40, config = memoryCard
 /** 真正跑一次维护；并发调用会排队，不会互相覆盖。 */
 export function runMemoryCardMaintenance({ forceDecay = false, config = memoryCardConfig(), now = Date.now(), runtimeSharing = memoryCardRuntimeSharing() } = {}) {
   return serialize(async () => {
+    if (cardRetiredNow()) {
+      // engine=db：整条旧卡管线不跑（2026-11-22 主人要求「彻底停掉、数据保留」）。
+      // 唯一要做的是把三份注入产物清空 —— 桥接与 B站调度器只认文件，
+      // 退役前留下的正文如果还在，就变成「停了但还在注入」。
+      const changed = clearPromptOutputs(now);
+      return { ok: true, retired: true, changed, status: memoryCardStatusNow(config) };
+    }
     if (config.enabled === false) {
       // 关掉记忆卡时要清空注入块：桥接只认文件，留着旧文件等于「设置关了但提示词还在」。
       try { writeTextAtomic(pathsNow().promptQq, ''); } catch {}
@@ -361,9 +394,6 @@ export function runMemoryCardMaintenance({ forceDecay = false, config = memoryCa
         backupFile(pathsNow().fullStats, 'memory-card-full-stats');
       }
     } catch {}
-    // engine='db'：旧卡已退役，但归档要继续（见 cardRetiredNow 注释）。
-    // 传空 runtimeSharing 让渲染不再跨会话共享；渲染产物在下面被清空，等于不进提示词。
-    const retired = cardRetiredNow();
     const result = maintainMemoryCard({
       paths: pathsNow(),
       config,
@@ -373,18 +403,8 @@ export function runMemoryCardMaintenance({ forceDecay = false, config = memoryCa
       forceDecay,
       fullPaths: pathsNow(),
       fullConfig: config,
-      runtimeSharing: retired ? {} : runtimeSharing,
+      runtimeSharing,
     });
-    if (retired) {
-      // 把三份注入产物清空：桥接与 B站调度器读的都是文件，留着旧文件等于「退役了但提示词还在」。
-      try { writeTextAtomic(pathsNow().promptQq, ''); } catch {}
-      try { writeTextAtomic(pathsNow().promptBili, ''); } catch {}
-      try {
-        writeTextAtomic(path.join(pathsNow().dir, 'memory-card-prompt-qq-groups.json'),
-          `${JSON.stringify({ version: 1, updatedAt: new Date(now).toISOString(), retired: true, blocks: {} }, null, 2)}\n`);
-      } catch {}
-      promptCache = new Map();
-    }
     // 分层记忆维护：三级每日清、二级每 l2Days 天（默认 3）；清空前先归档原文、先判晋升（不直接丢）。
     // 2026-11-11：以前这里把异常吞进返回值、不写日志，结果 lastTierMaintenanceAt 停在 11-09
     // 也没人发现。现在无论跑没跑、清了几条都落一行日志，失败带原文。
@@ -582,6 +602,12 @@ export function notifyOwnerIfNeeded({ callBridge, log = () => {}, config = memor
 export function startMemoryCardTimer({ log = () => {}, callBridge } = {}) {
   if (process.env.STELLAR_DISABLE_MEMORY_TIMER === '1') {
     return { stop() {}, started: false };
+  }
+  if (cardRetiredNow()) {
+    // engine=db：旧卡归档/衰减/告警整条停掉（2026-11-22）。数据文件保留；
+    // 想恢复旧管线就把 config.json 的 memory.engine 改回 card 并重启 DSH。
+    log('[memory-card] memory.engine=db，旧记忆卡管线不启动（数据保留，不再归档/衰减/注入）');
+    return { stop() {}, started: false, retired: true };
   }
   let stopped = false;
   let interval = null;

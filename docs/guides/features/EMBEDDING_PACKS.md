@@ -3,6 +3,15 @@
 > **先看这一句**：默认的记忆系统不需要它。记忆库是 `memory/memory.db`，检索走 SQLite 全文索引 + 关键词，不依赖向量。
 > 这份文档只在你**主动把记忆切回旧的向量模式**（`memory.engine=card` 且 `memory.mode=vector` 或 `hybrid`）时才相关。
 
+> ⛔ **本地 18765 的 shim 已退役（2026-11-22）**：`memory.engine='db'` 时向量记忆管线整体不启动，
+> `~/.dsh/stellar/keepalive.ps1` 里负责探活并拉起 18765 的块已删除，`embedding-shim.mjs` 进程已停、脚本文件保留。
+> 那个 shim **不是本地模型**：它把请求原样转发给云端 embeddings 接口，记忆文本因此会离开本机；
+> 默认 `db` 路径上这条外发通道已经关掉。云端包仍在，但只有你自己显式启用并切回旧管线时才会用到。
+>
+> **恢复三步**（缺一步会静默降级）：① 仓库根 `config.json` 的 `memory.engine` 改回 `"card"`；
+> ② 在 `keepalive.ps1` 恢复 18765 探活块，或手动 `node ~/.dsh/stellar/embedding-shim.mjs`；
+> ③ 确认 `vectorMemory.enabled` 没被关掉，再跑 `node scripts/test-vector-memory.mjs` 验一遍。
+
 ## 1. 它解决什么
 
 把「她记得的事」按语义检索：拿这句话去向量库里找最像的旧记忆。优点是换个说法也能召回，缺点是得有一个 embedding 模型常驻，还得多存一份索引。

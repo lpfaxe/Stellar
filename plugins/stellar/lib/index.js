@@ -710,7 +710,8 @@ let memoryDbTimer = null;
     readConfig: () => readUnified().config ?? {},
     asker: memoryAsk,
   });
-  // 向量记忆：独立存储/独立开关，默认与记忆卡并行写入；memory.mode 只影响读取。
+  // 向量记忆：独立存储/独立开关。2026-11-22 起 memory.engine=db 时它与记忆卡一样不启动
+  // （两者都在 start*Timer 内部判 engine，数据保留、不再摄取/编码/建索引）。
   vectorMemoryTimer = startVectorMemoryTimer({ log: pluginLog });
 
   // 角色自动存档：启动 10 秒后跑一次，之后每 6 小时检查（每天最多一份 + 11 个年龄档轮换）。

@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { QQ_STATE_DIR, maskPath } from './paths.js';
+import { memoryPipelineRetiredNow } from './memory-engine.js';
 import { activeMemoryPaths, activePlatformStateDir } from '../../../src/character-persona.js';
 import { readUnified } from './store.js';
 import { consoleBase, consoleToken } from './bridge.js';
@@ -415,6 +416,12 @@ export async function rebuildAllVectorIndexes(config, models = []) {
 export function startVectorMemoryTimer({ log = () => {}, config = null } = {}) {
   if (process.env.STELLAR_DISABLE_VECTOR_TIMER === '1') {
     return { stop() {}, started: false };
+  }
+  if (memoryPipelineRetiredNow()) {
+    // engine=db：向量记忆也归记忆库接管（2026-11-22 主人要求）。
+    // 这条管线是 embedding 云端调用的唯一来源，不跑它就不再有外发请求。
+    log('[vector-memory] memory.engine=db，向量记忆管线不启动（数据保留，不再摄取/编码/建索引）');
+    return { stop() {}, started: false, retired: true };
   }
   let stopped = false;
   let timer = null;

@@ -64,6 +64,10 @@ const tests = [
   // ② 同人同 kind 同 label 只留一条且权重只升不降；③ private/secret 不许进别人的上下文
   // （主人跨人问也一样，否则「A 的生日」会被念给 B 听）；④ 改一条撞键必须报 duplicate 不许静默覆盖。
   'test-memory-facts.mjs',
+  // 引擎退役（2026-11-22）：桥接与插件必须读同一份 config.json（以前插件读 $DSH_HOME 旧壳，
+  // engine=db 只生效一半：B站 每轮注入旧卡、向量记忆照跑、embedding 照打云端）。
+  // 钉住：共享选文件规则 + 两条定时器启动即挡 + 维护函数早退清产物 + keepalive 不再拉起 18765。
+  'test-memory-retired.mjs',
   // 参考引擎（方案 B）：参考角色名必须清洗（名字进提示词=模型扮演 TA）、PART1 角色档案不入库、
   // >800 字不索引、只挑命中情境的 2 片且总字符 ≤900、同一情境连续第 3 次跳过。
   // 待办「提醒谁」（2026-11-13）：targetKey/targetName 必须优先于会话 key 与 requester，

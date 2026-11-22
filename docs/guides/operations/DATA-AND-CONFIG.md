@@ -5,8 +5,8 @@
 ## 0 一张图
 
 ```
-<仓库>/config.json                  桥接读这份（ownerQQ / socialV2 / memory / consolePort / dsh）
-~/.dsh/stellar/config.json          插件读这份（platforms / admin / bridge / 界面偏好）
+<仓库>/config.json                  桥接读这份；记忆开关的权威来源（ownerQQ / socialV2 / memory / consolePort / dsh）
+~/.dsh/stellar/config.json          插件主配置；仓库那份没有 memory 段时才回退到这里读记忆（platforms / admin / bridge / 界面偏好）
 ~/.dsh/stellar/bili.config.json    B站 CLI 读这份（生物钟 / 额度 / 白名单 / 发动态口径）
 
 ~/.dsh/stellar/state/              运行时状态（未读、额度、审计、日志、运行模式、待办）
@@ -26,7 +26,9 @@
 | `consolePort` / `consoleToken` | 桥接自带控制台 | 默认 3100；令牌为空时自动生成到 `state/console-token` |
 | `socialV2.selfImage` | 她自己的形象图（`qq_get_self_image` 用） | 留空则找 `assets/self-image.png` / `.jpg` / `.webp`；都没有就回「还没有形象图片」 |
 | `socialV2.*` | 回复策略、唤醒条件、表情、收尾、图片额度 | 见各功能篇 |
-| `memory.*` | 记忆引擎与四个子块 | 见 [../features/MEMORY.md](../features/MEMORY.md) |
+| `memory.engine` | `db` / `card` | **记忆总开关**：`db`=记忆库（`memory.db`）唯一真相，旧记忆卡与向量记忆两条管线**整体不启动**（2026-11-22）；`card`=旧行为。当前是 `db` |
+| `memory.*` | 其余记忆子块 | 见 [../features/MEMORY.md](../features/MEMORY.md) |
+| `memoryCard` | 旧记忆卡配置 | `memory.engine='db'` 时整段不生效（定时器不启动、维护早退），数据文件保留 |
 | `dsh.*` | DSH 地址、模型、思考强度、认证头 | 端口会被 `dsh-port.js` 自动纠正 |
 | `pricing` | 价目表覆盖项 | 留空用 `src/model-prices.js` 官方价 |
 | `fishGuard` | 鱼群保护名单 | **默认空 = 不拦** |
@@ -36,6 +38,8 @@
 
 入口：插件设置页保存时写；结构由 `plugins/stellar/lib/store.js` 的 `DEFAULT_UNIFIED` 定义（读时深合并）。
 
+**两份 config 谁说了算**：仓库根 `config.json` 优先——它有 `memory` 段就用它；没有才回退到这份。解析逻辑只有一份 `src/unified-memory-config.js`，桥接与插件共用，所以 `memory.engine` 不会出现「一边 db、一边 card」的两套答案。改记忆开关请改**仓库根**那份。
+
 | 键 | 作用 |
 | --- | --- |
 | `platforms.start` / `platforms.enabled` | 开 DSH 时要不要连带起桥接 / B站 |
@@ -43,7 +47,7 @@
 | `admin` | 管理员（B站 ⇄ QQ 同一个人），空则回退 `config.json` 的 `ownerQQ` |
 | 界面偏好 | 上次停在哪一页、紧凑模式等 |
 
-**这份不复制桥接的配置**：桥接读自己那份，插件读自己那份。改错地方的表现是「改了没反应」。
+**这份不复制桥接的配置**：桥接读仓库根那份，插件读这份；但**记忆开关是例外**——`memory.engine` 仓库根优先、这份只作回退（见上）。改错地方的表现是「改了没反应」。
 
 ## 3 `~/.dsh/stellar/bili.config.json`（B站）
 
@@ -91,6 +95,8 @@
 | `plugin.log` | 插件（`DSH_HOME/stellar/`） | 插件半的日志 | 能 |
 | `bridge.log` / `qq-activity.log` | 桥接 | 桥接与 QQ 活动日志 | 能 |
 | `memory-review-request.json` / `memory-profile-request.json` | 插件 | 面板点的「立即复核 / 生成侧写」 | 能（40 分钟内有效） |
+| `memory-card.json` / `memory-card-full.jsonl` | 角色目录 `characters/<角色>/memory/` | 旧记忆卡的主文件与归档 | `memory.engine='db'` 时冻结、不再增长（历史可达数百 MB）；改回 `card` 后继续 |
+| `vector-memory.jsonl` / `vector-memory-index/` | 角色目录 `characters/<角色>/memory/` | 旧向量记忆的记录与索引 | 同上：`db` 时冻结，不再摄取/编码/建索引；改回 `card` 后继续 |
 
 ## 5 备份、保留与回滚
 
@@ -103,8 +109,8 @@
 
 | 老位置 | 现在 | 怎么处理 |
 | --- | --- | --- |
-| 配置只在 `~/.dsh/stellar/config.json` | 桥接优先读 `<仓库>/config.json` | 仓库那份没有 `memory` 段时自动回退到旧位置 |
-| `memory-card*.jsonl` 等旧记忆档案 | 新库不读 | 留在原地不动，仅当 `memory.engine=card` 时旧引擎才读 |
+| 配置只在 `~/.dsh/stellar/config.json` | 仓库根 `config.json` 优先 | 仓库那份没有 `memory` 段时回退到旧位置；解析只有一份 `src/unified-memory-config.js`，桥接与插件共用，记忆开关不会再出现两套答案 |
+| `memory-card*.jsonl` 等旧记忆档案 | 新库不读 | 留在原地不动；`engine=db` 时冻结（不再写入/增长），仅当 `memory.engine=card` 时旧引擎才读并继续写 |
 | `stateXYZ` 之类的历史目录 | 已清理 | 看到就当杂物 |
 
 ## 7 清理约定（什么能删、什么绝不能删）

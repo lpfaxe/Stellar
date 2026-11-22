@@ -18,6 +18,7 @@ import { auditAccessBlock as auditAccessBlockAt } from './access-audit.js';
 import { GEN1_ROLE_LINE_RE, parseRoleSections, roleCharStats, roleSectionReport, selectRoleText } from './role-card.js';
 import { fileURLToPath } from 'node:url';
 import { townPromptLine } from './town-prompt.js';
+import { normalizeMemoryEngine, resolveMemoryConfigFile } from './unified-memory-config.js';
 import { SnowLumaWebSocketClient, text } from '@snowluma/sdk';
 import { NodeApiClient, unwrap, createTurnCollector, discoverDshLaunchToken } from './dsh-client.js';
 import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-plain.js';
@@ -14401,15 +14402,9 @@ function saveSocialV2State() {
       // 永远读不到、注入静默退回旧卡片，telemetry 里 catalog 恒 0 而没有任何报错。
       // 旧布局（配置只存在于 $DSH_HOME/stellar）仍然兼容：ROOT 那份没有 memory 段时回退。
       const rootFile = path.join(ROOT, 'config.json');
-      let file = rootFile;
-      try {
-        const probe = JSON.parse(fs.readFileSync(rootFile, 'utf8'));
-        if (!probe || typeof probe.memory !== 'object' || probe.memory === null) {
-          file = path.join(STELLAR_DIR, 'config.json');
-        }
-      } catch {
-        file = path.join(STELLAR_DIR, 'config.json');
-      }
+      // 选文件与插件共用一份规则（src/unified-memory-config.js）：两份 config.json 并存时,
+      // 谁说了算只能有一个答案，否则「退役旧卡」这类开关会只生效一半（PITFALLS #303）。
+      const { file } = resolveMemoryConfigFile({ rootFile, fallbackFile: path.join(STELLAR_DIR, 'config.json') });
       const stat = fs.statSync(file);
       const key = `${file}:${stat.mtimeMs}:${stat.size}`;
       if (unifiedMemoryCache.key === key) return unifiedMemoryCache;
@@ -14420,7 +14415,7 @@ function saveSocialV2State() {
       //   'db'   = 注入新记忆库的目录 + 侧写（旧卡片不再进唤醒）
       //   'card' = 老行为（预渲染记忆卡 / 分层摘要 / 向量块）
       // 库不可读时调用方会退回 card，所以这里不做失败兜底，只做取值规范化。
-      const engine = String(memCfg.engine || '').trim().toLowerCase() === 'db' ? 'db' : 'card';
+      const engine = normalizeMemoryEngine(memCfg.engine);
       const catalogCfg = memCfg.catalog && typeof memCfg.catalog === 'object' ? memCfg.catalog : {};
       const profileCfg = memCfg.profile && typeof memCfg.profile === 'object' ? memCfg.profile : {};
       const styleCfg = memCfg.styleRef && typeof memCfg.styleRef === 'object' ? memCfg.styleRef : {};

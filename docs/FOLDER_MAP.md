@@ -28,7 +28,8 @@
 | MCP | `mcp-snowluma-safe.js` / `mcp-host-server.js` / `mcp-web-search-safe.js` / `town-tools.js` | 三个 stdio server，共 84 个工具（`mcp-snowluma-safe.js` 71 个 = 36 `qq_*` + 35 `stellar_*`；`town-tools.js` 10 个 `stellar_town_*`；宿主级 1 + 联网搜索 2，`stellar_*` 合计 45） |
 | DSH 对接 | `dsh-client.js` / `dsh-port.js` / `dsh-health.js` / `dsh-model-follow.js` | 找端口、投提示、探活、跟随默认模型 |
 | 记忆 | `memory-db.js` / `memory-db-schema.sql` / `memory-cache.js` / `memory-read.js` / `memory-worker.js` / `memory-facts.js` | 新记忆库（见 features/MEMORY.md） |
-| 记忆（旧引擎） | `memory-card.js` / `memory-store.js` / `memory-tiers.js` / `memory-blend.js` / `memory-compact.js` / `vector-memory.js` | 只在 `memory.engine=card` 时走 |
+| 记忆（旧引擎） | `memory-card.js` / `memory-store.js` / `memory-tiers.js` / `memory-blend.js` / `memory-compact.js` / `vector-memory.js` | 只在 `memory.engine=card` 时走；`db` 时整条管线不启动（2026-11-22） |
+| 记忆配置 | `unified-memory-config.js` | 两份 `config.json` 的解析规则（仓库根优先、没有 `memory` 段才回退 `$DSH_HOME`），桥接与插件共用 |
 | 人格 | `character-persona.js` / `persona-layers.js` / `persona-identity.js` / `role-card.js` / `style-refs.js` | 角色卡、分层人格、参考风格 |
 | 判断逻辑 | `wake-policy.js` / `wake-filter.js` / `wake-batch.js` / `conversation-closure.js` / `reply-plan.js` / `command-spam.js` | 该不该理、回几条、能不能收尾（纯函数，好测） |
 | B站 | `bili-api.js` / `bili-memory.js` / `bili-dynamics.js` / `bili-card.js` / `bili-share-scheduler.js` | 网络、记忆简报、卡片、分享排期 |
@@ -41,7 +42,7 @@
 
 | 前缀 | 意思 | 举例 |
 | --- | --- | --- |
-| `test-*.mjs` | 回归（**210 个**，`test:audit` 跑其中 180 个） | `test-memory-db.mjs` |
+| `test-*.mjs` | 回归（**212 个**，`test:audit` 跑其中 182 个） | `test-memory-db.mjs` |
 | `probe-*.mjs` | 手工探针（要真环境，不进回归） | `probe-events.mjs` |
 | `verify-*.mjs` | 断言某件事仍然成立 | `verify-dsh-020-adaptation.mjs` |
 | `bootstrap*` | 首次启动引导（幂等，绝不覆盖已有配置） | `bootstrap.mjs` |
@@ -67,7 +68,7 @@
 
 | 子目录 | 作用 |
 | --- | --- |
-| `lib/` | 定时器（生物钟、每日任务、记忆作业）、设置页 UI、路径解析 |
+| `lib/` | 定时器（生物钟、每日任务、记忆作业）、记忆引擎判定（`memory-engine.js`）、设置页 UI、路径解析 |
 | `tools/bili.mjs` | B站 CLI 入口（**59 条子命令**，`tools/commands/` + `tools/verify/`） |
 | `tools/docs/` + `tools/rules/` | 给 agent 看的命令说明与行为规矩（运行时会被注入） |
 | `persona/` | 分层人格的默认片段 |

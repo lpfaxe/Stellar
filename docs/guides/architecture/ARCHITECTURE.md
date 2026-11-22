@@ -39,9 +39,15 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 | --- | --- | --- | --- |
 | 消息链路 | `src/bridge.js`（约 1.9 万行，最大单体） | 收发、唤醒、上下文拼装、67 条控制台路由 | 不直接调模型；不写业务判断（那些在共享引擎里） |
 | MCP 工具面 | `src/mcp-snowluma-safe.js` 等三个 server | 把能力以工具形式交给 DSH 里的她 | 不藏私活：每个工具都要有对应的 HTTP/本地实现 |
-| 共享引擎 | `src/*.js` 里的纯逻辑 | 记忆、额度、鱼群保护、收尾判断、身份、抓取 | 不碰网络状态机；能被单测直接 import |
+| 共享引擎 | `src/*.js` 里的纯逻辑 | 记忆库（`memory.db`）为主、额度、鱼群保护、收尾判断、身份、抓取；旧的两条记忆管线（衰减记忆卡 + 向量记忆）在 `memory.engine='db'` 时整体不启动（2026-11-22） | 不碰网络状态机；能被单测直接 import |
 | 插件宿主 | `plugins/stellar/` | 定时作业（记忆切分/复核/侧写、生物钟、每日任务）、设置页 | 不参与消息收发 |
 | 面板 | `stellar-manager/` | 观察与手动操作 | 不改消息链路状态（只写配置文件） |
+
+### 2.1 记忆的旧管线（2026-11-22 起停跑）
+
+- **配置源只有一份解释**：`memory.engine` 以**仓库根** `config.json` 为准；那份没有 `memory` 段才回退 `$DSH_HOME/stellar/config.json`。解析逻辑只有一份 `src/unified-memory-config.js`，桥接与插件共用，不再各读一份。
+- **旧管线整体停跑**：`engine='db'` 时，插件的 `startMemoryCardTimer()` 与 `startVectorMemoryTimer()` 启动即返回（日志只留一行「不启动（数据保留）」）；`runMemoryCardMaintenance()` 早退并清空 `promptQq`/`promptBili`/`promptGroups` 产物；桥接侧 `cardRetired` 兜底，旧卡不进提示词。数据一律不删；只有把 `engine` 改回 `card` 并重启才恢复。
+- **embedding 不再外发**：本地 18765 的 `embedding-shim.mjs` 已退役（它原本把记忆文本原样转给云端 embeddings 接口），keepalive 里的探活拉起块已删除。默认路径上不再有记忆文本出本机。
 
 ## 3 一条消息的完整旅程
 
