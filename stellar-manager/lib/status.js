@@ -8,6 +8,7 @@ import { qzoneStats, readReports } from './report.js'
 import { buildHerStatus } from './her.js'
 import { buildActivity } from './activity.js'
 import { buildTurns } from './turns.js'
+import { readTownPresence } from './town.js'
 import { currentToken, lanAddresses, publicV6Addresses, tailnetAddresses } from './auth.js'
 import { HOST } from './paths.js'
 
@@ -117,6 +118,8 @@ async function collectStatus() {
   const lastResult = taskParts[1] || ''
   // 遥测里「回合没收尾」= 她真的还在跑（lib/turns.js，读 context-telemetry-plugin.jsonl）
   const turns = buildTurns()
+  // 她人在不在小镇：只读 status.json（调度器 10 分钟写一次），面板自己绝不联网。
+  const town = readTownPresence()
   return {
     now: new Date().toISOString(),
     panelPort: PORT,
@@ -155,7 +158,9 @@ async function collectStatus() {
     // 现在是不是价格谷期（生物钟只在谷期叫醒）
     pricing: { peak: peakAt(Date.now()), label: peakAt(Date.now()) ? '峰时 ×2' : '谷期 ×1' },
     her: buildHerStatus(),
-    activity: buildActivity({ turns }),
+    activity: buildActivity({ turns, town }),
+    // 在场快照（inTown / ageMs / detail）：面板与「重启时机」都能直接读，不用再拼一次
+    townPresence: town,
     turns,
     // 紧急停止 + 生图额度（2026-11-11 owner 拍板：手动停、**不再自动恢复**；生图 3 张/天）
     stop: readStop(),
@@ -285,7 +290,7 @@ export function applyPatch(cfg, body) {
   if (qz.time !== undefined && /^\d{1,2}:\d{2}$/.test(String(qz.time))) cfg.qzone.time = String(qz.time)
   if (qz.dailyLimit !== undefined) cfg.qzone.dailyLimit = clampNum(qz.dailyLimit, 1, 10, 2)
   if (qz.watch !== undefined) cfg.qzone.watch = Boolean(qz.watch)
-  if (qz.weekly && qz.weekly.min !== undefined) cfg.qzone.weekly = { enabled: true, min: clampNum(qz.weekly.min, 1, 21, 3) }
+  if (qz.weekly && qz.weekly.min !== undefined) cfg.qzone.weekly = { enabled: true, min: clampNum(qz.weekly.min, 1, 21, 7) }
   const toggles = body.toggles || {}
   if (toggles.dynamics !== undefined) cfg.dynamics.enabled = Boolean(toggles.dynamics)
   if (toggles.interact !== undefined) cfg.interact.enabled = Boolean(toggles.interact)

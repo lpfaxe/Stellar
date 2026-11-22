@@ -35,7 +35,7 @@ export function createTownJobs(deps = {}) {
   /** 小镇相关模块按需加载：town-store 依赖 node:sqlite，不能被插件静态 import 连带拖死。 */
   async function townRuntime() {
     if (townRuntimeCache) return townRuntimeCache
-    const [clientMod, storeMod, collectMod, pureMod, turnsMod, snapMod, pluginMod, guardMod] = await Promise.all([
+    const [clientMod, storeMod, collectMod, pureMod, turnsMod, snapMod, pluginMod, guardMod, albumMod] = await Promise.all([
       import('../../../src/town-client.js'),
       import('../../../src/town-store.js'),
       import('../../../src/town-collector.js'),
@@ -44,6 +44,7 @@ export function createTownJobs(deps = {}) {
       import('../../../src/town-snapshot.js'),
       import('../../../src/town-plugin.js'),
       import('../../../src/town-guard.js'),
+      import('../../../src/town-album.js'),
     ])
     townRuntimeCache = {
       readTownSettings: clientMod.readTownSettings,
@@ -66,6 +67,8 @@ export function createTownJobs(deps = {}) {
       writeGuard: guardMod.writeGuard,
       shouldAlert: guardMod.shouldAlert,
       dayKey: pureMod.dayKey,
+      // 相册镜像（2026-11-22）：★整块在 src/town-album.js。
+      syncTownAlbum: albumMod.syncAlbum,
     }
     return townRuntimeCache
   }
@@ -234,6 +237,15 @@ export function createTownJobs(deps = {}) {
         })
       } catch (error) {
         log('[town] 快照失败：' + redactTownText(error).slice(0, 120))
+      }
+      // 相册镜像（2026-11-22）：她拍的照片/请人画的画落到 <DSH_HOME>/stellar/state/town/album/，
+      // 这样「发空间/聊天发图」时能直接把本机绝对路径交出去。单独 try：
+      // 相册同步失败（小镇 502、单张超大）绝不能影响采集与快照。
+      try {
+        const album = await mod.syncTownAlbum({ dshHome, client: made.client, log })
+        if (album && album.ok === false) log('[town] 相册这轮没同步：' + String(album.message || album.code || '').slice(0, 100))
+      } catch (error) {
+        log('[town] 相册同步失败：' + redactTownText(error).slice(0, 120))
       }
     } catch (error) {
       log('[town] 采集失败：' + redactTownText(error).slice(0, 140))

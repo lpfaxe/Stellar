@@ -1,4 +1,4 @@
-# 架构总览（Stellar 1.0.9）
+# 架构总览（Stellar 1.1.0）
 
 > 只写现在这个版本实际在跑的东西。想知道「为什么这么设计」，看对应的功能篇；
 > 想知道每个目录放什么，看 [../FOLDER_MAP.md](../../FOLDER_MAP.md)。
@@ -19,7 +19,7 @@ bridge  ──── node src/bridge.js ──────────  http://1
   │  └──► DSH（DeepSeek Harness，端口由它自己挑；config.dsh.baseUrl）
   │                                          │ 会话 prompt / 工具调用（MCP stdio）
   │                                          ▼
-  │                                       她（一个 DSH 会话，带 82 个 MCP 工具）
+  │                                       她（一个 DSH 会话，带 84 个 MCP 工具）
   └──► 面板 stellar-manager ── 3300（可选，另起一个进程）
 ```
 
@@ -65,7 +65,7 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 | 侧写 | `memoryProfileLineV2` | 每人一句，避免把 A 的事安在 B 头上 |
 | B站 简报 | `biliMemory.briefBlock()` | 群友问「B站那个号」时她不能把自己当别人 |
 | 此刻状态 / 唤醒 / 收尾 | 各种 `*LineV2` | 让「该不该回、回几条、能不能睡」有依据 |
-| 参考风格 | `memoryStyleBlockV2` | 只在命中高情绪时注入 2 片、≤900 字符 |
+| 参考风格 | `memoryStyleBlockV2` | **已停用**（2026-11-22）：`memory.styleRef.enabled` 默认 `false`，只有显式写 `true` 才注入 2 片、≤900 字符 |
 
 每一段都可以在 `config.json` 里关掉；关掉后那句会提示「本轮不注入」的日志。
 

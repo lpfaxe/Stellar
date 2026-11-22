@@ -39,17 +39,21 @@ const counts = {};
 for (const item of result.core) counts[item.file] = (counts[item.file] || 0) + 1;
 const limits = {
   'src/bridge.js': 10,
-  'src/mcp-snowluma-safe.js': 8,
+  'src/mcp-snowluma-safe.js': 10,
   'plugins/stellar/lib/scheduler.js': 12,
   'plugins/stellar/lib/run-mode.js': 3,
   'src/capabilities.js': 2,
   'plugins/stellar/tools/lib/config.mjs': 3,
   // 官方插件那一层让位（2026-11-21）：audit 多两行（注释 + test-town-plugin），
   // 面板 server 多 5 行（插件状态查询 + 开关双写）——都是接线，不是逻辑。
-  'scripts/test-audit.mjs': 12,
-  'stellar-manager/server.mjs': 10,
+  'scripts/test-audit.mjs': 13,
+  'stellar-manager/server.mjs': 14,
   'stellar-manager/public/js/core.js': 1,
   'stellar-manager/public/js/boot.js': 1,
+  // 小镇在场态（2026-11-22）：activity 认 kind='town'，status 透传 presence，图标加一格。
+  'stellar-manager/lib/activity.js': 11,
+  'stellar-manager/lib/status.js': 4,
+  'stellar-manager/public/js/status.js': 1,
 };
 for (const [file, limit] of Object.entries(limits)) {
   // 控制台的副本只在发布树里（开发树的面板在仓库外），缺文件就跳过

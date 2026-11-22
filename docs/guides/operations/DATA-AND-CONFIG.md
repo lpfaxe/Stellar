@@ -53,12 +53,15 @@
 | 段 | 作用 |
 | --- | --- |
 | `night` | 生物钟：今晚几点醒、看几个、抽几帧 |
-| `qzone` | QQ空间：每日条数、好友爱看（看几条/赞几个/评几个）、关注谁 |
+| `qzone` | QQ空间：`weekly.min` 本周目标（默认 **7** 条，周一为界）、`dailyLimit` 硬上限、好友爱看（看几条/赞几个/评几个）、关注谁 |
 | `limits` | 每日额度：视频数、点赞数、评论数、分享数 |
 | `fishGuard` | B站 侧鱼群保护（与 QQ 侧是两份配置，默认都空） |
 | `notify` | 通知与免打扰 |
 
 注意：**`qzone` 与 `limits` 会同时被桥接和面板读**。改完下一轮生效，不用重启。
+
+`qzone.weekly.min` 是**目标不是保证**：调度器每天算「本周还欠几条 / 本周还剩几天」，只要当天已发条数没到
+`min(dailyLimit, 欠账 ≥ 剩余天数 ? 2 : 1)` 就催一次；硬上限仍是 `qzone.dailyLimit`（超了 `qzone.mjs` 直接 exit 6）。
 
 ## 4 状态文件全表
 
@@ -82,6 +85,7 @@
 | `bridge.lock` | 桥接 | 桥接 PID 与启动时间 | 桥接没跑时可删 |
 | `console-token` | 桥接 | 控制台令牌（未在配置里指定时） | 能（会重新生成） |
 | `current-role.json` | 桥接 | 当前角色指针 | **别删**，删了她不知道自己是谁 |
+| `state/town/album/`（`index.json` + 原图/缩略图） | 插件 | 小镇相册镜像（60 张 / 120 MB 双限，单张 >8 MB 只留缩略图） | 能（下次采集重建索引，照片本身在小镇侧） |
 | `turn-context.json` / `turn-context/` | 桥接 | 本轮是谁在说话（15 分钟过期） | 能 |
 | `purpose-outreach.json` | 角色目录 `characters/<id>/`，写不进才回退桥接 `state/`（`src/bridge.js:2265-2267`） | 主动搭话的状态 | 能 |
 | `plugin.log` | 插件（`DSH_HOME/stellar/`） | 插件半的日志 | 能 |

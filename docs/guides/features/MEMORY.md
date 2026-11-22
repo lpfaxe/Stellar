@@ -29,7 +29,7 @@
 | `fact` | 生日、忌口、过敏、称呼、住址、联系方式 | 切分时正则抽 + 面板手写 |
 | `zone_note` | 两个「见闻区」：`bili`（今天刷了什么）/ `qzone`（好友爱看） | 她自己调 `stellar_memory_zone` |
 | `profile` | 每人一句侧写（`persona` / `detail` / `tags`） | 每日侧写作业 |
-| `style_slice` | 参考角色的说话风格切片（不出现参考角色名字） | `scripts/index-style-refs.mjs` |
+| `style_slice` | 参考角色的说话风格切片（不出现参考角色名字） —— **已停用（2026-11-22）**，`memory.styleRef.enabled` 默认 `false`，只有显式 `true` 才注入 | `scripts/index-style-refs.mjs` |
 | `search_doc` / `search_fts` | 检索索引（FTS5 trigram；短词走 LIKE + bigrams） | 写话题/片段时同步 |
 | `job_state` | 后台作业进度（`split` / `window` / `profile`） | 作业自身 |
 | `meta` | schema 版本、引擎标记 | `openDb()` |
@@ -56,7 +56,7 @@
 - 所以刚装好时「明明说了生日却没成话题」是正常：她还没回过话。
   **事实抽取不看这个条件** —— 单边消息里说的生日也会被抽成 `fact`。
 
-每天 **06:30** 跑一次窗口清理（`memory.window.hour/minute`）：把 D-2 之前的缓冲删掉，只留话题与事实。
+每天 **06:30** 跑一次窗口清理（`memory.window.hour/minute`）：把 `day_key <= D-2` 的缓冲删掉（**积压的旧日也一起清**，不是只清恰好 D-2 那一天），只留话题与事实；删话题时级联删 `topic_participant`，所有删除先导出到 `memory-trash/<day>-<ISO 时间戳>.jsonl`（同一天重跑不会互相覆盖）。
 
 ## 5 读出来（唤醒注入什么）
 
@@ -81,6 +81,10 @@
 | `label` + `text` | 一句话标签与正文；`(owner_id, kind, label)` 唯一 —— 同一个人同一件事只有一条 |
 | `privacy` | `normal`（可以在群里说）/ `private`（只在跟本人说时提）/ `secret`（只跟本人私聊、面板里看） |
 | `weight` | 1~5，越高越先给 |
+
+除了从对话抽，还有一条**不走模型**的路（2026-11-22）：插件每天把 `state/friends.json` 里非空的 `remark` 同步成事实
+（`kind=nickname`、`label=备注名`、privacy normal、weight 4、source friends）—— 主人备注成「小土豆」，她就能在跟这个人说话时知道该这么叫。
+它和对话里抽出来的「称呼」（`label=称呼`）是两条，不会互相覆盖。
 
 自动抽取只认**第一人称**：「我生日是 1 月 1 日」会记；「他生日 1 月 1」不会记到说话人头上。
 默认隐私：`contact`/`address` = secret，`birthday`/`allergy` = private，`like`/`nickname` = normal。

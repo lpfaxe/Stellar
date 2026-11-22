@@ -171,7 +171,9 @@ await check('start 后 stop 能结束（不等下一次长轮询）', async () =
   let reads = 0;
   const client = { async read() { reads += 1; return { turns: [] }; } };
   const sleeps = [];
-  const pump = createTurnPump({ client, sleep: (ms) => { sleeps.push(ms); return Promise.resolve(); }, now: () => NOW });
+  // 假 sleep 必须让出一个宏任务：直接 Promise.resolve() 会让 pump 在微任务队列里自转，
+  // 30ms 的 setTimeout 永远排不上（实测这一条要 71 秒才退出，audit 里直接 ETIMEDOUT）。
+  const pump = createTurnPump({ client, sleep: (ms) => { sleeps.push(ms); return new Promise((r) => setTimeout(r, 0)); }, now: () => NOW });
   pump.start();
   await new Promise((r) => setTimeout(r, 30));
   pump.stop();

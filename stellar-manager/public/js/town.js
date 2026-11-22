@@ -54,13 +54,15 @@ function townRenderStats(d) {
     ['印象', (d.counts && d.counts.impressions) || 0, '个人，30 天'],
     ['每天一句', (d.counts && d.counts.days) || 0, '句，长期'],
     ['今天动过', (snap.actions && snap.actions.today) || 0, '次（上限 3）'],
-    // 两本账分开：token 是我们这边的模型账，钱包是她在游戏里的钱（小镇自己记）
-    ['token 花费', townYuan(snap.budget && snap.budget.spent), '上限 ' + townYuan(snap.budget && snap.budget.cap)],
+    // 三笔钱分开记：模型 token 账 / 游戏里今天花了多少 / 游戏钱包余额。
+    // 原来只有 token 与钱包余额，主人问「小镇花了多少钱」时看不到「今天花了多少」（2026-11-22 补）。
+    ['token 花费', townYuan(snap.budget && snap.budget.spent), '上限 ' + townYuan(snap.budget && snap.budget.cap) + '（模型账）'],
+    ['今天花了', townYuan(snap.spending && snap.spending.today), '游戏里的钱 · 7 天 ' + townYuan(snap.spending && snap.spending.d7)],
     ['小镇钱包', townYuan(st.piggyYuan), '游戏里的钱'],
   ];
   box.innerHTML = cells.map(function (c) {
     return '<div class="memdb-cell"><span class="k">' + townEsc(c[0]) + '</span><b>' + townEsc(c[1]) + '</b><span class="hint">' + townEsc(c[2]) + '</span></div>';
-  }).join('') + '<div class="muted small town-cost-note">这里的钱只算我们这一侧记的账；官方插件自己那半（它开的会话）在额度页的「小镇」里。</div>';
+  }).join('') + '<div class="muted small town-cost-note">两本账分开：token 花费是我们这侧记的模型账（官方插件它开的那半在额度页「小镇」里）；小镇钱包是游戏里的钱，花在座位费/材料/请客上；到 ' + townYuan((d.guard && d.guard.cap) || (d.snapshot && d.snapshot.guard && d.snapshot.guard.cap) || 1.5) + ' 就自动停。</div>';
 }
 
 function townRenderMeta(d) {
@@ -177,11 +179,73 @@ function townRenderAll() {
   townRenderDays(d);
 }
 
+// ── 相册（2026-11-22）───────────────────────────────────────────────
+// 照片是调度器镜像到 state/town/album/ 的（见 stellar/src/town-album.js）。
+// 可见性跟着会话范围走：本机看原图，局域网只能拿缩略图（后端还会再挡一道）。
+var TOWN_ALBUM = { items: [], canSeeOriginal: false, total: 0, bytes: 0, sig: '' };
+
+function townAlbumUrl(name, thumb) {
+  return '/api/town/album/file?name=' + encodeURIComponent(String(name || '')) + (thumb ? '&thumb=1' : '');
+}
+
+function townRenderAlbum() {
+  var box = el('townAlbum');
+  if (!box) return;
+  var items = TOWN_ALBUM.items || [];
+  var hint = el('townAlbumHint');
+  if (hint) {
+    hint.textContent = TOWN_ALBUM.total
+      ? TOWN_ALBUM.total + ' 张 · ' + (Math.round(TOWN_ALBUM.bytes / 1024 / 1024 * 10) / 10) + 'MB' + (TOWN_ALBUM.canSeeOriginal ? ' · 本机可看原图' : ' · 局域网只显示缩略图')
+      : '小镇里拍的照片 / 请人画的画';
+  }
+  if (!items.length) {
+    box.innerHTML = '<span class="muted small">相册里还没有照片。她拍过照、请人画过之后，采集器（每 10 分钟一趟）会同步过来。</span>';
+    return;
+  }
+  box.innerHTML = items.map(function (it) {
+    var local = TOWN_ALBUM.canSeeOriginal;
+    var srcName = local ? it.file : (it.thumb || it.file);
+    var src = townAlbumUrl(srcName, local ? false : true);
+    var href = townAlbumUrl(it.file, false);
+    var kind = it.kind === 'paint' ? '画' : '照片';
+    var who = (it.with && it.with.length) ? ' · 和 ' + it.with.slice(0, 3).join('、') : '';
+    var when = String(it.created || '').slice(0, 10);
+    return '<figure class="town-album-item">' +
+      '<a href="' + townEsc(href) + '" target="_blank" rel="noopener"><img loading="lazy" alt="' + townEsc(it.what || kind) + '" src="' + townEsc(src) + '"></a>' +
+      '<figcaption><b class="small">' + townEsc(kind + who) + '</b>' +
+      (when ? '<span class="muted small">' + townEsc(when) + '</span>' : '') +
+      (it.what ? '<span class="small">' + townEsc(it.what) + '</span>' : '') +
+      (it.thumbOnly ? '<span class="muted small">只有缩略图</span>' : '') +
+      '</figcaption></figure>';
+  }).join('');
+}
+
+function loadTownAlbum() {
+  return api('/api/town/album').then(function (r) {
+    var items = (r && r.items) || [];
+    var sig = (r && r.scope) + '|' + items.map(function (it) { return it.id + it.created; }).join(',');
+    TOWN_ALBUM.total = Number(r && r.total) || 0;
+    TOWN_ALBUM.bytes = Number(r && r.bytes) || 0;
+    TOWN_ALBUM.canSeeOriginal = !!(r && r.canSeeOriginal);
+    // 45 秒一轮的刷新不该反复重画同一批图（图片是 no-store，重画就重下）
+    if (sig === TOWN_ALBUM.sig) return r;
+    TOWN_ALBUM.sig = sig;
+    TOWN_ALBUM.items = items;
+    townRenderAlbum();
+    return r;
+  }).catch(function (e) {
+    var box = el('townAlbum');
+    if (box) box.innerHTML = '<span class="msg bad">读不到相册：' + townEsc(e && e.message || e) + '</span>';
+    return null;
+  });
+}
+
 function loadTown() {
   return api('/api/town').then(function (r) {
     TOWN.data = r;
     TOWN.cap = { enabled: !!(r.cap && r.cap.enabled), mtime: Number(r.cap && r.cap.mtime) || 0 };
     townRenderAll();
+    loadTownAlbum();
     return r;
   }).catch(function (e) {
     var box = el('townNotes');
@@ -213,3 +277,8 @@ function townSaveEnabled(on) {
 // 脚本在 body 末尾加载，元素都已经在了，直接绑（不等 DOMContentLoaded，免得错过事件）
 if (el('townEnabled')) el('townEnabled').onchange = function () { townSaveEnabled(el('townEnabled').checked); };
 if (el('townRefresh')) el('townRefresh').onclick = function () { townMsg(''); loadTown(); };
+if (el('townAlbumRefresh')) el('townAlbumRefresh').onclick = function () {
+  var msg = el('townAlbumMsg');
+  if (msg) setMsg(msg, '刷新中…', true);
+  loadTownAlbum().then(function (r) { if (msg) setMsg(msg, r ? '已刷新' : '没刷上', !!r); });
+};

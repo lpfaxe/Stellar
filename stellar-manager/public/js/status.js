@@ -252,7 +252,7 @@ function renderImageBudget(s) {
   else m.textContent = text + '（停止状态下不生图）';
 }
 
-var NOW_ICON = { chat: '聊', wait: '等', bili: 'B', qzone: '空', dynamic: '动', image: '画', report: '报', read: '读', search: '查', memory: '忆', audit: '查', sleep: '眠', idle: '闲', wake: '醒', other: '忙' };
+var NOW_ICON = { chat: '聊', wait: '等', bili: 'B', qzone: '空', dynamic: '动', image: '画', report: '报', read: '读', search: '查', memory: '忆', audit: '查', sleep: '眠', idle: '闲', wake: '醒', town: '镇', other: '忙' };
 
 function renderActivity(s) {
   var a = (s && s.activity) || {};

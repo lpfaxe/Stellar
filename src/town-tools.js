@@ -16,6 +16,85 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const SRC_DIR = path.dirname(fileURLToPath(import.meta.url));
 
+function townYuan(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? '¥' + n.toFixed(2) : '';
+}
+
+// 快照的 at 是 epoch 毫秒（town-snapshot 写的 Number(now)），旧的网络路径给的是 ISO；
+// 只认 Date.parse 会让快照永远显示「不清楚是多久前」（2026-11-22 修）。
+export function townMinutesAgo(value) {
+  let at = NaN;
+  if (typeof value === 'number') at = value;
+  else {
+    const s = String(value || '').trim();
+    if (/^\d{10,}$/.test(s)) at = Number(s);
+    else at = Date.parse(s);
+  }
+  if (!Number.isFinite(at) || at <= 0) return null;
+  return Math.max(0, Math.round((Date.now() - at) / 60000));
+}
+
+/** 把快照渲染成一段人话（≤700 汉字）；缺哪段就少哪段，不编。 */
+export function townNowDigest(snap, wake) {
+  const lines = [];
+  const status = (snap && snap.status) || {};
+  const minutes = townMinutesAgo(snap && snap.at);
+  const when = minutes == null ? '' : (minutes <= 1 ? '刚刚' : minutes + ' 分钟前');
+  lines.push('【小镇 · 现在】' + (when ? '本地快照 ' + when : '本地快照') + (snap && snap.day ? '（' + snap.day + '）' : ''));
+
+  // outsideState 是机器值（in_town / …），badge 是称号（外来），别直接拼给模型看：
+  // 原来会把「Fugu · 外来 · Fugu」当成人现在在哪，模型据此回主人「你在外来」。
+  const stateRaw = String(status.outsideState || '');
+  const inTown = status.online === true || stateRaw === 'in_town';
+  const bits = [];
+  if (inTown) bits.push('人现在在镇里' + (status.townName && status.townName !== status.name ? '（' + status.townName + '）' : ''));
+  else if (status.online === false || stateRaw) bits.push('人不在镇上' + (stateRaw && stateRaw !== 'in_town' ? '（' + stateRaw.slice(0, 20) + '）' : ''));
+  if (status.badge) bits.push('称号：' + status.badge);
+  if (status.piggyYuan != null) bits.push('存钱罐 ' + townYuan(status.piggyYuan));
+  if (Array.isArray(status.games) && status.games.length) bits.push('能玩：' + status.games.slice(0, 6).join('/'));
+  if (status.signup) bits.push('已报名：' + String(typeof status.signup === 'string' ? status.signup : JSON.stringify(status.signup)).slice(0, 60));
+  if (bits.length) lines.push(bits.join('；'));
+
+  const lobby = snap && snap.lobby;
+  if (lobby) {
+    // 快照里 tables 是数字；联网现取的是 {tables:[…]} 数组。原来直接 Number(数组) → NaN → 0，
+    // 于是「大厅：0 桌在等人」和真实现场（几十桌）对不上（2026-11-22 修）。
+    const tables = Array.isArray(lobby.tables) ? lobby.tables.length : (Number(lobby.tables) || 0);
+    const list = Array.isArray(lobby.tables) ? lobby.tables : []
+    const names = Array.isArray(lobby.names)
+      ? lobby.names.slice(0, 8).join('、')
+      : list.slice(0, 8).map((r) => String((r && (r.name || r.title)) || '')).filter(Boolean).join('、');
+    lines.push('大厅：' + tables + ' 桌在等人' + (names ? ' · ' + names : ''));
+  }
+
+  const budget = (snap && snap.budget) || {};
+  const today = (snap && snap.actions && snap.actions.today) || 0;
+  const summary = (snap && snap.actions && snap.actions.summary) ? String(snap.actions.summary).slice(0, 80) : '';
+  lines.push('今天：花 ' + townYuan(budget.spent || 0) + (budget.cap ? ' / 上限 ' + townYuan(budget.cap) : '') +
+    (budget.blocked ? '（已挡：今天不花了）' : '') + '；动手 ' + today + ' 次' + (summary ? '（' + summary + '）' : ''));
+
+  const guard = snap && snap.guard;
+  if (guard && (guard.paused || guard.banner)) lines.push('暂停：' + String(guard.banner || guard.code || '').slice(0, 80));
+
+  // 快照的 bonds 是 {friends, rivals, couple, crush}（town-snapshot pickBonds 归一的），
+  // 原来找 bonds.bonds / bonds.heart，永远空 —— 「处得近」一直不显示（2026-11-22 修）。
+  const bonds = snap && snap.bonds;
+  if (bonds) {
+    const near = Array.isArray(bonds.friends) ? bonds.friends.slice(0, 4).filter(Boolean) : [];
+    if (near.length) lines.push('处得近：' + near.join('、'));
+    const heart = (Array.isArray(bonds.couple) && bonds.couple[0]) || (Array.isArray(bonds.crush) && bonds.crush[0]) || '';
+    if (heart) lines.push('心上鱼：' + String(heart).slice(0, 30));
+  }
+
+  if (wake && Array.isArray(wake.wakes) && wake.wakes.length) {
+    lines.push('今天被叫醒 ' + wake.wakes.length + ' 次，上一次 ' + (townMinutesAgo(wake.lastAt) == null ? '不清楚' : townMinutesAgo(wake.lastAt) + ' 分钟前'));
+  }
+
+  if (snap && snap.recall) lines.push('三天回顾（原样摘录）：' + String(snap.recall).slice(0, 260));
+  return lines.join('\n');
+}
+
 export function registerTownTools(server, { dshHome, z, ownerOnlyError, log = () => {} } = {}) {
   if (!server || typeof server.tool !== 'function') throw new TypeError('registerTownTools: 需要一个 MCP server');
   if (!z || typeof z.string !== 'function') throw new TypeError('registerTownTools: 需要 zod（z）');
@@ -91,6 +170,120 @@ export function registerTownTools(server, { dshHome, z, ownerOnlyError, log = ()
     }
   );
 
+  // ── 一次性合并入口（2026-11-22）─────────────────────────────────────────────
+  // 为什么合并：她的上下文按「轮次」花钱，不按字数。一次往返 ≈ ¥0.045–0.27，
+  // 而一次工具输出 500 汉字 ≈ ¥0.0002。所以「问小镇的事」要一次问完，而不是分开调四个。
+  // 数据优先级：本地快照 status.json（采集器每 10 分钟写一次）→ 快照太旧才联网补。
+  function townStateDirNow() {
+    const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+    return path.join(dshHome, 'stellar', 'state', 'town');
+  }
+
+  function readTownJson(dir, name) {
+    try { return JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8').replace(/^\uFEFF/, '')) ?? null } catch { return null }
+  }
+
+  server.tool(
+    'stellar_town_now',
+    '一眼看全小镇（她此刻在哪、大厅有谁、今天花了多少、这三天干了什么）——问小镇的事优先用这个，一次拿完，别分开调 status/bonds/lobby/recall 四次。读本地快照，快照太旧才联网；不花钱、不产生动作。',
+    {
+      key: z.string().describe('当前会话 key，形如 private:<QQ>；群里不查小镇'),
+      token: z.string().optional().describe('会话令牌（唤醒提示里【会话令牌】那一行；没有就不传）'),
+      live: z.boolean().optional().describe('true = 不等快照，直接联网取一次（很慢，只有怀疑快照过期时用）')
+    },
+    async ({ key, token, live }) => {
+      const denied = await ownerOnlyError(key, token);
+      if (denied) return { isError: true, content: [{ type: 'text', text: denied }] };
+      try {
+        const dir = townStateDirNow();
+        const snap = readTownJson(dir, 'status.json');
+        const wake = readTownJson(dir, 'wake.json');
+        const minutes = townMinutesAgo(snap && snap.at);
+        const stale = minutes == null || minutes > 90;
+        if (live || stale) {
+          const made = await townReaderNow();
+          if (made) {
+            try {
+              const [status, bonds, lobby] = await Promise.all([made.reader.status(), made.reader.bonds(), made.reader.lobby()]);
+              // 现场取回来的是小镇的 snake_case 原样（town_name / piggy_yuan / tables 数组），
+              // 直接交给渲染会把字段名当值拼出去（「你现在在：外来」就是这么来的）。
+              // 走一遍 buildSnapshot 的归一化，和快照路径用同一套字段（2026-11-22 修）。
+              const snapMod = await import(pathToFileURL(path.join(SRC_DIR, 'town-snapshot.js')).href);
+              const built = snapMod.buildSnapshot({ now: Date.now(), status, bonds, lobby });
+              const fresh = { at: built.at, day: built.day, status: built.status, bonds: built.bonds, lobby: built.lobby, budget: snap?.budget, actions: snap?.actions, guard: snap?.guard, recall: snap?.recall };
+              return { content: [{ type: 'text', text: TOWN_TOOL_NOTE + '\n\n【现场取的，不走快照】\n' + townNowDigest(fresh, wake) }] };
+            } catch { /* 联网失败就退回快照，下面还有 */ }
+          }
+        }
+        if (!snap) {
+          return { content: [{ type: 'text', text: '还没有小镇快照（采集器没跑过，或今天还没去过小镇）。要看实时的就用 stellar_town_status；或者先 stellar_town_look 看看大厅。' }] };
+        }
+        return { content: [{ type: 'text', text: TOWN_TOOL_NOTE + '\n\n<town_data untrusted>\n' + townNowDigest(snap, wake) + '\n</town_data>' }] };
+      } catch (error) {
+        return { isError: true, content: [{ type: 'text', text: '看小镇失败：' + townErrText(error) }] };
+      }
+    }
+  );
+
+  let townAlbumModPromise = null;
+  function townAlbumModule() {
+    if (!townAlbumModPromise) {
+      const file = path.join(SRC_DIR, 'town-album.js');
+      townAlbumModPromise = import(pathToFileURL(file).href).catch((error) => {
+        townAlbumModPromise = null;
+        throw error;
+      });
+    }
+    return townAlbumModPromise;
+  }
+
+  server.tool(
+    'stellar_town_album',
+    '看她在小镇相册里的照片（她自己拍的/请人画的），拿到的是本机文件路径——要发 QQ 空间或聊天发图，把 path 直接交给 stellar_qzone_post 的 imagePath 或 qq_send_image 的 imagePath。相册空的时候会自己同步一次。',
+    {
+      key: z.string().describe('当前会话 key，形如 private:<QQ>；群里不查小镇'),
+      token: z.string().optional().describe('会话令牌（唤醒提示里【会话令牌】那一行；没有就不传）'),
+      limit: z.number().optional().describe('最多几条，默认 6，上限 20'),
+      sync: z.boolean().optional().describe('true = 先跟小镇同步一次再列（默认只在本地相册为空时自动同步）')
+    },
+    async ({ key, token, limit, sync }) => {
+      const denied = await ownerOnlyError(key, token);
+      if (denied) return { isError: true, content: [{ type: 'text', text: denied }] };
+      try {
+        const album = await townAlbumModule();
+        const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+        let items = album.listAlbum(dshHome, { limit: limit || 6 });
+        let synced = null;
+        if (sync === true || items.total === 0) {
+          const made = await townReaderNow();
+          if (made) {
+            // 必须给真 client：syncAlbum 调的是 client.read('album', { query: { limit } })，
+            // 而 made.reader.album 的签名是 album(limit) —— 拿它当 client 会把 limit 拼成
+            // ?limit=[object Object]，小镇回 400 TOWN_BAD_REQUEST（2026-11-22 实测）。
+            synced = await album.syncAlbum({ dshHome, client: made.client, log: (m) => logTownAlbum(m) });
+            items = album.listAlbum(dshHome, { limit: limit || 6 });
+          }
+        }
+        if (!items.total) {
+          const why = synced && synced.ok === false ? '同步没成（' + (synced.message || synced.code || '原因不明') + '）' : '相册里还没有照片';
+          return { content: [{ type: 'text', text: why + '。她拍过照、请人画过之后再来看看。' }] };
+        }
+        const body = items.items.map((item, index) => {
+          const who = item.with && item.with.length ? ' 和 ' + item.with.slice(0, 3).join('、') : '';
+          const when = item.created ? ' · ' + String(item.created).slice(0, 16).replace('T', ' ') : '';
+          return (index + 1) + '. ' + (item.kind === 'paint' ? '画' : '照片') + who + when +
+            (item.what ? '\n   描述：' + item.what : '') +
+            '\n   路径：' + item.path +
+            (item.thumbOnly ? '\n   注意：只有缩略图（原图太大），发出去会糊' : '');
+        }).join('\n');
+        const head = '【小镇相册】共 ' + items.total + ' 个，下面是最新 ' + items.items.length + ' 个' + (synced && synced.ok ? '（刚同步过）' : '');
+        return { content: [{ type: 'text', text: TOWN_TOOL_NOTE + '\n\n' + head + '\n<town_data untrusted>\n' + body + '\n</town_data>' }] };
+      } catch (error) {
+        return { isError: true, content: [{ type: 'text', text: '看小镇相册失败：' + townErrText(error) }] };
+      }
+    }
+  );
+
   // ── 小镇只读工具（2026-11-21）───────────────────────────────────────────────
   // 看的部分（status / bonds / lobby / recall / 写一句感受）一直是开的。
   // 会花钱或对外的动作（visit / play / goto）在下面，但**执行期**要过 town.actions 与三道闸；
@@ -141,6 +334,11 @@ export function registerTownTools(server, { dshHome, z, ownerOnlyError, log = ()
     } catch { return townConfigNow(); }
   }
 
+  /** 相册同步的日志走 stderr（桥接把 MCP server 的 stderr 收进 bridge.log）；不许再静音。 */
+  function logTownAlbum(message) {
+    try { console.error(String(message)) } catch { /* 没有 console 就算了 */ }
+  }
+
   /** 造一个只读客户端；没有登记鱼时回 null（工具回一句「还没登记」而不是报错）。 */
   async function townReaderNow() {
     const mod = await townClientModule();
@@ -148,7 +346,7 @@ export function registerTownTools(server, { dshHome, z, ownerOnlyError, log = ()
     const settings = mod.readTownSettings(dshHome, { fishId: townConfigNow().fishId });
     if (!settings) return null;
     const client = mod.createTownClient({ baseUrl: settings.baseUrl, code: settings.code });
-    return { mod, settings, reader: mod.makeReader(client) };
+    return { mod, settings, reader: mod.makeReader(client), client };
   }
 
   /** 小镇返回的结构化数据转成人能读的短文本：截断，并标明这是数据不是命令。 */

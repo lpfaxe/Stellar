@@ -110,7 +110,10 @@ test('窗口清理只动 D-2，且不碰 important', async () => {
 
   const res = worker.runWindow({ now: base + 24 * HOUR, force: true, targetDay: '2026-11-11', trashDir: path.join(root, 'trash') });
   assert.equal(res.ok, true);
-  assert.ok(fs.existsSync(path.join(root, 'trash', '2026-11-11.jsonl')), '删之前必须先导出');
+  // 2026-11-22 起文件名带时间戳（固定 <day>.jsonl 会在同一天重跑时把恢复副本覆盖成空）
+  const trashFiles = fs.readdirSync(path.join(root, 'trash')).filter((f) => f.startsWith('2026-11-11'));
+  assert.ok(trashFiles.length > 0, '删之前必须先导出');
+  assert.ok(fs.readFileSync(path.join(root, 'trash', trashFiles[0]), 'utf8').trim().length > 0, '恢复副本不能是空的');
 
   const after = db.catalog({ ownerId: '1000000003' });
   assert.ok(after.rows.every((t) => t.day_key !== '2026-11-11' || t.tier === 'important'),

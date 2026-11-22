@@ -668,8 +668,9 @@
     </div>
     <p class="muted" id="accessHint">第一次打开会要口令；电脑本机打开不需要。页面可「添加到主屏幕」，像 App 一样用。</p>
   </section>
-  <section class="card" id="styleCard" data-tab="settings">
-    <h2>参考库 <span class="hint">角色设定参考 · 情境注入</span></h2>
+  <!-- 2026-11-22 主人要求关闭：参考库（style_slice）不再注入，面板这块隐藏（DOM 留着方便回滚） -->
+  <section class="card" id="styleCard" data-tab="settings" hidden>
+    <h2>参考库 <span class="hint">已停用</span></h2>
     <p class="muted small">这些是「演得像个人」的参考片段。开着的才会按情境注入，最多两片、不到 900 字。</p>
     <div id="srList" class="memdb-list"><span class="muted">读取中…</span></div>
   </section>
@@ -708,6 +709,16 @@
     <div class="memdb-list" id="townDays"></div>
     <h2>印象 <span class="hint">见过两次以上的人，留 30 天 / 最多 20 人</span></h2>
     <div class="memdb-list" id="townImpressions"></div>
+  </section>
+
+  <section class="card" id="townAlbumCard" data-tab="town">
+    <h2>她的相册 <span class="hint" id="townAlbumHint">小镇里拍的照片 / 请人画的画，最新的在前面</span></h2>
+    <p class="muted small">这些照片镜像在本机 <code>state/town/album/</code>：她发 QQ 空间、聊天发图时用的就是这些文件。最多留 60 张、总量 120MB，超了从最旧的删。</p>
+    <div class="town-album" id="townAlbum"><span class="muted">读取中…</span></div>
+    <div class="row wrap">
+      <button id="townAlbumRefresh" class="ghost small">刷新相册</button>
+      <span class="msg" id="townAlbumMsg"></span>
+    </div>
   </section>
 
 </main>

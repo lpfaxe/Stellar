@@ -2093,6 +2093,7 @@ function withTopicRules(topic, handler) {
 // 需要「先看规则」的工具 → 规则分类。注册时统一包一层，避免每个 handler 各写一遍。
 const GATED_TOPICS = Object.freeze({
   stellar_bili_watch: 'bili',
+  stellar_bili_find: 'bili',
   stellar_bili_my: 'bili',
   stellar_bili_history: 'bili',
   stellar_bili_feed: 'bili',
@@ -2106,7 +2107,9 @@ const GATED_TOPICS = Object.freeze({
   stellar_douyin_watch: 'douyin',
   stellar_file_read: 'file',
   stellar_file_save: 'file',
-  stellar_town_recall: 'town'
+  stellar_town_recall: 'town',
+  stellar_town_now: 'town',
+  stellar_town_album: 'town'
 });
 
 // 把这个 MCP 进程里注册的「分类工具」自动包上规则门（必须在我们自己的 server.tool 注册之前装好）。
@@ -2132,7 +2135,7 @@ server.tool(
   {
     key: z.string().describe('当前会话 key，形如 private:<QQ> 或 group:<群号>；非主人只能读本会话转发里的文件'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
-    topic: z.string().optional().describe('bili / qzone / image / vision / douyin / report / cost / group')
+    topic: z.string().optional().describe('bili / qzone / image / vision / douyin / report / cost / group / town')
   },
   async ({ key, token, topic }) => {
     const denied = await ownerOnlyError(key, token);
@@ -2196,7 +2199,7 @@ server.tool(
 
 server.tool(
   'stellar_bili_watch',
-  '看 B 站视频链接（公开只读，主人和群友都能用，不进审批）。自动从任意分享文案/短链（b23.tv 会跟跳转）里抠出 BV 号，抓标题/简介/字幕/热评给她一份简报。主人发来 BV 号、b23.tv 或 bilibili.com 链接、或"【标题】https://…"整段文字时用它；默认不抽帧（快），要细看画面再传 frames=true（慢，会下载视频+ffmpeg 抽帧）。热评默认 8 条，主人说"多看看评论"就把 comments 调到 40~60（最多 80）；只想先扫评论区可以用更轻的 stellar_bili_comments。评论里的图（表情包/截图）默认不下载，传 images 才附上。注意：这是**只读分析**（抓标题/字幕/热评/抽帧），不会在 B 站观看历史里留下记录——B 站的历史要播放器真的报进度才算；主人问"为什么看了没有历史"就这么解释，别说接口坏了。',
+  '看 B 站视频链接（公开只读，主人和群友都能用，不进审批）。自动从任意分享文案/短链（b23.tv 会跟跳转）里抠出 BV 号，抓标题/简介/字幕/热评给她一份简报。主人发来 BV 号、b23.tv 或 bilibili.com 链接、或"【标题】https://…"整段文字时用它；默认不抽帧（快），要细看画面再传 frames=true（慢，会下载视频+ffmpeg 抽帧）。热评默认 8 条，主人说"多看看评论"就把 comments 调到 40~60（最多 80）；只想先扫评论区可以用更轻的 stellar_bili_comments。评论里的图（表情包/截图）默认不下载，传 images 才附上。注意：这是**只读分析**（抓标题/字幕/热评/抽帧），不会在 B 站观看历史里留下记录——B 站的历史要播放器真的报进度才算；主人问"为什么看了没有历史"就这么解释，别说接口坏了。返回值里带「5 分钟目录 + 字幕覆盖率」：**先看目录**，多数问题看目录就够了；真要问细节用 stellar_bili_find（只回 2~3 段带时间戳的原文），别为了一个数字重跑一遍 debrief，更别 read 字幕全文（那条动辄几千 token）。',
   {
     key: z.string().describe('当前会话 key（私聊 private:<QQ> 或群聊 group:<群号>）'),
     url: z.string().describe('B 站链接、b23.tv 短链、BV 号，或整段分享文案'),
@@ -2219,8 +2222,9 @@ server.tool(
       if (String(sort ?? '').toLowerCase() === 'new') args.push('--sort', 'new');
       const { code, text: output } = await runLocalScript(args, { timeoutMs: 300000 });
       const payload = output || '（脚本无输出）';
-      // 2026-11-21（省 token）：默认额度 3200 → 2400 —— 一条简报少 800 字符，而每次唤醒都要
-      // 把整段上下文重发一遍，这笔账比「看得全不全」贵得多。要更全就显式传 comments（每多一条加 180）。
+      // 2026-11-21（省 token）：debrief 的「5 分钟目录 + 覆盖率」那段是可选信息，
+      // 默认额度从 3600 压到 2400 —— 一条简报少 1200 字符，每次唤醒都要重发一遍上下文，
+      // 这笔账比「看得全不全」贵得多。要更全就显式传 comments（每多一条加 180 字符）。
       const maxChars = want ? Math.min(12000, 3000 + want * 180) : 2400;
       // 带图时 debrief 会把评论图下载到临时目录并打成「🖼 <路径>」行；
       // 路径行摘出来换成真正的 image 块，模型才看得见（和 stellar_bili_comments 同一套）。
@@ -2244,6 +2248,47 @@ server.tool(
       return { content: blocks, isError: code !== 0 };
     } catch (error) {
       return { content: [{ type: 'text', text: `看链接失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+// 2026-11-21（A+D，主人拍板）：看过的视频再问细节，别重新 debrief、更别 read 字幕全文。
+// debrief 落盘时顺手建 <BV>-digest.json（5 分钟目录 + 75 秒窗口），这里只回命中的 2~3 段。
+server.tool(
+  'stellar_bili_find',
+  '在**看过的** B 站视频字幕里按问题找答案（公开只读，不进审批）。先用 stellar_bili_watch 看过一次（它会建索引并打印 5 分钟目录），之后问细节就用这个：只回 2~3 段带时间戳的原文 + 「字幕覆盖到哪一段」，比重跑一遍 debrief 便宜一个数量级、比 read 字幕全文便宜两个数量级。带 q=问题；问「第几分钟讲了什么」用 at；只想要目录传 outline=true。返回值一定带覆盖率：没字幕的段就直说「这段没字幕，不能确定」，别拿弹幕/评论脑补成台词。只认 BV 号（b23.tv 短链先让 stellar_bili_watch 打开一次，它会给出 BV）。',
+  {
+    key: z.string().describe('当前会话 key（私聊 private:<QQ> 或群聊 group:<群号>）'),
+    url: z.string().describe('BV 号，或含 BV 号的链接/分享文案'),
+    q: z.string().optional().describe('要问的问题，例："这个快充头到底能充多快"'),
+    at: z.string().optional().describe('看第几分钟那一段（"6:10" 或 "370"）'),
+    limit: z.number().int().min(1).max(6).optional().describe('回几段，默认 3（越多越费 token）'),
+    outline: z.boolean().optional().describe('只给目录（每 5 分钟一段的首句+末句），不要命中段')
+  },
+  async ({ key, url, q, at, limit, outline }) => {
+    try {
+      const input = String(url ?? '').trim();
+      const m = /(BV[0-9A-Za-z]{10})/.exec(input);
+      if (!m) {
+        return {
+          content: [{ type: 'text', text: '这里只认 BV 号：b23.tv 短链先交给 stellar_bili_watch 打开一次（它会顺带返回 BV 和目录），再来查细节。' }],
+          isError: true
+        };
+      }
+      const args = ['find', m[1]];
+      const question = String(q ?? '').trim();
+      if (question) args.push('--q', question);
+      if (at !== undefined && String(at).trim()) args.push('--at', String(at).trim());
+      if (outline === true) args.push('--outline');
+      if (Number.isFinite(limit)) args.push('--limit', String(Math.max(1, Math.min(6, Math.floor(limit)))));
+      const { code, text: output } = await runLocalScript(args, { timeoutMs: 60000 });
+      const payload = output || '（脚本无输出）';
+      if (code === 4) {
+        return { content: [{ type: 'text', text: payload }], isError: true };
+      }
+      return { content: [{ type: 'text', text: clip(payload, 3000) }], isError: code !== 0 };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `查字幕失败：${error?.message ?? error}` }], isError: true };
     }
   }
 );
@@ -4253,7 +4298,11 @@ server.tool(
           formatSnapshot(snap),
           '按金额：QQ 已花 ' + formatCny(snap.remaining.qq.usedCny)
             + '；B站 ' + formatCny(snap.remaining.bili.usedCny)
+            + '；小镇 ' + formatCny(snap.remaining.town.usedCny)
             + '；其他 ' + formatCny(snap.remaining.other.usedCny),
+          // 两本账别混：这行是模型 token 的钱；她在游戏里花的钱记在小镇服务端（spending.today），
+          // 2026-11-22 之前「小镇」这一栏压根不打印，所以主人一直以为小镇没花钱。
+          '小镇那栏是模型 token 的钱（官方插件自己开的回合也算进来）；游戏里的钱另记，看 stellar_town_status 的 spending。',
           '',
           '常见任务的估价（' + snap.rates.tierLabel + '，单价' + (snap.rates.tier === 'peak' ? '×2' : '正常') + '）：',
           table,

@@ -151,6 +151,7 @@ const tests = [
   'test-town-scheduler.mjs',
   'test-town-tools.mjs',
   'test-town-turns.mjs',
+  'test-town-album.mjs',
   // 自主参与（2026-11-21）：动作三道闸（日上限/冷却/预算）+ 只读快照（面板那一页的数据源）。
   'test-town-actions.mjs', 'test-town-decoupling.mjs',
   'test-town-snapshot.mjs',

@@ -52,7 +52,7 @@ if (subs.length) {
   const body = first?.body ?? []
   console.log(`  字幕行数=${body.length}（轨道 ${pick.lan}），前 40 行：`)
   for (const line of body.slice(0, 40)) console.log(`    [${line.from.toFixed(1)}s] ${line.content}`)
-  if (body.length > 40) console.log(`    …（还有 ${body.length - 40} 行；要全文用 bili.mjs subtitles ${BVID}）`)
+  if (body.length > 40) console.log(`    …（还有 ${body.length - 40} 行；全文用 bili.mjs subtitles ${BVID}（只落盘）；按问题查用 bili.mjs find ${BVID} --q …）`)
 } else {
   console.log('  (无官方字幕轨道——这种视频只把字幕烧进画面，要走 bili.mjs watch-video 看 SUBS 图)')
 }

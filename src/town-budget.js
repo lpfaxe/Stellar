@@ -31,7 +31,9 @@ export function townSpendFromDataDir(dataDir) {
 /** 今天在小镇花了多少（元）。永不抛。 */
 export function townSpendToday(dshHome) {
   try {
-    const home = String(dshHome || process.env.DSH_HOME || '').trim();
+    // 显式传空串 = 「这次没有数据目录」，不能回退到进程的 DSH_HOME：
+    // 否则测试/离线调用会把真机上的账读进一个本该是 0 的地方（2026-11-22 修）。
+    const home = String(dshHome === undefined || dshHome === null ? process.env.DSH_HOME || '' : dshHome).trim();
     if (!home) return 0;
     const daily = readDailyUsage(path.join(home, 'stellar'));
     const town = (daily && daily.town) || {};

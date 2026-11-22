@@ -49,9 +49,9 @@ import {
 } from '../../../src/vector-memory.js'
 import { interactEnabled } from '../tools/lib/interact.mjs'
 import { biliSessionCreateParams } from './bili-workspace.js'
+import { createTownJobs } from './town-jobs.js'
 import { dueTodos, markReminded, formatTodo, todoTarget } from '../../../src/todos.js'
 import { capabilityEnabled } from '../../../src/capabilities.js'
-import { createTownJobs } from './town-jobs.js'
 
 // 当前角色的 B站 行为目录（角色系统未启用时回退旧目录）。
 function platformDir() {
@@ -2049,16 +2049,29 @@ export function startScheduler(ctx, opts) {
       return   // 一次只提醒一类 ✓
     }
 
-    // ── QQ 空间说说：本周至少 3 条（2026-11-08 主人要：每周 3 次，内容自己定）──
+    // ── QQ 空间说说：本周至少 7 条（2026-11-22 主人要：每周 7 次，内容自己定）──
     // 摸鱼/最低限度模式不催发说说（主人 22:25：摸鱼只留写日志 + 聊天 + 刷视频）。
     const QZ = cfgNow.qzone ?? {}
     const QZW = QZ.weekly ?? {}
-    const weeklyMin = Math.max(0, Number(QZW.min ?? 3) || 0)
-    if (allowQzonePost && QZ.enabled !== false && weeklyMin > 0 && !qzonePostedToday()) {
-      const weekCount = qzonePostsThisWeek()
-      const need = Math.max(0, weeklyMin - weekCount)
-      const dayIdx = (new Date().getDay() + 6) % 7          // 周一 = 0
-      const daysLeft = 7 - dayIdx                          // 含今天
+    const weeklyMin = Math.max(0, Number(QZW.min ?? 7) || 0)
+    // 2026-11-22：原来只要「今天发过一条」就再也不催（!qzonePostedToday()），
+    // 一周想凑 7 条就只能靠运气——漏掉一天就永远补不回来。现在按欠账算：
+    // 还差条数 ≥ 本周剩余天数（今天算一天）时，允许当天催第二条补，
+    // 但绝不越过 qzone.dailyLimit 的硬闸（qzone.mjs 超了直接 exit 6）。
+    const qzDay = today()
+    const qzWeekCount = qzonePostsThisWeek()
+    const qzNeed = Math.max(0, weeklyMin - qzWeekCount)
+    const qzDayIdx = (new Date().getDay() + 6) % 7           // 周一 = 0
+    const qzDaysLeft = 7 - qzDayIdx                          // 含今天
+    const qzPostedToday = qzoneLogRows()
+      .filter((e) => e.kind === 'post' && new Date(e.at).toLocaleDateString('sv-SE') === qzDay).length
+    const qzDailyCap = Math.max(1, Number(QZ.dailyLimit ?? 3) || 3)
+    const qzMaxToday = Math.min(qzDailyCap, qzNeed >= qzDaysLeft ? 2 : 1)
+    if (allowQzonePost && QZ.enabled !== false && weeklyMin > 0 && qzPostedToday < qzMaxToday) {
+      const weekCount = qzWeekCount
+      const need = qzNeed
+      const dayIdx = qzDayIdx
+      const daysLeft = qzDaysLeft
       const mustToday = need > 0 && need >= daysLeft       // 今天不发就凑不够
       const [qh = 21, qm = 30] = String(QZ.time ?? '21:30').split(':').map(Number)
       const qzAt = mustToday ? 9 : ((Number.isFinite(qh) ? qh : 21) + (Number.isFinite(qm) ? qm : 30) / 60)
@@ -2251,8 +2264,7 @@ export function startScheduler(ctx, opts) {
     peakBlockedNow, budgetBlockedNow, ensureSession, ensurePermission, promptBili, sessionsReady,
   })
 
-
-    const timer = setInterval(() => { tick().catch(() => {}) }, TICK_MS)
+  const timer = setInterval(() => { tick().catch(() => {}) }, TICK_MS)
   // 一次性启动定时器单独收好：stop() 必须把它们也清掉，否则测试/卸载后进程
   // 仍被 8~25 秒后的回调吊着（Node 24 下强制 exit 还会撞 libuv 断言）。
   const startupTimers = [

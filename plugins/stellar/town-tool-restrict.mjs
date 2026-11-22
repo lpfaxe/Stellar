@@ -22,6 +22,8 @@ export const ALLOWED_TOOLS = Object.freeze([
   'mcp__snowluma__stellar_town_bonds',
   'mcp__snowluma__stellar_town_lobby',
   'mcp__snowluma__stellar_town_recall',
+  // 合并入口（2026-11-22）：只读、只读本机快照，不联网也不写盘。
+  'mcp__snowluma__stellar_town_now',
   'mcp__snowluma__stellar_town_day',
   // 动作：工具本身还要过 town.actions + 预算/次数/间隔三道闸，这里只负责「影子会话可以碰它们」。
   'mcp__snowluma__stellar_town_visit',

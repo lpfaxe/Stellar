@@ -40,8 +40,16 @@ const TOOL_LABEL = [
   [/^task$/, '派子任务'],
 ]
 
-function actionLabel(tool) {
+/** 遥测里存的是全名（mcp__snowluma__qq_send_message）——去掉 mcp__<server>__ 再匹表，
+ * 否则下面每一条 /^qq_/ /^stellar_/ 都命中不了，面板只会说「用 mcp__snowluma__…」。 */
+function toolBase(tool) {
   const t = String(tool || '')
+  const m = /^mcp__[A-Za-z0-9_-]+__(.+)$/.exec(t)
+  return m ? m[1] : t
+}
+
+function actionLabel(tool) {
+  const t = toolBase(tool)
   if (!t) return '在忙'
   for (const [re, label] of TOOL_LABEL) if (re.test(t)) return label
   return '用 ' + t
@@ -55,7 +63,8 @@ function sessionLabel(sid, preset) {
   if (/^qq-/.test(s)) return 'QQ'
   if (preset === 'bili-slim') return '刷 B 站'
   if (preset === 'qq-chat-v2' || preset === 'qq-chat') return 'QQ 会话'
-  if (preset === 'town-act') return '在小镇'
+  // town-act 是我们自己的影子会话；fishbowl-town 是官方插件自己开的回合（2026-11-22 加）
+  if (preset === 'town-act' || preset === 'fishbowl-town') return '在小镇'
   if (preset === 'ptc') return '开发会话'
   return 'DSH 会话'
 }

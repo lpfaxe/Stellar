@@ -168,7 +168,7 @@ if (isDefaultOutDir) {
 } else {
   console.log('（自定义 outDir：跳过默认 shots 清理）')
 }
-console.log('（提示：这条视频若有官方字幕，先跑 `node bili.mjs subtitles <BV>` 更省也更准——' +
+console.log('（提示：这条视频若有官方字幕，先跑 `node bili.mjs debrief <BV>` 建索引更省也更准（5 分钟目录 + find）——' +
   '抽帧是给"字幕没官方轨、或要看画面/界面"的情况用的）')
 
 // 观看历史：直接调 watch-video 时记一笔；被 debrief 调用时由 debrief 统一记账，避免重复。

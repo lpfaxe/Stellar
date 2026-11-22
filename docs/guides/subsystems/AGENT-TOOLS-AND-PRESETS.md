@@ -1,6 +1,6 @@
 # 工具面与 preset（AGENT-TOOLS-AND-PRESETS）
 
-> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 82 个工具）、**哪些手被绑住**
+> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 84 个工具）、**哪些手被绑住**
 > （五层闸门 + fail-closed 守卫）、**她戴哪张面具**（`qq-chat` / `qq-chat-v2` 两代 preset）、
 > **这些是怎么装进 DSH 的**。
 > **最后核对**：2026-10-26（全仓库逐行梳理）。配套阅读：总纲 [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) · 边界 [BOUNDARIES.md](../operations/BOUNDARIES.md) · 索引 [../README.md](../../README.md)。
@@ -11,7 +11,7 @@
 
 **两个 MCP 手 + 一张面具。**
 
-- `snowluma`（36 个 `qq_*` + 35 个 `stellar_*` 工具；小镇的 8 个 `stellar_town_*` 由同一个 server 里的 `src/town-tools.js` 注册，合计 43 个 `stellar_*`）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏、B站/空间/小镇/文件柜。
+- `snowluma`（36 个 `qq_*` + 35 个 `stellar_*` 工具 = 71 个，注册在 `src/mcp-snowluma-safe.js`；小镇的 10 个 `stellar_town_*` 由同一个 server 里的 `src/town-tools.js` 注册：`recall` / `status` / `bonds` / `lobby` / `day` / `now` / `album` / `visit` / `play` / `goto`，合计 45 个 `stellar_*`）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏、B站/空间/小镇/文件柜。新增的三件是 `stellar_town_now`（一次给「此刻 / 大厅 / 今天 / 三天回顾」）、`stellar_town_album`（把镇上相册镜像到本地、返回绝对路径）与 `stellar_bili_find`（按问题查一条视频的字幕段落）。
 - `snowluma-host`（1 个）是探活手：只问 SnowLuma 在不在，**没有启停能力**（EULA）。
 - `web-search-safe`（2 个）是外部信息手：只读搜索与抓取，带 SSRF 防护。
 - preset 决定"她是谁、在哪说话"：`qq-chat`（一代/普通）与 `qq-chat-v2`（二代仿真）。
@@ -22,7 +22,7 @@
 
 | server | 入口 | 工具 | 挂载 | 边界 |
 | --- | --- | --- | --- | --- |
-| `snowluma` | `src/mcp-snowluma-safe.js`（4,816 行）+ `src/town-tools.js`（8 个小镇工具） | 36 个 `qq_*` + 43 个 `stellar_*`（其中 8 个 `stellar_town_*`） | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
+| `snowluma` | `src/mcp-snowluma-safe.js`（71 个工具）+ `src/town-tools.js`（10 个小镇工具） | 36 个 `qq_*` + 45 个 `stellar_*`（其中 10 个 `stellar_town_*`） | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
 | `snowluma-host` | `src/mcp-host-server.js`（94 行） | `snowluma_status` | 同上 | **只读探活**；v0.1.5 起移除了 `start_snowluma`/`stop_snowluma` |
 | `web-search-safe` | `src/mcp-web-search-safe.js`（128 行） | `web_search`、`web_fetch` | 同上 | 只读；禁内网/环回/CGNAT；DNS 解析后逐地址校验；重定向每跳复核 |
 
@@ -182,10 +182,13 @@
 | preset | order | 给谁 | 工具面 |
 | --- | --- | --- | --- |
 | `bili-slim` | 12 | `bili-whale-*` / `feed-whale-*` 生物钟会话 | standard 去掉 univer / remote / acp 等无关工具 |
-| `town-act` | 13 | `town-whale`（鱼缸小镇影子，**默认不启用**） | 只有 5 个小镇只读工具 + `stellar_rules`，由 `town-tool-restrict` 兜底 |
+| `town-act` | 13 | `town-whale`（鱼缸小镇影子，**默认不启用**） | 只有 5 个小镇只读工具 + 动作三件（要 `town.actions`）+ `stellar_rules`，由 `town-tool-restrict` 兜底 |
 
 `town-act` 的边界是 `plugins/stellar/town-tool-restrict.mjs`（allowlist）：`visit` / `play` / `goto`
-这些会花钱的动作在这一版**连工具都没注册**，所以"绕不过去"不靠提示词，靠工具不存在。
+这些会花钱的动作**工具是注册着的**（她要能看见、能被明确拒绝），但 `town.actions` 不是 `true` 时执行期一律回「动作没开」，再往下一层还有次数 / 间隔 / 日预算三道闸 —— 拦在代码里，不靠提示词。
+
+> 注意：allowlist 目前只放行 `status` / `bonds` / `lobby` / `recall` / `day` + 动作三件 + `stellar_rules`；
+> 新的 `stellar_town_now` / `stellar_town_album` 还没加进去（影子会话暂时调不到，主会话不受影响）。
 详见 [SUBSYSTEM-TOWN.md](SUBSYSTEM-TOWN.md)。
 
 ---

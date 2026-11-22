@@ -14441,7 +14441,7 @@ function saveSocialV2State() {
         // 参考引擎（设计 §6.2，方案 B）：只在命中高情绪时注入 2 片、硬上限 900 字符，
         // 且不提供任何「查参考」的工具。triggerOnly=false 只用于调试（普通闲聊也注入）。
         styleRef: {
-          enabled: styleCfg.enabled !== false,
+          enabled: styleCfg.enabled === true,
           maxChars: Math.max(200, Math.min(1200, Number(styleCfg.maxChars) || 900)),
           slices: Math.max(1, Math.min(3, Number(styleCfg.slices) || 2)),
           triggerOnly: styleCfg.triggerOnly !== false,

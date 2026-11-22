@@ -12,6 +12,7 @@ import {
   DEFAULT_TOWN_DAILY_CNY, DEFAULT_TOWN_SOFT_CNY, townSpendToday, townDailyCap, townSoftCap,
   townBudgetState, townSoftLine,
 } from '../src/town-budget.js';
+import { localDayKey } from '../src/token-budget.js';
 import {
   TOWN_ACTIONS, DEFAULT_ACTION_DAILY_MAX, DEFAULT_ACTION_MIN_GAP_MIN, actionStatePath,
   emptyActionState, readActionState, writeActionState, listActionsToday, actionGate, appendAction,
@@ -27,7 +28,10 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'town-actions-'));
 const home = path.join(TMP, 'home');
 const stellarDir = path.join(home, 'stellar');
 fs.mkdirSync(stellarDir, { recursive: true });
-const day = '2026-11-21';
+// 日期必须跟着「今天」走：写死某一天，过了那天 townSpendToday 会按「旧文件」算 0，三条断言全红。
+const day = localDayKey();
+const yesterday = localDayKey(Date.now() - 86_400_000);
+const tomorrow = localDayKey(Date.now() + 86_400_000);
 
 function writeUsage(usage, dayKey = day) {
   fs.writeFileSync(path.join(stellarDir, 'token-usage-daily.json'), JSON.stringify({ day: dayKey, at: Date.now(), source: 'test', ...usage }), 'utf8');
@@ -46,7 +50,7 @@ await check('town.cost 被读出来（不是 cny 字段）', () => {
 });
 
 await check('旧文件（不是今天）算 0，避免把昨天的账当今天', () => {
-  writeUsage({ town: { cost: 0.9, tokens: 1 } }, '2026-11-20');
+  writeUsage({ town: { cost: 0.9, tokens: 1 } }, yesterday);
   assert.equal(townSpendToday(home), 0);
 });
 
@@ -136,8 +140,8 @@ await check('appendAction 追加并按日期归档', () => {
   s = appendAction(s, { at: 20, type: 'play', ok: false, note: '桌子满了' }, { today: day });
   assert.equal(s.list.length, 2);
   assert.equal(s.list[1].ok, false);
-  const next = appendAction(s, { at: 30, type: 'goto' }, { today: '2026-11-22' });
-  assert.equal(next.date, '2026-11-22');
+  const next = appendAction(s, { at: 30, type: 'goto' }, { today: tomorrow });
+  assert.equal(next.date, tomorrow);
   assert.equal(next.list.length, 1);
 });
 

@@ -23,7 +23,7 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 
 - **QQ 链路零改动**：QQ 那边不注入小镇正文，只在唤醒提示里给一行指针（「想知道就调 `stellar_town_recall`」）。
 - **影子会话零对外能力**：`town-act` 预设里的 `town-tool-restrict` 是 allowlist，只有小镇工具能跑；
-  能动的是「五件只读 + 三件动作」（`visit` / `play` / `goto`，动作要另外打开），
+  能动的是「七件只读 + 三件动作」（只读里含一次看全的 `now` 与相册镜像 `album`；`visit` / `play` / `goto` 要另外打开），
   social、送礼、私信这些**连工具都没注册**（工具不存在 = 绕不过去）。
 - **进镇靠长轮询，不是靠访问码**：小镇只有看到程序常挂 `GET /turns` 才把 `outside_state` 置成 `in_town`；
   不挂就一直 `not_connected`，`/lobby` 直接 409 `TOWN_OUTSIDE_NOT_CONNECTED`，来访 / 牌局 / 收据全都不会产生
@@ -66,7 +66,7 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 | `window` | 09:00–23:00 | 唤醒时间窗，均分成 n 段随机落点（前 60%），重启沿用当天的计划 |
 | `minGapMin` | 45 | 两次唤醒的最小间隔 |
 | `collectMin` | 10 | 采集间隔（只读拉取，不打扰任何人） |
-| `actions` | **false** | 她能不能自己动手（收起 / 坐下玩 / 出门逛）。关掉只剩五个只读工具，一分钱不花 |
+| `actions` | **false** | 她能不能自己动手（收起 / 坐下玩 / 出门逛）。关掉只剩七个只读工具，一分钱不花 |
 | `actionDailyMax` | 3 | 每天动几次上限（1–6），按 `state/town/actions.json` 记账 |
 | `actionMinGapMin` | 15 | 两次动手的最小间隔（分钟） |
 | `dailyBudgetCNY` | 1 | 小镇自己的日预算闸（走 token-budget 的 `town` 类别） |
@@ -93,7 +93,7 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 
 ## 4. 工具面
 
-只读五件（默认就能用）：
+只读七件（默认就能用）：
 
 | 工具 | 作用 | 备注 |
 |---|---|---|
@@ -102,6 +102,8 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 | `stellar_town_bonds` | 跟谁处得近 | 只读 |
 | `stellar_town_lobby` | 大厅里有谁 | 只读 |
 | `stellar_town_day` | 写今天一句感受 | ≤120 字，写自己的感觉 |
+| `stellar_town_now` | 一次看全：此刻在哪 / 大厅有谁 / 今天做了什么 / 三天回顾 | ≤700 汉字；`state/town/status.json` 快照在 90 分钟以内就直接读它，不联网 |
+| `stellar_town_album` | 小镇相册（她自己拍的、请人画的）镜像到本地 | 返回本机绝对路径，可直接交给 `qq_send_image` / `stellar_qzone_post`；`sync=true` 先跟小镇同步一次，`limit` 默认 6、上限 20 |
 
 动作三件（`town.actions = true` 才注册；每次都要过一次 `townActionPreflight`）：
 
@@ -116,6 +118,16 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 
 所有工具都要 `key`（`private:<QQ>`）+ 可选 `token`，非主人调用会被 `ownerOnlyError` 拒掉；
 错误文本一律过 `fbo_` 打码。
+
+### 4.1 相册镜像（`stellar_town_album`）
+
+小镇相册里的照片在远端，而出站图片只认本机文件，所以调度器把相册镜像到本地：
+
+- **落在哪**：`<DSH_HOME>/stellar/state/town/album/`，文件名只有 `<id>.<ext>` 与 `<id>.thumb.<ext>`（`id` 必须过 `al_` + 16 位十六进制）。
+- **双限轮换**：最多 **60 张**、总量 **120MB**，超了按创建时间从旧到新删；单张 **>8MB 只留缩略图**（出站图片上限 8MB），工具会明说「只有缩略图（原图太大），发出去会糊」。
+- **抓图的安全边界**：只走 **https** + 白名单域（`fishbowltown.com`）+ 路径 `/town/api/album/<id>/{file,thumb}`，**不带任何鉴权头**（服务端这个端点只认 id），不跟随重定向，只收 PNG / JPEG / GIF / WebP。
+- **面板**：`GET /api/town/album` 列索引，`/api/town/album/file?name=…` 取图 —— 本机（local）看原图，局域网（lan）只能拿缩略图，公网一律 403（她的照片不在隧道上摊开）。
+- `kind === 'song'` 是音频，不镜像；相册按 60 张轮换，删掉就真没了（`state/town/album/` 不进备份）。
 
 ## 5. 谁让她「进镇」：`/turns` 长轮询
 
@@ -217,7 +229,7 @@ node scripts/town-remove.mjs --json        # 拆除计划（干跑，不删任�
 
 - 采集器与影子会话立即不再跑（守卫都是 `!== true` 就返回），`/turns` 长轮询一起停；
 - `state/town/town.db` 留在原地，已记的按 3 天 TTL 自然过期（不删库也能干净）；
-- 想彻底清掉就删 `%DSH_HOME%/stellar/state/town/` 与 `%DSH_HOME%/fishbowl-town/settings.json`；
+- 想彻底清掉就删 `%DSH_HOME%/stellar/state/town/`（含相册镜像 `album/` —— 那是她拍的照片，删了就没了）与 `%DSH_HOME%/fishbowl-town/settings.json`；
 - QQ 链路本来就没接小镇正文，关不关都不影响聊天（唤醒提示里那行指针也会一起消失）。
 
 ## 11. 怎么拆掉它
@@ -227,10 +239,10 @@ node scripts/town-remove.mjs --json        # 拆除计划（干跑，不删任�
 | 盒子 | 里面是什么 | 核心文件留什么 |
 | --- | --- | --- |
 | `plugins/stellar/lib/town-jobs.js` | 采集 tick、唤醒计划、进镇长轮询、预算判据（约 450 行） | `scheduler.js` 里 `const town = createTownJobs({...})` 一次 + 三条定时器 + `town.stop()` / `town.sessionId` |
-| `src/town-tools.js` | `stellar_town_status/bonds/lobby/day/recall/visit/play/goto` 的注册（约 26 KB） | `mcp-snowluma-safe.js` 里 `registerTownTools(server, {...})` 一行、`RULE_TOPICS.town`、`GATED_TOPICS` 一条 |
+| `src/town-tools.js` | `stellar_town_status/bonds/lobby/day/recall/now/album/visit/play/goto` 的注册（约 42 KB） | `mcp-snowluma-safe.js` 里 `registerTownTools(server, {...})` 一行、`RULE_TOPICS.town`、`GATED_TOPICS` 一条 |
 | `src/town-prompt.js` | 唤醒提示里那段小镇指针 | `bridge.js` 里 `const townLine = townPromptLine({ stellarDir });` 一行 + base 拼接里的 `+ townLine` |
 
-另有整块属于它的文件（控制台页、影子预设、白名单、规则、测试、文档）：`stellar-manager/lib/town.js`、`stellar-manager/public/js/town.js`、`plugins/stellar/town-tool-restrict.mjs`、`plugins/stellar/presets/town-act.patch.yml`、`dsh/agent-presets/town-act/`、`plugins/stellar/tools/rules/town.md`、`src/town-*.js` 其余模块、`scripts/test-town-*.mjs`、本文。
+另有整块属于它的文件（控制台页、影子预设、白名单、规则、测试、文档）：`stellar-manager/lib/town.js`、`stellar-manager/public/js/town.js`、`plugins/stellar/town-tool-restrict.mjs`、`plugins/stellar/presets/town-act.patch.yml`、`dsh/agent-presets/town-act/`、`plugins/stellar/tools/rules/town.md`、`src/town-album.js`（相册镜像，单独一个文件，删了只是相册功能没了）、`src/town-*.js` 其余模块、`scripts/test-town-*.mjs`、本文。
 
 先看计划（干跑，只打印不删）：
 
@@ -315,8 +327,8 @@ node scripts/town-plugin-sync.mjs --check   # 不一致 exit 1，可挂门禁
 
 ### 花费要看两个地方
 
-面板「今天花费」只算我们这侧记进 `token-usage-daily.json` 的 `town` 桶；插件自己开的会话算在面板额度页的「小镇」里。
-两边加起来才是真的花掉多少 —— 面板上那行小字写的就是这个。
+两边都记进 `token-usage-daily.json` 的 `town` 桶：我们这侧的影子会话（`town-act`）与**官方插件自己开的回合**（`preset=fishbowl-town`，2026-11-22 起按 preset 认，不再只按会话 id 认 —— 之前那 14 个会话 / ¥0.11 一条都没进账）。面板额度页与 `stellar_cost` 都把这一行显示成「小镇」。
+注意：快照里的 `spending.today/d7` 与 `piggy_yuan` 是**游戏里的钱**，和 token 预算不是一本账，闸门只拦 token 那本。
 
 ### 怎么判断它当前是谁在答题
 
@@ -350,7 +362,8 @@ persona 的裁剪顺序也为此改过：**先给这三段留预算，剩下的�
 
 `town.enabled` 默认 `false`：不唤醒、不进镇、唤醒提示里不出现小镇那一段，也就不会用到上面这些规矩。打开之后：
 
-- 只读五个（`stellar_town_status/bonds/lobby/recall/day`）随时可用，当「看存档」。
+- 只读七个（`stellar_town_status/bonds/lobby/recall/day/now/album`）随时可用，当「看存档」。
+  `now` 是「一次问完」的省话版（≤700 汉字），`album` 给的是本机路径，配合发图工具直接用。
 - 三个动作工具要另外把 `town.actions` 设成 `true`，默认仍是 `false`（一调就回「动作没开」）。
 - 装了第三方插件并让它接管答题时，把 `town.actions` 留 `false`，否则两套动作会重复花钱。
 

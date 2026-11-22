@@ -7,26 +7,39 @@ import { readJson, readTail, todayKey } from './util.js'
 import { findWhale } from './util.js'
 import { contactIndex, nameForKey, relationFor } from './people.js'
 
+// 原来是写死的绝对路径：换个盘符/换台机器就静默读到空（面板只会显示「待机」）。
 const CALL_FILE = path.join(REPO, 'state', 'tool-calls.jsonl')
 
+// 规则表按「去掉 mcp__<server>__ 前缀之后的工具名」匹配：tool-calls.jsonl 里存的是
+// mcp__snowluma__qq_send_message 这种全名。表里原来还留着一批 surfcore_* 旧工具名
+// （surfcore 2026-11-12 就删了），所以几乎什么都落不到，只显示「在忙别的」。
 const KIND_RULES = [
-  [/(^|__)qq_send_message$|(^|__)qq_send_image$|qq_get_message_images|qq_get_prompt|qq_mark_read|qq_close_conversation|qq_send_face|qq_send_poke/, 'chat', '回消息'],
+  // 小镇要排在前面：stellar_town_now / stellar_town_visit 这些不该被别的规则吃掉。
+  [/^(stellar_town_|fishbowl_town_|town_)/, 'town', '在小镇里'],
+  [/^qq_send_message$|^qq_send_image$|^qq_send_sticker$|^qq_send_poke$|^qq_send_group_message$|^qq_send_private_message$|^qq_send_face$|qq_get_message_images|qq_get_prompt|qq_mark_read|qq_close_conversation|qq_reply_and_finish/, 'chat', '回消息'],
   [/qq_wait_for_messages/, 'wait', '在等你说话'],
-  [/stellar_qzone_post|stellar_qzone_react|stellar_qzone_delete_comment/, 'qzone', '在空间互动'],
-  [/stellar_qzone_read|qzone/, 'qzone', '看 QQ 空间'],
-  [/stellar_bili_post|dynamic_image|(^|__)dynamic$/, 'dynamic', '发 B 站动态'],
-  [/stellar_bili_watch|stellar_bili_comments|stellar_bili_feed|stellar_bili_my|stellar_bili_history|stellar_bili_comment|bili|debrief|feed/, 'bili', '逛 B 站'],
+  [/qzone_post|qzone_react|qzone_delete_comment/, 'qzone', '在空间互动'],
+  [/qzone_read|qzone/, 'qzone', '看 QQ 空间'],
+  [/bili_post|dynamic_image|^dynamic$/, 'dynamic', '发 B 站动态'],
+  [/bili_watch|bili_comments|bili_feed|bili_my|bili_history|bili_comment|bili_find|douyin_watch|bili|debrief|feed/, 'bili', '逛 B 站'],
   [/image_generate/, 'image', '画图'],
   [/report/, 'report', '写日报'],
-  [/stellar_file_read|spill_read/, 'read', '读长文档'],
+  [/file_read|spill_read/, 'read', '读长文档'],
   [/web_search|web_fetch|read_page|x_search/, 'search', '查资料'],
-  [/stellar_person_memory|stellar_contacts|stellar_memory_read/, 'memory', '翻记忆'],
-  [/stellar_chat_history|stellar_outbox|outbox/, 'audit', '查聊天记录'],
-  [/qq_set_wake_config|stellar_set_wake|wake_config/, 'wake', '在安排下次醒来'],
+  [/person_memory|contacts|memory_read|memory_search|memory_catalog|memory_topic|memory_fact/, 'memory', '翻记忆'],
+  [/chat_history|outbox/, 'audit', '查聊天记录'],
+  [/set_wake_config|wake_config/, 'wake', '在安排下次醒来'],
 ]
 
-function kindOf(tool) {
+/** mcp__snowluma__stellar_town_now → stellar_town_now（其余原样返回）。 */
+function toolBase(tool) {
   const t = String(tool || '')
+  const m = /^mcp__[A-Za-z0-9_-]+__(.+)$/.exec(t)
+  return m ? m[1] : t
+}
+
+function kindOf(tool) {
+  const t = toolBase(tool)
   for (const [re, kind, label] of KIND_RULES) if (re.test(t)) return { kind, label }
   return { kind: 'other', label: '在忙别的' }
 }
@@ -101,7 +114,7 @@ function nowMin() {
   return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
 }
 
-export function buildActivity({ turns = null } = {}) {
+export function buildActivity({ turns = null, town = null } = {}) {
   const now = Date.now()
   const index = contactIndex()
   const calls = readRecentCalls()
@@ -147,6 +160,8 @@ export function buildActivity({ turns = null } = {}) {
       detail = '在查资料'
     } else if (kind === 'memory') {
       detail = '在翻长期记忆'
+    } else if (kind === 'town') {
+      detail = town && town.detail ? town.detail : '在小镇里逛'
     } else {
       detail = '刚做完一件事'
     }
@@ -183,12 +198,24 @@ export function buildActivity({ turns = null } = {}) {
     detail = '在听，等你继续说'
   }
 
+  // 小镇在场层（2026-11-22）：她人在镇里时，上面几层只会说「休眠中」/「待机」——
+  // QQ 消息和工具调用都在 DSH 里，而小镇的回合跑在官方插件自己的会话里，工具日志里看不到。
+  // 让位规则：刚动过手（60 秒内）就继续说动作；真正的未收尾回合（下面那一层）仍然压在最上面。
+  if (town && town.inTown && town.fresh && (kind === 'sleep' || kind === 'idle' || now - at > 60_000)) {
+    kind = 'town'
+    label = '她正在小镇上'
+    detail = town.detail || '在镇上'
+    at = Math.max(at, town.at || 0)
+    active = true
+  }
+
   // DSH 遥测里「回合还没收尾」比工具调用日志更硬：工具调用只说明她动过手，
   // 回合没收尾才说明她现在还在跑（可能正卡在一条要跑五分钟的命令里）。
+  // 这一层压在最上面，顺便把预计结束时间带给面板与「重启 DSH」的确认框。
   let turn = null
   if (turns && turns.herTop) {
     turn = turns.herTop
-    kind = /B 站/.test(turn.label) ? 'bili' : /小镇/.test(turn.label) ? 'other' : 'chat'
+    kind = /B 站/.test(turn.label) ? 'bili' : /小镇/.test(turn.label) ? 'town' : 'chat'
     label = /^在/.test(turn.action) ? '正' + turn.action.slice(1) : '正在' + turn.action
     detail = turn.label + ' · 已 ' + turn.elapsedText + (turn.etaText ? '，' + turn.etaText : '')
     at = turn.since

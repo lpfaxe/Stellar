@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WORKER_FILE = path.resolve(HERE, '..', '..', '..', 'src', 'memory-worker.js');
+const MEMORY_DB_FILE = path.resolve(HERE, '..', '..', '..', 'src', 'memory-db.js');
 const TICK_MS = 10 * 60 * 1000;        // 10 分钟一次，与记忆卡同一个节奏
 const FIRST_DELAY_MS = 30 * 1000;      // 启动 30 秒后先跑一次（避开启动风暴）
 // 侧写时间与复核时间都从 config.json 的 memory 段读（这台机器 0 点后断电断网，
@@ -29,7 +30,20 @@ let initial = null;
 let workerPromise = null;
 let lastError = '';
 let lastProfileDay = '';
+let lastFriendsDay = '';
 let running = false;
+let dbModulePromise = null;
+
+/** 直接加载 memory-db（通讯录备注写事实用，不走 worker：它不需要模型）。 */
+function loadMemoryDb() {
+  if (!dbModulePromise) {
+    dbModulePromise = import(pathToFileURL(MEMORY_DB_FILE).href).catch((error) => {
+      dbModulePromise = null;
+      throw error;
+    });
+  }
+  return dbModulePromise;
+}
 
 function loadWorker() {
   if (!workerPromise) {
@@ -135,8 +149,27 @@ async function tick(log, cfg, asker) {
     }
     if (review && review.ok === false && review.error) log('[memory] 复核失败：' + String(review.error).slice(0, 160));
 
-    // 侧写：每天 memory.profile.hour（默认 07:00）之后一次（或用面板请求强制一次）
+    // 通讯录备注 → 事实：每天一次，且不依赖模型通道（纯读文件 + 写库）。
+    // 2026-11-22 加：主人问「为什么没有小土豆的记忆」——他确实进过库被清掉了，
+    // 但「小土豆」这个称呼只在 state/friends.json 的 remark 里，库里从来没这条。
     const nowDate = new Date();
+    const friendDay = nowDate.toDateString();
+    if (lastFriendsDay !== friendDay) {
+      try {
+        const dbMod = await loadMemoryDb();
+        const friendsFile = path.join(stateDir(), 'friends.json');
+        let people = [];
+        try { people = JSON.parse(fs.readFileSync(friendsFile, 'utf8')).people || []; } catch { people = []; }
+        const fr = typeof dbMod.syncFriendFacts === 'function' ? dbMod.syncFriendFacts({ people }) : null;
+        if (fr && fr.written) log('[memory] 通讯录备注写入事实：' + fr.written + ' 条');
+        lastFriendsDay = friendDay;
+      } catch (error) {
+        lastFriendsDay = friendDay;  // 失败也只试一次/天，别每 10 分钟刷日志
+        log('[memory] 通讯录备注同步失败：' + String(error?.message || error).slice(0, 120));
+      }
+    }
+
+    // 侧写：每天 memory.profile.hour（默认 07:00）之后一次（或用面板请求强制一次）
     const hour = nowDate.getHours();
     const minute = nowDate.getMinutes();
     const day = nowDate.toDateString();

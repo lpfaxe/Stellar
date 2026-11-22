@@ -7,7 +7,7 @@
 
 | | |
 | --- | --- |
-| 版本 | `1.0.9` |
+| 版本 | `1.1.0` |
 | 目标 DSH | `0.2.1-rc.2 或更新`（本机长期跑在 `0.2.2-rc.1`；`node scripts/verify-dsh-020-adaptation.mjs` 可逐项复核） |
 | 平台 | Windows 10/11（沙箱 ACL、SnowLuma 接入与启动脚本都与它绑定） |
 | 许可 | MIT（SnowLuma 是第三方专有运行时，**不随本仓库分发**） |
@@ -299,7 +299,7 @@ node scripts/verify-dsh-020-adaptation.mjs      # 对本机 DSH 版本逐项复�
 
 **① 完整面板（推荐）** —— 双击仓库根目录的 **`启动控制台.bat`**，浏览器打开 `http://127.0.0.1:3300/`。
 
-七个页面：**概览 / 她今天 / 通讯录 / 记忆 / 鱼缸小镇 / 运行日志 / 设置**，共 36 张卡。
+七个页面：**概览 / 她今天 / 通讯录 / 记忆 / 鱼缸小镇 / 运行日志 / 设置**，共 37 张卡。
 概览有运行状态、快捷操作（自检 / 启动 SnowLuma / 重连 DSH / 重启 DSH / 紧急停止）、运行模式切换、花费看板、
 待办审批；「她今天」有每日任务打卡、B站 与空间动态、视频清单、日报、待办、图片池；
 「通讯录」管白名单与人物侧写；「记忆」看话题 / 事实 / 见闻区 / 侧写；「设置」是每日任务、能力开关、白名单、远程访问。
@@ -337,7 +337,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 本仓库**只留接口，默认关着**——`town.enabled` 默认 `false`，没有访问码，装完不连、不醒、不花钱：
 
 - 想用：在 `%DSH_HOME%/fishbowl-town/settings.json` 填自己的 `fbo_…` 接入码，再把 `%DSH_HOME%/stellar/bili.config.json` 的 `town.enabled` 改成 `true`。两步都做才动。
-- 会花钱的动作（坐下 / 玩牌 / 请客）已经注册成 8 个 `stellar_town_*` 工具，但只有 `town.enabled` 与 `town.actions` 都开着、且没超每日上限时才会真执行；默认两个都是关的，执行期由 `townActionPreflight` 直接拒掉（不是「没装工具」）。
+- 会花钱的动作（坐下 / 玩牌 / 请客）已经注册成 10 个 `stellar_town_*` 工具（`stellar_town_now` 一次给全「此刻 / 大厅 / 今天 / 三天回顾」，`stellar_town_album` 把镇上相册镜像到本地、直接返回可发图的绝对路径），但只有 `town.enabled` 与 `town.actions` 都开着、且没超每日上限时才会真执行；默认两个都是关的，执行期由 `townActionPreflight` 直接拒掉（不是「没装工具」）。
 - 记忆只到 3 天，单独一个 `town.db`，不进备份、不进安装清单。
 - 细节：[SUBSYSTEM-TOWN.md](docs/guides/subsystems/SUBSYSTEM-TOWN.md)。
 
@@ -356,8 +356,8 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | **日常** | 三档运行模式（正常 / 摸鱼 / 最低限度）、生物钟、每日任务清单、待办提醒、安静时段 | 本文 §3.2 / §3.6 |
 | **图片** | 网图池（每天清空、最多 30 张、可单删全删）、B站 封面池、每日截图留存 | 面板「她今天」 |
 | **额度** | 每日 token 额度（QQ / B站 / 好友爱看 / 小镇 / 其他 / 总额，80% 提醒、100% 停）、消费看板、按价目折算成本 | [TOKEN_USAGE_CONSOLE.md](docs/guides/operations/TOKEN_USAGE_CONSOLE.md) |
-| **工具面** | **82 个 MCP 工具**（36 个 `qq_*` + 43 个 `stellar_*` + 3 个宿主级）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
-| **界面** | 设置页 7 个标签、完整面板 7 个页面 / 36 张卡、桥接自带单页控制台 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
+| **工具面** | **84 个 MCP 工具**（`src/mcp-snowluma-safe.js` 71 个：36 个 `qq_*` + 35 个 `stellar_*`；`src/town-tools.js` 10 个 `stellar_town_*`；宿主级 1 个 + 联网搜索 2 个 —— 合计 45 个 `stellar_*`）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
+| **界面** | 设置页 7 个标签、完整面板 7 个页面 / 37 张卡、桥接自带单页控制台 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
 
 ---
 
@@ -405,9 +405,9 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 111 | 三份配置的每个键、状态文件全表、备份与回滚 |
 | 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
 | 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 154 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
-| 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 7 页签与面板 7 页签 / 36 张卡 |
-| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 240 | B站 58 条命令、空间功能、鱼群与弹幕 |
-| 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 82 个工具、守卫、两代 preset |
+| 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 7 页签与面板 7 页签 / 37 张卡 |
+| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 240 | B站 59 条命令、空间功能、鱼群与弹幕 |
+| 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 84 个工具、守卫、两代 preset |
 | 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 137 | 角色包怎么放、人格卡怎么起作用 |
 | 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 556 | 她为什么会主动找人说话 |
 | 10 | [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) | 151 | QQ 号与 B站 号怎么算同一个人 |

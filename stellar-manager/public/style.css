@@ -488,9 +488,11 @@ label.block input, label.block textarea { padding:8px 10px; border-radius:8px; b
   background:rgba(124,147,255,.14);
   border:1px solid rgba(111,140,255,.32); box-shadow:0 8px 20px -12px rgba(79,124,255,.8);
 }
-.now-icon.kind-chat, .now-icon.kind-wait { background:rgba(95,211,160,.12); border-color:rgba(95,211,160,.32);35); color:#d6ffe6; }
-.now-icon.kind-bili, .now-icon.kind-dynamic { background:rgba(232,178,103,.12); border-color:rgba(232,178,103,.3);74,.35); color:#ffe9c2; }
-.now-icon.kind-sleep, .now-icon.kind-idle { background:rgba(142,151,168,.1); border-color:rgba(142,151,168,.24);168,.25); color:#c3c9d4; }
+.now-icon.kind-chat, .now-icon.kind-wait { background:rgba(95,211,160,.12); border-color:rgba(95,211,160,.32); color:#d6ffe6; }
+.now-icon.kind-bili, .now-icon.kind-dynamic { background:rgba(232,178,103,.12); border-color:rgba(232,178,103,.34); color:#ffe9c2; }
+.now-icon.kind-sleep, .now-icon.kind-idle { background:rgba(142,151,168,.1); border-color:rgba(142,151,168,.24); color:#c3c9d4; }
+/* 在水缸里：海水青，跟「聊天绿 / B 站黄 / 休眠灰」都分得开 */
+.now-icon.kind-town { background:rgba(47,163,174,.14); border-color:rgba(47,163,174,.36); color:#c9f2f7; }
 .now-copy { min-width:0; }
 .now-copy b { display:block; font-size:18px; letter-spacing:.2px; color:#f2f6ff; }
 .now-copy p { margin:4px 0 0; font-size:13px; line-height:1.55; color:#aeb8ca; }
@@ -1174,6 +1176,8 @@ section.card.is-mini { min-height:0; }
     padding:22px 24px 40px; max-width:1560px;
   }
   main > section.card { display:none; margin:0; }
+  /* 卡片显式隐藏（2026-11-22 参考库停用）：.active{display:block} 会盖掉 hidden 属性 */
+  main > section.card[hidden] { display:none !important; }
   main > section.card.active { display:block; }
   /* 默认每张卡占满一行；下面按 id 分配 */
   main > section.card { grid-column:1 / -1; }
@@ -1310,3 +1314,14 @@ button.ghost.on { border-color:var(--accent); color:var(--accent-ink); }
   border:1px solid var(--line); border-radius:10px; margin:0 0 12px;
   background:var(--card-2);
 }
+
+/* 那行「两本账分开」的说明要占满整行：它是 .memdb-stats 的最后一个网格项 */
+.town-cost-note { grid-column: 1 / -1; margin-top: 2px; }
+
+/* 小镇相册（2026-11-22）：照片墙。本机看原图，局域网只拿得到缩略图（后端再挡一道） */
+.town-album { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.town-album-item { margin: 0; border-radius: 8px; overflow: hidden; background: rgba(127, 127, 127, 0.08); }
+.town-album-item a { display: block; }
+.town-album-item img { display: block; width: 100%; height: 120px; object-fit: cover; }
+.town-album-item figcaption { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 8px; }
+

@@ -24,6 +24,7 @@ import { formatShotsStats, pruneShots, shotsPath } from '../lib/shots-cache.mjs'
 import { addImage } from '../lib/image-pool.mjs'
 import { fetchComments, fetchSubReplies } from '../lib/bili-comments.mjs'
 import { grabImage, biliCommentImageUrls } from '../lib/image-fetch.mjs'
+import { buildDigest, coverageText, outlineText } from '../lib/subs-digest.mjs'
 
 const argv = process.argv.slice(2)
 const bvid = argv.find((a) => !a.startsWith('--'))
@@ -124,11 +125,32 @@ if (subs.length) {
 }
 const subFile = path.join(shots, 'subs', `${bvid}-debrief.txt`)
 console.log('\n══════════ ③ 官方字幕（它到底说了什么）══════════')
+let digest = null
 if (body.length) {
   fs.writeFileSync(subFile, body.map((l) => `[${fmt(l.from)}] ${l.content}`).join('\n'))
   console.log(`有字幕：${body.length} 行（${fmt(body[0].from)} → ${fmt(body.at(-1).to ?? body.at(-1).from)}）→ ${subFile}`)
+  // 2026-11-21（A+D）：字幕不再只落文件 —— 顺手建「目录 + 命中窗口」索引，
+  // 让她一次就能看出这条视频讲了什么，问细节再 find 取 2~3 段，不用整篇 read。
+  try {
+    digest = buildDigest({
+      lines: body.map((l) => ({ from: Number(l.from) || 0, to: Number(l.to ?? l.from + 3) || 0, text: String(l.content || '') })),
+      durationSec: dur,
+      title: d.title,
+      bvid
+    })
+    const digestFile = path.join(shots, 'subs', `${bvid}-digest.json`)
+    fs.writeFileSync(digestFile, JSON.stringify(digest))
+    console.log(`索引：${digestFile}（${digest.lines.length} 行 / ${Math.ceil(dur / 75)} 个 75 秒窗口）`)
+    if (!opt['no-outline']) {
+      console.log('')
+      console.log(outlineText(digest, { blockSec: dur > 1200 ? 600 : 300, maxChars: 1400 }))
+      console.log(coverageText(digest))
+      console.log(`问细节：stellar_bili_find（QQ 会话）或 node bili.mjs find ${bvid} --q "问题" —— 只回 2~3 段；**别 read 字幕全文**，那是几千 token`)
+    }
+  } catch (e) { console.log(`（建字幕索引失败，不影响读字幕文件：${String(e.message).slice(0, 120)}）`) }
 } else {
   console.log('✗ 无官方字幕轨道 → 这一路缺失，只能靠弹幕 + 热评 + 画面（这正是要六路互补的原因）')
+  console.log(coverageText({ durationSec: dur, lines: [], coverage: { gaps: [] } }))
 }
 const subAt = (t) => {
   if (!body.length) return null

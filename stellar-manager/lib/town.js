@@ -102,8 +102,104 @@ export function listTownDays({ limit = 14 } = {}) {
   } catch { return [] } finally { try { db?.close() } catch {} }
 }
 
+// ── 相册镜像（2026-11-22）─────────────────────────────────────────────
+// 照片是她在小镇拍的/请人画的，调度器采集时镜像到 state/town/album/（详见 stellar/src/town-album.js）。
+// 面板只读这一份：不联网、不看访问码。可见性按会话范围分：
+//   本机 → 原图；局域网 → 只有缩略图（原图是她的照片，别在共享 WiFi 上摊开）；公网 → 一律 403。
+export const ALBUM_DIR = path.join(TOWN_DIR, 'album')
+const ALBUM_INDEX = path.join(ALBUM_DIR, 'index.json')
+const ALBUM_FILE_RE = /^al_[0-9a-f]{16}(?:\.thumb)?\.(?:png|jpg|webp|gif)$/
+
+function readAlbumIndex() {
+  const data = readJsonSafe(ALBUM_INDEX, null)
+  const items = (data && typeof data.items === 'object' && data.items) ? data.items : {}
+  return { at: String((data && data.at) || ''), items }
+}
+
+/** 相册清单（只列文件真的还在的条目）。 */
+export function listTownAlbum() {
+  const idx = readAlbumIndex()
+  const items = []
+  let bytes = 0
+  for (const [id, item] of Object.entries(idx.items)) {
+    if (!item || typeof item !== 'object') continue
+    const file = String(item.file || '')
+    if (!ALBUM_FILE_RE.test(file)) continue
+    const abs = path.join(ALBUM_DIR, file)
+    let size = 0
+    try { size = fs.statSync(abs).size } catch { continue }
+    if (!size) continue
+    const thumb = String(item.thumb || '')
+    const hasThumb = Boolean(thumb) && ALBUM_FILE_RE.test(thumb) && fs.existsSync(path.join(ALBUM_DIR, thumb))
+    bytes += size
+    items.push({
+      id: String(id),
+      kind: String(item.kind || 'photo'),
+      what: String(item.what || ''),
+      with: Array.isArray(item.with) ? item.with.map(String) : [],
+      occasion: String(item.occasion || ''),
+      created: String(item.created || ''),
+      file,
+      thumb: hasThumb ? thumb : (item.thumbOnly ? file : ''),
+      bytes: size,
+      thumbOnly: !!item.thumbOnly,
+    })
+  }
+  items.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')))
+  return { ok: true, dir: ALBUM_DIR, total: items.length, bytes, at: idx.at, items }
+}
+
+/** 文件名 → 绝对路径（只认相册目录里、名字过正则的文件）。 */
+export function townAlbumFile(name) {
+  const base = path.basename(String(name || ''))
+  if (!ALBUM_FILE_RE.test(base)) return ''
+  const abs = path.join(ALBUM_DIR, base)
+  try {
+    const real = fs.realpathSync(abs)
+    if (!real.startsWith(fs.realpathSync(ALBUM_DIR) + path.sep)) return ''
+    return fs.statSync(real).isFile() ? real : ''
+  } catch { return '' }
+}
+
+/** 局域网会话能看的那一版：有缩略图给缩略图，缩略图本身就是文件时给文件。 */
+export function townAlbumThumb(name) {
+  const base = path.basename(String(name || ''))
+  if (/\.thumb\./.test(base)) return townAlbumFile(base)
+  const idx = readAlbumIndex()
+  for (const item of Object.values(idx.items)) {
+    if (!item || typeof item !== 'object') continue
+    if (String(item.file || '') !== base) continue
+    if (item.thumbOnly) return townAlbumFile(base)
+    return townAlbumFile(String(item.thumb || ''))
+  }
+  return ''
+}
+
 function countTable(db, sql) {
   try { return Number(db.prepare(sql).get().c) || 0 } catch { return 0 }
+}
+
+/** 「她人在不在小镇」——只读 status.json（调度器采集时顺手写），不联网、不碰访问码。
+ *
+ * 快照超过 15 分钟就当作「不知道」：采集 tick 是 10 分钟一次（town-jobs.js），15 分钟＝
+ * 允许丢一轮。这样面板不会在显示一个两小时前的状态、也不会在她真在镇里时还说「休眠中」。 */
+export function readTownPresence({ now = Date.now(), freshMs = 15 * 60_000 } = {}) {
+  const snap = readJsonSafe(STATUS_FILE, null)
+  if (!snap) return { inTown: false, at: 0, ageMs: Infinity, fresh: false, tables: 0, townName: '', todayCNY: 0, outsideState: '', detail: '' }
+  const outsideState = String((snap.status && snap.status.outsideState) || snap.outsideState || snap.outside_state || '')
+  const at = Number(snap.at || 0) || 0
+  const ageMs = at ? Math.max(0, now - at) : Infinity
+  const inTown = outsideState === 'in_town'
+  const tables = Number((snap.lobby && snap.lobby.tables) || 0) || 0
+  const townName = String((snap.status && (snap.status.townName || snap.status.name)) || snap.townName || '')
+  const todayCNY = Number((snap.spending && snap.spending.today) || 0) || 0
+  const mins = ageMs === Infinity ? 0 : Math.max(1, Math.round(ageMs / 60000))
+  const detail = inTown
+    ? '在 ' + (townName || '小镇') + ' 里 · 大厅 ' + tables + ' 桌' +
+      (todayCNY > 0 ? ' · 今天在小镇花了 ¥' + todayCNY.toFixed(2) : '') +
+      (mins ? ' · 快照 ' + mins + ' 分钟前' : '')
+    : ''
+  return { inTown, at, ageMs, fresh: ageMs <= freshMs, tables, townName, todayCNY, outsideState, detail }
 }
 
 /** 面板用的整页数据：一次读完，缺哪块都不抛。 */

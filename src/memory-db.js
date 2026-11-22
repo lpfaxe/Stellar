@@ -911,7 +911,9 @@ export function stats({ db: conn } = {}) {
 }
 
 /**
- * 2 天窗口：删 D-2 的 daily（important 永不参与删除）。
+ * 2 天窗口：删「≤ D-2」的 daily（important 永不参与删除）。原来只认恰好 D-2 那一天，
+ * 积压切分产出的旧 day_key 永远轮不到清理 —— 2026-11-22 改成 ≤（顺手补删 topic_participant、
+ * trash 文件名加时间戳，原来同一天重跑会把恢复副本覆盖成空）。
  * 删之前先把要删的东西导出 JSONL 到 trashDir（默认 <db 同目录>/memory-trash），误删可救。
  * 返回 { ok, day, deleted, promoted, exported }。
  */
@@ -919,14 +921,16 @@ export function pruneWindow({ targetDay, trashDir, db: conn } = {}) {
   const db = conn || openDb();
   const day = String(targetDay || '');
   if (!day) return { ok: false, reason: 'targetDay required' };
-  const topics = db.prepare("SELECT * FROM topic WHERE day_key = ? AND tier = 'daily'").all(day);
-  const frags = db.prepare("SELECT * FROM fragment WHERE day_key = ? AND tier = 'daily'").all(day);
-  const caches = db.prepare('SELECT * FROM cache_msg WHERE day_key = ? AND keep = 0').all(day);
+  const topics = db.prepare("SELECT * FROM topic WHERE day_key <= ? AND tier = 'daily'").all(day);
+  const frags = db.prepare("SELECT * FROM fragment WHERE day_key <= ? AND tier = 'daily'").all(day);
+  const caches = db.prepare('SELECT * FROM cache_msg WHERE day_key <= ? AND keep = 0').all(day);
   const dir = trashDir || path.join(path.dirname(resolveDbFile()), 'memory-trash');
   let exported = '';
   try {
     fs.mkdirSync(dir, { recursive: true });
-    exported = path.join(dir, day + '.jsonl');
+    // 文件名带时间戳：固定 <day>.jsonl 时同一天重跑会把上一次的恢复副本覆盖成空（实测 9 个 1 字节文件）。
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    exported = path.join(dir, day + '-' + stamp + '.jsonl');
     const lines = [];
     for (const row of topics) lines.push(JSON.stringify({ kind: 'topic', row }));
     for (const row of frags) lines.push(JSON.stringify({ kind: 'fragment', row }));
@@ -937,6 +941,8 @@ export function pruneWindow({ targetDay, trashDir, db: conn } = {}) {
   try {
     for (const t of topics) {
       db.prepare('DELETE FROM topic_msg WHERE topic_id = ?').run(t.id);
+      // 参与者一起删：topic_participant 没有级联，漏掉就留孤儿（实测 41 行 / 19 个话题）。
+      try { db.prepare('DELETE FROM topic_participant WHERE topic_id = ?').run(t.id); } catch { /* 老库没这张表 */ }
       db.prepare("DELETE FROM search_doc WHERE ref_type = 'topic' AND ref_id = ?").run(t.id);
       db.prepare('DELETE FROM topic WHERE id = ?').run(t.id);
     }
@@ -944,7 +950,7 @@ export function pruneWindow({ targetDay, trashDir, db: conn } = {}) {
       db.prepare("DELETE FROM search_doc WHERE ref_type = 'fragment' AND ref_id = ?").run(String(f.id));
       db.prepare('DELETE FROM fragment WHERE id = ?').run(f.id);
     }
-    const delCache = db.prepare('DELETE FROM cache_msg WHERE day_key = ? AND keep = 0').run(day);
+    const delCache = db.prepare('DELETE FROM cache_msg WHERE day_key <= ? AND keep = 0').run(day);
     db.exec('COMMIT');
     return { ok: true, day, deleted: { topics: topics.length, fragments: frags.length, cache: Number(delCache.changes || 0) }, promoted: 0, exported };
   } catch (error) {
@@ -1039,6 +1045,39 @@ export function upsertFact(entry = {}) {
   const id = Number(row && row.id) || 0;
   if (id) upsertSearchDoc({ refType: 'fact', refId: String(id), ownerId, body: label + '：' + text, at, db });
   return { ok: true, id, created: !existed, duplicated: Boolean(existed) };
+}
+
+/**
+ * 把 QQ 通讯录里的「备注名」写成事实（2026-11-22 加）。
+ *
+ * 为什么需要：库里的人名只取消息事件里的 speaker_name（私聊是「私聊」占位、群里是群名片），
+ * 主人给谁起的备注从来没进过库 —— 主人问「为什么没有示例好友的记忆」，一半原因就在这：
+ * 他确实进过库（11-15 有两个双方话题），随后被 11-13…11-19 那批批量删除抹掉；
+ * 而「示例好友」这个称呼从头到尾只活在 state/friends.json 的 remark 里。
+ *
+ * 幂等：upsertFact 按 owner+kind+label 去重，每天跑一次只是刷新文本。
+ * label 用「备注名」而不是「称呼」：后者是聊天里「叫我 X 就行」抽出来的，别互相覆盖。
+ */
+export function syncFriendFacts({ people = [], db: conn } = {}) {
+  const db = conn || openDb();
+  let written = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const p of Array.isArray(people) ? people : []) {
+    const uin = String(p?.uin || p?.id || '').trim();
+    const remark = String(p?.remark || '').trim().slice(0, 12);
+    if (!/^\d{5,12}$/.test(uin) || !remark) { skipped += 1; continue; }
+    const nick = String(p?.nickname || '').trim().slice(0, 20);
+    const text = '你平时叫他「' + remark + '」' + (nick ? '（QQ 昵称 ' + nick + '）' : '');
+    try {
+      const res = upsertFact({ ownerId: uin, kind: 'nickname', label: '备注名', text, privacy: 'normal', weight: 4, source: 'friends', db });
+      if (res && res.ok) written += 1;
+      else failed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { ok: true, written, skipped, failed };
 }
 
 function factRow(row) {

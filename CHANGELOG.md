@@ -2,6 +2,50 @@
 
 > 从 **1.0.0** 开始记。更早的开发迭代不在这里，也不代表现在的能力——以本文件和代码为准。
 
+## [1.1.0] - 2026-11-22
+
+这一版把「她在各个地方的状态」做薄了一层：小镇信息改成**要用才取**、B站看视频改成**先看目录再问细节**，两块都为了少花 token；顺手修了三处「账/库/任务一直空着却没人报错」的老问题。
+
+### 小镇：按需取，不再常驻提示词
+
+- 新增 `stellar_town_now`：一次给出「此刻 / 大厅 / 今天 / 三天回顾」四段（≤700 汉字）。优先读本机快照（90 分钟内不联网），不够新才联网并归一成同一形状。
+- 新增 `stellar_town_album`：把小镇相册镜像到 `<DSH_HOME>/stellar/state/town/album/`，返回本机绝对路径，可直接交给 `qq_send_image` / `stellar_qzone_post`。
+  淘汰按 **60 张 + 120 MB** 双限；单张超过 8 MB 只留缩略图。抓图**不带鉴权头**，只认 https、`fishbowltown.com` 与 `/town/api/album/<id>/(file|thumb)` 两条路径。
+- 控制台新增「小镇相册」卡（第 5 张小 town 卡，全站 37 张）：lan 只给缩略图、local 才给原图，public 直接 403。
+- 修 `stellar_town_now` 的四处渲染错：epoch 毫秒的时间戳识别不出来（永远「不清楚多久前」）、把称号「外来」当成位置、大厅桌数把数组当数字、处得近/心上鱼读错了键。
+- 修相册一直是空的两个原因：小镇把 `items` 放在顶层而镜像只认 `payload.data`（于是 `added: 0` 且静默）；`album` 的 reader 被当成 client 传，`limit` 被拼成 `[object Object]` 让小镇回 400。
+- 提示词里的常驻小镇行从「一句话」改成「点名四个入口 + 何时用」（约 60 汉字），不再每轮灌小镇摘要。
+
+### B站：看视频先看目录
+
+- `bili.mjs find` / `stellar_bili_find`：在已建索引的字幕里按问题找答案，只回 2~3 段带时间戳的原文，并一定附「字幕覆盖到哪一段」。
+- `watch` 只回 5 分钟目录 + 覆盖率；索引缺失时 `find` 能从老 debrief 现建（超过 `shots.retentionDays` 会提示重新 debrief）。字幕全文只落盘、不进上下文。
+
+### 记忆
+
+- **每天一清真的会清了**：窗口清理原来只认 `day_key = D-2`，积压的旧日永远轮不到；改成 `day_key <= ?`，删话题时级联删 `topic_participant`，恢复副本名带 ISO 时间戳（同一天重跑不再互相覆盖成空文件）。
+- **备注名进记忆**：插件每天把 `state/friends.json` 的 `remark` 同步成事实（`kind=nickname`、`label=备注名`），所以她终于知道「这个人我平时叫小土豆」。和对话里抽出来的「称呼」是两条，不互相覆盖。
+- 参考库（`style_slice`）**停用**：`memory.styleRef.enabled` 默认 `false`，改成显式 `true` 才开；控制台那张卡隐藏。
+
+### 花费与「她在做什么」
+
+- 模型账：官方小镇插件自己开的回合（`preset=fishbowl-town`）现在计入 `town` 桶（原来在 `classify()` 里被整段丢掉）。`stellar_cost` 与面板都会显示「小镇」这一行。
+- 游戏账：面板把三笔钱分开显示 —— token 花费 / 今天在小镇花的游戏币（含 7 天）/ 小镇钱包。闸门只拦 token 那本。
+- 「她此刻在做什么」新增一种态：`state/town/status.json` 15 分钟内在镇里且没有更硬的动作时，显示「她正在小镇上」+「在 Fugu 里 · 大厅 N 桌 · 今天花了 ¥x · 快照几分钟前」。工具名也认 `mcp__*` 前缀与真实工具名（原来只认已删除的 `surfcore_*`）。
+
+### 其他
+
+- QQ空间：`qzone.weekly.min` 默认 **7**（本周目标，周一为界）；调度器按欠账催 —— 当天已发条数没到 `min(dailyLimit, 欠账 ≥ 剩余天数 ? 2 : 1)` 才催一次，硬上限仍是 `dailyLimit`。
+- 修 `assets` 里三行残留碎片的坏 CSS；`.card[hidden]` 现在真的不显示（`.active{display:block}` 不再盖掉它）。
+
+### 验证
+
+- `node scripts/test-audit.mjs`：publish 树全绿（本版新增 `test-town-album.mjs`）。
+- `node scripts/test-town-decoupling.mjs`：38 项通过 —— 面板那 21 处 town 引用逐行登记成白名单，`town-remove` 的拆除边界没被撑开。
+- `node scripts/release-manifest.mjs --verify-ref HEAD`：问题 0 个。
+- `node scripts/privacy-scan.mjs --strict`：未发现敏感信息。
+
+
 ## [1.0.9] - 2026-11-21
 
 这一版两件事：把依赖树里的 9 个安全告警清零，并让小镇玩法能在 QQ 会话里直接用（B 档）。鱼缸小镇仍是可选功能，发布版默认不启用——想开就把 `town.enabled` 改成 `true`。

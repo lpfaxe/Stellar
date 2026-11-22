@@ -5540,7 +5540,8 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
             h("div", { className: "qbw-kv" }, h("span", null, "重要话题"), h("span", null, num(db?.counts?.important))),
             h("div", { className: "qbw-kv" }, h("span", null, "零碎"), h("span", null, num(db?.counts?.fragments))),
             h("div", { className: "qbw-kv" }, h("span", null, "人物侧写"), h("span", null, num(db?.counts?.profiles))),
-            h("div", { className: "qbw-kv" }, h("span", null, "风格切片"), h("span", null, num(db?.counts?.styleSlices))),
+            // 参考库 2026-11-22 停用（主人要求）：数字别误导，直接写「已停用」。
+            h("div", { className: "qbw-kv" }, h("span", null, "风格切片"), h("span", null, "已停用")),
             db?.counts?.dbBytes ? h("div", { className: "qbw-kv" }, h("span", null, "库文件"), h("span", null, fmtBytes(db.counts.dbBytes))) : null),
           h("div", { className: "qbw-card" },
             h("h4", null, "重要事实"),

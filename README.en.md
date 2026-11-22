@@ -106,7 +106,7 @@ Details: [`INSTALL.md`](docs/guides/getting-started/INSTALL.md) and [`DSH_SETUP.
   "Her" holds the three run modes (normal / slack-off / minimal), the reminder list, and the proactive-talk settings; watch history is folded into the Bilibili tab.
 - **Bridge modes** — `chat` (plain group member), `closed-agent` (admin only), `reserved` (v1 simulation), `reserved2` (v2 simulation, default: everything is a tool — read, send, wait, sleep, close).
 - **Run modes** — a second, independent layer: `normal` (full daily tasks), `idle` (logs only, more browsing and chatting; the default on weekends), `minimal` (replies only, then sleeps).
-- **Dashboards** — the full panel on `http://127.0.0.1:3300/` (7 pages, 36 cards) and the bridge’s own single-page console on `http://127.0.0.1:3100/?token=<consoleToken>` (19 sections).
+- **Dashboards** — the full panel on `http://127.0.0.1:3300/` (7 pages, 37 cards) and the bridge’s own single-page console on `http://127.0.0.1:3100/?token=<consoleToken>` (19 sections).
 
 The panel is empty on a fresh install — it reads `~/.dsh/stellar/` and `config.json`, which do not exist yet.
 Contacts appear after the first message, memory after a few rounds, Bilibili/QZone after the scheduler runs once.
@@ -116,22 +116,24 @@ Contacts appear after the first message, memory after a few rounds, Bilibili/QZo
 | Area | What you get |
 | --- | --- |
 | **QQ** | group / private send & receive, quotes, multi-part replies, stickers, images, pokes, forwarded-chat expansion, history catch-up, questions & approvals |
-| **Bilibili** | QR login, watch / score / favourite, comments and replies, dynamics (incl. image posts), danmaku, DMs, triple, live-room watch, daily vlog, share to QQ — **58 CLI commands** |
+| **Bilibili** | QR login, watch / score / favourite, comments and replies, dynamics (incl. image posts), danmaku, DMs, triple, live-room watch, daily vlog, share to QQ — **59 CLI commands** |
 | **QZone** | read own / friends’ / a specific contact’s feed, like, comment and reply, delete own comments; the public “friends feed” loop |
-| **Memory** | topic splitting, weighted facts (birthday / allergies / address / phone), sighting zones (Bilibili / QZone), per-person profiles, style reference library, vector recall, three privacy levels |
+| **Memory** | topic splitting, weighted facts (birthday / allergies / address / phone), sighting zones (Bilibili / QZone), per-person profiles, style reference library (off by default since 1.1.0), vector recall, three privacy levels |
 | **Persona** | multi-character bundles, autosave slots, admin dual identity, cross-platform identity alignment |
 | **Proactive** | goal hypothesis → outreach / sharing, conversation closure with “how to pick it up next” |
 | **Daily** | run modes, biological clock, daily task list, to-do reminders, quiet hours |
 | **Budget** | daily token limits (QQ / Bilibili / friends-feed / town / other / total), cost dashboard, price-table conversion |
-| **Tool surface** | **82 MCP tools** (36 `qq_*` + 43 `stellar_*` + 3 host-level), three MCP servers, four presets, fail-closed guards |
-| **UI** | settings page (7 tabs), full panel (6 pages / 31 cards), bridge console (single page) |
+| **Tool surface** | **84 MCP tools** (`src/mcp-snowluma-safe.js` 71: 36 `qq_*` + 35 `stellar_*`; `src/town-tools.js` 10 `stellar_town_*`; 1 host-level + 2 web-search — 45 `stellar_*` in total), three MCP servers, four presets, fail-closed guards |
+| **UI** | settings page (7 tabs), full panel (7 pages / 37 cards), bridge console (single page) |
 
 **Optional, off by default — Fishbowl Town.** The repo ships an *interface* to
-[fishbowltown.com](https://fishbowltown.com) (a private "her own day" diary for the agent): four modules,
-five read-only tools, a `town-act` shadow preset and a separate `town.db` with a 3-day TTL.
+[fishbowltown.com](https://fishbowltown.com) (a private "her own day" diary for the agent): a handful of
+modules, ten tools (five read-only, a one-shot digest, a local album mirror, three money-spending actions),
+a `town-act` shadow preset and a separate `town.db` with a 3-day TTL.
 `town.enabled` defaults to `false` and no access code is bundled, so a fresh install never connects,
 never wakes a session and never spends anything. Actions that would cost money (sit down / play / treat
-someone) are **not registered as tools** in this version. Enable it yourself with an `fbo_…` code in
+someone) are registered as tools but fail closed unless both `town.enabled` and `town.actions` are on —
+and both default to off. Enable it yourself with an `fbo_…` code in
 `%DSH_HOME%/fishbowl-town/settings.json` plus `town.enabled = true`; see
 [docs/guides/subsystems/SUBSYSTEM-TOWN.md](docs/guides/subsystems/SUBSYSTEM-TOWN.md) (Chinese).
 

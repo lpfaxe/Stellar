@@ -53,10 +53,11 @@ export const DEFAULTS = {
   // 四类动态（2026-10-22 可编辑）：总开关、两条之间的最小间隔、每类的时段/长度/开头。
   //   kinds 里只存"被改过的字段"；缺省值在 tools/lib/kinds.mjs 的 DEFAULT_KINDS。
   dynamics: { enabled: true, gapMin: 30, kinds: {} },
-  // QQ 空间说说（2026-11-08 加）：每天 time 点提醒一条；发过就不再提（见 lib/scheduler.js 的 qzonePostedToday）
+  // QQ 空间说说（2026-11-08 加）：每天 time 点提醒；发过一条就不再提，但「欠账追不平」时
+  // 允许当天第二次（见 lib/scheduler.js 的 qzMaxToday）——2026-11-22 主人把目标提到每周 7 条
   // watch/watchMin/watchMaxPerDay（2026-11-08 晚加）：空间互动监看 —— 主人发新说说、
   // 有人评论她的说说时叫醒她（间隔与每日上限），见 lib/scheduler.js 的 qzoneWatchTick
-  qzone: { enabled: true, time: '21:30', dailyLimit: 2, weekly: { enabled: true, min: 3 }, watch: true, watchMin: 10, watchMaxPerDay: 6 },
+  qzone: { enabled: true, time: '21:30', dailyLimit: 2, weekly: { enabled: true, min: 7 }, watch: true, watchMin: 10, watchMaxPerDay: 6 },
   // 每天一条给主人看的日报（2026-11-08 加）：enabled=true 时到 time 提醒她写，写在控制台里看（commands/report.mjs）
   report: { enabled: true, time: '23:30' },
   // 每日三连（2026-11-10 主人要：每天只对当天评分最高的那一个视频三连）：

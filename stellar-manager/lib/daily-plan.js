@@ -43,7 +43,7 @@ const TASKS = [
     enabled: { path: 'qzone.enabled', file: 'bili' },
     times: [{ path: 'qzone.time', label: '每天几点提醒', def: '21:30' }],
     numbers: [
-      { path: 'qzone.weekly.min', label: '每周最少条数', min: 0, max: 21, def: 5 },
+      { path: 'qzone.weekly.min', label: '每周最少条数', min: 0, max: 21, def: 7 },
       { path: 'qzone.dailyLimit', label: '每天最多发几条', min: 1, max: 10, def: 3, file: 'both' },
     ],
   },

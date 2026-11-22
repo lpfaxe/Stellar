@@ -21,7 +21,7 @@ import { buildVlog, vlogAction, vlogMedia, vlogScript } from './lib/vlog.js'
 import { readAccess, saveAccess } from './lib/access.js'
 import { actOnApproval, readApprovals } from './lib/approvals.js'
 import { capabilitiesSnapshot, saveCapabilities } from './lib/capabilities.js'
-import { buildTown, townPluginStatus, setTownPluginEnabled } from './lib/town.js'
+import { buildTown, townPluginStatus, setTownPluginEnabled, listTownAlbum, townAlbumFile, townAlbumThumb } from './lib/town.js'
 import { clearNamedTunnel, ensureTunnel, resumeTunnel, setNamedTunnel, startTunnel, stopTunnel } from './lib/tunnel.js'
 import { restartDsh, resumeRestartPolling, reconcileRestartState } from './lib/dsh.js'
 import { ensureContacts, loadAllowPrivate, loadContacts, saveContacts, setContactAllow, syncContacts } from './lib/contacts.js'
@@ -320,6 +320,35 @@ const server = http.createServer(async (req, res) => {
         canWrite: scope !== 'public'
       })
     }
+
+    // ── 小镇相册（2026-11-22）：她拍的照片/请人画的画，调度器镜像到 state/town/album/ ──
+    //    可见性：本机 → 原图；局域网 → 只能拿缩略图；公网 → 一律不给（她的照片，不在隧道上摊）。
+    if (url.pathname === '/api/town/album' && req.method === 'GET') {
+      const scope = requestScope(req)
+      if (scope === 'public') {
+        return sendJson(res, 403, { ok: false, code: 'readonly-public', message: '小镇相册只在本机或同一 WiFi 下看' })
+      }
+      const data = listTownAlbum()
+      return sendJson(res, 200, {
+        ...data,
+        scope,
+        canSeeOriginal: scope === 'local',
+        canWrite: scope !== 'public',
+      })
+    }
+    if (url.pathname === '/api/town/album/file') {
+      const scope = requestScope(req)
+      if (scope === 'public') return sendJson(res, 403, { ok: false, code: 'readonly-public', message: '小镇相册只在本机或同一 WiFi 下看' })
+      const name = String(url.searchParams.get('name') || '')
+      const wantThumb = String(url.searchParams.get('thumb') || '') === '1'
+      const file = scope === 'local' && !wantThumb ? townAlbumFile(name) : townAlbumThumb(name)
+      if (!file) return sendJson(res, 404, { ok: false, message: scope === 'local' ? '这张照片已经不在了（相册按 60 张 / 120MB 轮换）' : '这张还没有缩略图，原图只在本机看' })
+      const type = /\.png$/i.test(file) ? 'image/png' : (/\.webp$/i.test(file) ? 'image/webp' : (/\.gif$/i.test(file) ? 'image/gif' : 'image/jpeg'))
+      const stat = fs.statSync(file)
+      res.writeHead(200, { 'content-type': type, 'content-length': stat.size, 'cache-control': 'no-store' })
+      return fs.createReadStream(file).pipe(res)
+    }
+
     // ── 她的能力：一组真实生效的开关（写 bili.config.json，调度器/MCP 下轮就生效）──
     if (url.pathname === '/api/capabilities' && req.method === 'GET') {
       const scope = requestScope(req)

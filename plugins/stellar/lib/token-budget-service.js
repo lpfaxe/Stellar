@@ -205,6 +205,10 @@ export function createTokenBudgetService({
       if (parentCategory) return parentCategory;
     }
     const preset = String(header.agentPreset ?? summary.agentPreset ?? '');
+    // 官方插件（dsh-fishbowl-town）自己开的回合跑在 session-<uuid> 里，preset 是 fishbowl-town；
+    // 只按会话 id 认（town-whale）会把它的账整段丢掉 —— 2026-11-22 实测：14 个会话 / 47 次调用 /
+    // ¥0.1103 一条都没进 token-usage-daily.json 的 town 桶。
+    if (/^fishbowl-town(?:$|-)/.test(preset)) return 'town';
     const title = String(summary.title ?? sessionMeta.get(id)?.title ?? '');
     if (preset.startsWith('qq-chat') && /黑话/.test(title)) return 'other';
     if (preset.startsWith('qq-chat')) return 'qq';

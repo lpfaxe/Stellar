@@ -16,6 +16,8 @@ export const DEFAULT_BASE = 'https://fishbowltown.com/town/api/outside';
 export const ACT_PATHS = Object.freeze(['visit', 'play', 'goto']);
 export const MAX_BODY_BYTES = 512 * 1024;
 export const DEFAULT_TIMEOUT_MS = 12000;
+/** 相册条目的 id 形态（服务端生成，正则定了才敢拼进 URL）。 */
+export const ALBUM_ID_RE = /^al_[0-9a-f]{16}$/;
 
 export class TownError extends Error {
   constructor(code, message, extra = {}) {
@@ -159,6 +161,18 @@ export function createTownClient({ baseUrl, code, fetchImpl = globalThis.fetch, 
   };
 }
 
+/**
+ * 相册文件地址（不带授权头：服务端这个端点只认 id）。
+ * origin 必须来自 normalizeBaseUrl 的结果，id 必须过 ALBUM_ID_RE —— 两样都不合法就抛。
+ */
+export function albumFileUrl(baseUrl, itemId, { thumb = false } = {}) {
+  const id = String(itemId || '');
+  if (!ALBUM_ID_RE.test(id)) throw new TownError('bad_album_id', '相册条目 id 不合法');
+  const base = normalizeBaseUrl(baseUrl);
+  const origin = new URL(base).origin;
+  return origin + '/town/api/album/' + id + '/' + (thumb ? 'thumb' : 'file');
+}
+
 /** 常用只读端点（都走 rate 队列）。 */
 export function makeReader(client) {
   return {
@@ -169,6 +183,7 @@ export function makeReader(client) {
     visit: (id) => client.read('visits/' + encodeURIComponent(String(id))),
     week: (days = 7) => client.read('week', { query: { days } }),
     receipts: (limit = 30) => client.read('receipts', { query: { limit } }),
+    album: (limit = 30) => client.read('album', { query: { limit } }),
     spending: () => client.read('spending'),
   };
 }

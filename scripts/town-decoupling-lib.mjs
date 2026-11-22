@@ -45,6 +45,12 @@ export const CORE_TOWN_ALLOW = {
     "import { registerTownTools } from './town-tools.js'",
     "town: '小镇：这三天在小镇做了什么、碰见过谁'",
     "stellar_town_recall: 'town'",
+    // 2026-11-22 按需取信息：一次给全的小镇现状 + 相册（两条也进 GATED_TOPICS）
+    "stellar_town_now: 'town',",
+    "stellar_town_album: 'town'",
+    // 2026-11-22 token 账：stellar_cost 里多打一行小镇（模型 token 的钱，别和游戏里的钱混了）
+    "'；小镇 ' + formatCny(snap.remaining.town.usedCny)",
+    "'小镇那栏是模型 token 的钱",
     '整块在 src/town-tools.js 里',
     'scripts/town-remove.mjs 会列全',
     'registerTownTools(server, { dshHome, z, ownerOnlyError })',
@@ -83,6 +89,8 @@ export const CORE_TOWN_ALLOW = {
     "'test-town-plugin.mjs',",
     // 解耦契约自己也要在 tests[] 里（它守着这份清单）
     "'test-town-decoupling.mjs',",
+    // 相册镜像（2026-11-22）
+    "'test-town-album.mjs',",
     // 发布树的 tests[] 是每行一条（历史原因），逐条认领
     "'test-town-memory-pure.mjs',", "'test-town-client.mjs',", "'test-town-store.mjs',",
     "'test-town-collector.mjs',", "'test-town-scheduler.mjs',", "'test-town-tools.mjs',", "'test-town-turns.mjs',",
@@ -131,6 +139,11 @@ CORE_TOWN_ALLOW['scripts/test-sensitive-acl-hardening.mjs'] = [
 CORE_TOWN_ALLOW['stellar-manager/server.mjs'] = [
   "import { buildTown } from './lib/town.js'",
   "import { buildTown, townPluginStatus, setTownPluginEnabled } from './lib/town.js'",
+  // 相册镜像（2026-11-22）：server 只做「把本机文件流出去」这一层接线。
+  'listTownAlbum, townAlbumFile, townAlbumThumb',
+  '调度器镜像到 state/town/album',
+  "'/api/town/album",
+  'townAlbumFile(name) : townAlbumThumb(name)',
   'await townPluginStatus()',
   'hasOwnProperty.call(body.updates, \'town\')',
   'plugin = await setTownPluginEnabled(Boolean(body.updates.town))',
@@ -145,7 +158,25 @@ CORE_TOWN_ALLOW['stellar-manager/public/js/core.js'] = ["'town'", 'memory', 'TAB
 CORE_TOWN_ALLOW['stellar-manager/public/js/boot.js'] = ["state.tab === 'town'", 'loadTown'];
 // 面板的「她在跑什么」要把会话 id / preset 翻成人话（2026-11-21 新增，B 档不动它）。
 CORE_TOWN_ALLOW['stellar-manager/lib/turns.js'] = ['stellar_town_', 'town-whale', 'town-act', '小镇'];
-CORE_TOWN_ALLOW['stellar-manager/public/style.css'] = ['#townHeadCard'];
+CORE_TOWN_ALLOW['stellar-manager/public/style.css'] = ['#townHeadCard', '.now-icon.kind-town'];
+
+// 面板的「她此刻在做什么」要认出小镇这一态（2026-11-22）：只是把 kind 翻成一句人话。
+CORE_TOWN_ALLOW['stellar-manager/lib/activity.js'] = [
+  'stellar_town_',
+  'town = null',
+  "=== 'town'",
+  "= 'town'",
+  'town.inTown',
+  'town.detail',
+  'town.at',
+  '/小镇/',
+];
+CORE_TOWN_ALLOW['stellar-manager/lib/status.js'] = [
+  'readTownPresence',
+  'buildActivity({ turns, town })',
+  'townPresence',
+];
+CORE_TOWN_ALLOW['stellar-manager/public/js/status.js'] = ["town: '镇'"];
 
 // 这几个文件整个属于「小镇作为一类账 / 一个预设」的接线面，town 出现在哪一行都不算耦合：
 // 账目分类是多处枚举 + 面板色板，预设构建器是 town-act 的 patch 生成器。

@@ -25,7 +25,7 @@
 | 组 | 文件 | 职责 |
 | --- | --- | --- |
 | 入口 | `bridge.js` | 常驻主程序：收发消息、拼唤醒提示、67 条控制台路由 |
-| MCP | `mcp-snowluma-safe.js` / `mcp-host-server.js` / `mcp-web-search-safe.js` / `town-tools.js` | 三个 stdio server，共 82 个工具（36 `qq_*` + 43 `stellar_*` + 3 宿主级） |
+| MCP | `mcp-snowluma-safe.js` / `mcp-host-server.js` / `mcp-web-search-safe.js` / `town-tools.js` | 三个 stdio server，共 84 个工具（`mcp-snowluma-safe.js` 71 个 = 36 `qq_*` + 35 `stellar_*`；`town-tools.js` 10 个 `stellar_town_*`；宿主级 1 + 联网搜索 2，`stellar_*` 合计 45） |
 | DSH 对接 | `dsh-client.js` / `dsh-port.js` / `dsh-health.js` / `dsh-model-follow.js` | 找端口、投提示、探活、跟随默认模型 |
 | 记忆 | `memory-db.js` / `memory-db-schema.sql` / `memory-cache.js` / `memory-read.js` / `memory-worker.js` / `memory-facts.js` | 新记忆库（见 features/MEMORY.md） |
 | 记忆（旧引擎） | `memory-card.js` / `memory-store.js` / `memory-tiers.js` / `memory-blend.js` / `memory-compact.js` / `vector-memory.js` | 只在 `memory.engine=card` 时走 |
@@ -34,7 +34,7 @@
 | B站 | `bili-api.js` / `bili-memory.js` / `bili-dynamics.js` / `bili-card.js` / `bili-share-scheduler.js` | 网络、记忆简报、卡片、分享排期 |
 | 额度 | `token-budget.js` / `token-ledger.js` / `token-guard.js` / `model-prices.js` / `billing-report.js` / `cost-estimate.js` | 每日额度、账本、价目、报表 |
 | 安全 | `identity-guard.js` / `access-audit.js` / `owner-audit.js` / `file-read-guard.js` / `safe-fetch.js` / `safe-text.js` / `state-acl.mjs` | 身份、审计、文件与 URL 白名单、ACL |
-| 鱼缸小镇（可选） | `town-memory-pure.js` / `town-client.js` / `town-store.js` / `town-collector.js` / `town-turns.js` / `town-actions.js` / `town-budget.js` / `town-snapshot.js` / `town-tools.js` / `town-prompt.js` / `town-guard.js` | 只读采集、3 天 TTL、独立 `town.db`、`/turns` 长轮询（进镇 + 叫醒）、动作三道闸（默认关）/ 日预算 / 控制台快照；工具注册收在 `town-tools.js`、唤醒提示收在 `town-prompt.js`、调度收在 `plugins/stellar/lib/town-jobs.js`，整块可删（判据 `scripts/test-town-decoupling.mjs`）；默认不启用，见 subsystems/SUBSYSTEM-TOWN.md |
+| 鱼缸小镇（可选） | `town-memory-pure.js` / `town-client.js` / `town-store.js` / `town-collector.js` / `town-turns.js` / `town-actions.js` / `town-budget.js` / `town-snapshot.js` / `town-tools.js` / `town-album.js` / `town-prompt.js` / `town-guard.js` | 只读采集、3 天 TTL、独立 `town.db`、`/turns` 长轮询（进镇 + 叫醒）、动作三道闸（默认关）/ 日预算 / 控制台快照 / 相册镜像（≤60 张且 ≤120MB）；工具注册收在 `town-tools.js`、相册下载收在 `town-album.js`、唤醒提示收在 `town-prompt.js`、调度收在 `plugins/stellar/lib/town-jobs.js`，整块可删（判据 `scripts/test-town-decoupling.mjs`）；默认不启用，见 subsystems/SUBSYSTEM-TOWN.md |
 | 其他 | `todos.js` / `approvals.js` / `sticker-*.js` / `slang-learner.js` / `outbox.js` / `self-test.js` | 待办、审批、表情、黑话、发件箱、自检 |
 
 ## 三、`scripts/`：命名约定
@@ -57,7 +57,7 @@
 | --- | --- |
 | `state/` | 控制台令牌、桥接锁、临时请求 |
 | `~/.dsh/stellar/state/` | 未读、额度账本、审计、日志、待办、运行模式 |
-| `~/.dsh/stellar/state/town/` | 小镇唤醒计划 `wake.json`、动作账本 `actions.json`、控制台快照 `status.json`、超支熔断记录 `guard.json`、独立记忆库 `town.db`（默认不启用；不进备份、不进清单） |
+| `~/.dsh/stellar/state/town/` | 小镇唤醒计划 `wake.json`、动作账本 `actions.json`、控制台快照 `status.json`、超支熔断记录 `guard.json`、独立记忆库 `town.db`、相册镜像目录 `album/`（≤60 张 / ≤120MB，单张 >8MB 只留缩略图）（默认不启用；不进备份、不进清单） |
 | `%DSH_HOME%/fishbowl-town/settings.json` | 小镇访问码（`fbo_…`，只存在这一处，不进仓库、不进日志） |
 | `~/.dsh/stellar/characters/<角色>/` | 角色卡、B站凭据、`memory/memory.db` |
 | `stellar-manager/panel-token.txt` | 面板口令（自动生成） |
@@ -68,7 +68,7 @@
 | 子目录 | 作用 |
 | --- | --- |
 | `lib/` | 定时器（生物钟、每日任务、记忆作业）、设置页 UI、路径解析 |
-| `tools/bili.mjs` | B站 CLI 入口（**58 条子命令**，`tools/commands/` + `tools/verify/`） |
+| `tools/bili.mjs` | B站 CLI 入口（**59 条子命令**，`tools/commands/` + `tools/verify/`） |
 | `tools/docs/` + `tools/rules/` | 给 agent 看的命令说明与行为规矩（运行时会被注入） |
 | `persona/` | 分层人格的默认片段 |
 | `presets/` | 由 `dsh/agent-presets/` 生成的 patch（**改源文件后要重跑 build**） |
