@@ -85,10 +85,11 @@ function renderSlots(whale) {
 
 function renderQzone(s) {
   var q = s.config.qzone || {};
-  var min = q.weekly && q.weekly.min ? q.weekly.min : 3;
+  // 回退值必须跟 bili.config.json 的默认（qzone.weekly.min = 7）一致，否则配置缺字段时又显示成旧数字
+  var min = q.weekly && q.weekly.min ? q.weekly.min : 7;
   var count = s.qzone.weekCount;
   el('weekBar').style.width = Math.min(100, Math.round(count / min * 100)) + '%';
-  el('weekText').textContent = '本周 ' + count + ' / ' + min + ' 条 · 今天 ' + s.qzone.todayCount + ' / ' + (q.dailyLimit || 2);
+  el('weekText').textContent = '本周 ' + count + ' / ' + min + ' 条（本周目标）· 今天 ' + s.qzone.todayCount + ' 条（每日上限 ' + (q.dailyLimit || 2) + '）';
   // 标题上的提示原来写死「每周至少 3 条」，配置改成 5 之后就对不上了
   if (el('weekHint')) el('weekHint').textContent = '每周至少 ' + min + ' 条';
   var last = s.qzone.last;

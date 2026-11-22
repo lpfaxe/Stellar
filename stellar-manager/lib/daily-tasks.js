@@ -5,7 +5,9 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { BRIDGE_CFG, CFG_FILE, REPORTS_FILE, SURF, TODOS_FILE } from './paths.js'
+import { memoryDbInfo } from './memory-db.js'
 import { findWhale, localDay, readJson, todayKey, weekStartLocal } from './util.js'
 import { findBiliDir } from './dynamics.js'
 import { qzoneStats } from './report.js'
@@ -16,6 +18,16 @@ const KIND_ORDER = ['best', 'game', 'anime', 'gaming']
 const KIND_LABEL = { best: '最高分', game: '游戏区', anime: '动画区', gaming: '游戏实况' }
 // 看几条由主人自己配（qzone.public.seenTarget，面板「她每天做什么」里能改），缺省 10。
 const SEEN_TARGET_DEFAULT = 10
+// 「主动找你」的状态词：桥接写的是英文 outcome / skipReason，面板照原样显示会很突兀
+const PURPOSE_OUTCOME = { sent: '发出去了', silent: '没说话', skipped: '跳过了', failed: '没发出去' }
+const PURPOSE_SKIP = {
+  'monthly-max': '本月额度用完了',
+  'daily-max': '今天的额度用完了',
+  'quiet-hours': '安静时段',
+  'not-idle': '你还在说话',
+  'no-material': '没有合适的由头',
+  'too-soon': '离上次太近',
+}
 
 function readLines(file) {
   const out = []
@@ -26,6 +38,45 @@ function readLines(file) {
     }
   } catch (e) {}
   return out
+}
+
+/* 记忆库（memory.db）的三个日常活：窗口清理 / 话题切分 / 侧写。
+ * 为什么不再读 memory-card.json：2026-11-22 起 memory.engine=db，旧记忆卡管线整体退役，
+ * 那个文件只是历史数据（停在退役那天），拿它统计等于永远在看旧账（PITFALLS #304）。
+ * 库在哪、角色是谁，复用面板既有的 memoryDbInfo()（characters/current.json → 最新 mtime 的 memory.db）。
+ */
+const MEMORY_JOBS = [
+  { name: 'window', label: '窗口清理' },
+  { name: 'split', label: '话题切分' },
+  { name: 'profile', label: '侧写' },
+]
+
+function readMemoryJobs() {
+  const info = memoryDbInfo()
+  if (!info.exists) return { ok: false, reason: 'no-db', info }
+  let db = null
+  try {
+    db = new DatabaseSync(info.file, { readOnly: true })
+    db.exec('PRAGMA busy_timeout=2000')
+    const rows = db.prepare('SELECT name, day_key, state, last_run_at, last_error FROM job_state').all()
+    const jobs = {}
+    for (const r of rows) {
+      jobs[String(r.name || '')] = {
+        state: String(r.state || ''),
+        day: String(r.day_key || ''),
+        lastRunAt: Number(r.last_run_at) || 0,
+        lastError: String(r.last_error || ''),
+      }
+    }
+    const count = function (sql) {
+      try { const row = db.prepare(sql).get(); return row ? Number(Object.values(row)[0] || 0) : 0 } catch (e) { return 0 }
+    }
+    return { ok: true, info, jobs, topics: count('SELECT COUNT(*) FROM topic'), fragments: count('SELECT COUNT(*) FROM fragment') }
+  } catch (e) {
+    return { ok: false, reason: 'read-failed', info, error: String((e && e.message) || e) }
+  } finally {
+    try { if (db) db.close() } catch (e) {}
+  }
 }
 
 function num(v, dflt) {
@@ -157,12 +208,14 @@ function buildTasks() {
   const qz = qzoneStats()
   const qzCfg = cfg.qzone || {}
   const qzBridge = bridge.qzone || {}
-  const weekMin = num(qzCfg.weekly && qzCfg.weekly.min, 0)
-  const qzTask = task('qzone-post', '发 QQ 空间说说', weekMin > 0 ? '每周至少 ' + weekMin + ' 条' : '有想说的就发')
+  // 周目标两个配置都可能写（面板「她每天做什么」写 bili、桥接/CLI 读 bridge），取大的那个，
+  // 免得一边改成 7、另一边还留着 5 或干脆没有 weekly 段时，面板显示成回退值 3。
+  const weekMin = Math.max(num(qzCfg.weekly && qzCfg.weekly.min, 0), num(qzBridge.weekly && qzBridge.weekly.min, 0))
+  const qzTask = task('qzone-post', '发 QQ 空间说说', weekMin > 0 ? '每周至少 ' + weekMin + ' 条（本周还差 ' + Math.max(0, weekMin - qz.weekCount) + ' 条）' : '有想说的就发')
   qzTask.progress = { have: qz.weekCount, need: weekMin, unit: '条' }
   qzTask.state = qzBridge.enabled === false || qzCfg.enabled === false ? 'off' : qz.todayCount > 0 ? 'done' : 'pending'
   qzTask.at = qz.last ? String(qz.last.at || '') : ''
-  qzTask.detail = '本周 ' + qz.weekCount + (weekMin > 0 ? ' / ' + weekMin : '') + ' · 今日上限 ' + num(qzBridge.dailyLimit, 3)
+  qzTask.detail = '本周 ' + qz.weekCount + ' 条' + (weekMin > 0 ? '（目标 ' + weekMin + '）' : '') + ' · 今天 ' + qz.todayCount + ' 条（每日上限 ' + num(qzBridge.dailyLimit, 3) + '）'
   out.push(qzTask)
 
   // ⑥ 每日三连（22:30 自动跑，挑当天最高分那条）
@@ -228,20 +281,32 @@ function buildTasks() {
   }
   out.push(qw)
 
-  // ⑪ 记忆维护（日常整理 + 分层清理）
-  const memFile = path.join(SURF, 'characters', role || 'deepseek', 'memory', 'memory-card.json')
-  const card = readJson(memFile, null)
-  const mt = task('memory', '记忆维护', '整理记忆卡、清当天的零碎')
-  if (!card) { mt.state = 'off'; mt.detail = '没找到记忆卡' }
-  else {
-    const maint = String(card.lastMaintenanceAt || '')
-    const tier = String(card.lastTierMaintenanceAt || '')
-    const maintToday = localDay(maint) === day
-    const tierToday = localDay(tier) === day
-    mt.state = maintToday && tierToday ? 'done' : (maintToday || tierToday) ? 'partial' : 'pending'
-    mt.at = maint
-    mt.detail = '整理 ' + (maintToday ? '✓' : '·') + '  分层 ' + (tierToday ? '✓' : '·')
-    mt.where = (Array.isArray(card.records) ? card.records.length : 0) + ' 条记忆'
+  // ⑪ 记忆维护（新记忆库 memory.db：窗口清理 / 话题切分 / 侧写）
+  const mem = readMemoryJobs()
+  const mt = task('memory', '记忆维护', '整理记忆库：窗口清理 / 话题切分 / 侧写')
+  if (!mem.ok) {
+    mt.state = 'off'
+    mt.detail = mem.reason === 'no-db' ? '还没建库（memory.db 不存在）' : '读不了 memory.db：' + String(mem.error || '').slice(0, 60)
+  } else {
+    const doneToday = MEMORY_JOBS.filter(function (j) {
+      const row = mem.jobs[j.name]
+      return row && row.lastRunAt && localDay(row.lastRunAt) === day
+    })
+    const errs = MEMORY_JOBS.map(function (j) {
+      const row = mem.jobs[j.name]
+      if (!row || !row.lastRunAt || localDay(row.lastRunAt) !== day || !row.lastError) return ''
+      return j.label + '：' + String(row.lastError).replace(/^\d+:\s*/, '')
+    }).filter(Boolean)
+    const allToday = doneToday.length >= MEMORY_JOBS.length
+    mt.state = errs.length ? 'partial' : allToday ? 'done' : doneToday.length ? 'partial' : 'pending'
+    const win = mem.jobs.window
+    mt.at = win && win.lastRunAt ? new Date(win.lastRunAt).toISOString() : ''
+    mt.detail = MEMORY_JOBS.map(function (j) {
+      const row = mem.jobs[j.name]
+      const ok = row && row.lastRunAt && localDay(row.lastRunAt) === day
+      return (ok ? '✓ ' : '· ') + j.label
+    }).join('  ') + (errs.length ? '  · ' + String(errs[0]).slice(0, 50) : '')
+    mt.where = mem.topics + ' 个话题 · ' + mem.fragments + ' 条零碎'
   }
   out.push(mt)
 
@@ -266,6 +331,34 @@ function buildTasks() {
   td.state = overdue.length ? 'pending' : 'done'
   td.detail = overdue.length ? overdue.length + ' 条过期还没提醒' : (pend.length ? '还有 ' + pend.length + ' 条没到期' : '没有待办')
   out.push(td)
+
+  // ⑭ 主动找你（目的机制）：不按额度算完成，只报「今天找过几次 + 下次大概什么时候」
+  //    dailyMax 是上限不是目标，所以不挂进度条，免得把一个空额度显示成「还没动」。
+  const pcfg = bridge.purpose || {}
+  const po = readJson(path.join(SURF, 'characters', role || 'deepseek', 'purpose-outreach.json'), null) ||
+    readJson(path.join(SURF, 'state', 'purpose-outreach.json'), null)
+  const poTask = task('purpose', '主动找你', '闲下来时自己想起你，主动说一句')
+  if (pcfg.enabled === false) { poTask.state = 'off'; poTask.detail = '目的机制关着' }
+  else {
+    const dailyMax = num(pcfg.dailyMax, 6)
+    const count = po && po.day === day ? num(po.countToday, 0) : 0
+    const skipReason = po ? String(po.lastSkipReason || (po.lastSkip && po.lastSkip.reason) || '') : ''
+    poTask.state = count > 0 ? 'done' : 'pending'
+    const parts = ['今天主动找了 ' + count + ' 次（上限 ' + dailyMax + '）']
+    // nextFireAt 可能隔几天（比如 monthly-max 之后要等到下个月），只报「时:分」会让人以为几分钟后就来
+    if (po && po.nextFireAt) {
+      const next = new Date(Number(po.nextFireAt) || 0)
+      if (!Number.isNaN(next.getTime())) {
+        parts.push('下次约 ' + (localDay(next.getTime()) === day
+          ? hhmm(next.toISOString())
+          : (next.getMonth() + 1) + '-' + next.getDate() + ' ' + hhmm(next.toISOString())))
+      }
+    }
+    if (!count && skipReason) parts.push('上次跳过：' + (PURPOSE_SKIP[skipReason] || skipReason).slice(0, 24))
+    if (po && po.lastOutcome) parts.push('上次' + (PURPOSE_OUTCOME[po.lastOutcome] || String(po.lastOutcome)))
+    poTask.detail = parts.join(' · ')
+  }
+  out.push(poTask)
 
   return { day: day, role: role, items: out, hour: h }
 }
