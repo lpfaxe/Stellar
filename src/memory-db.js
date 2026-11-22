@@ -80,7 +80,7 @@ export function closeDb({ file } = {}) {
   return true;
 }
 
-/** 本地日 key（YYYY-MM-DD）。切分与 2 天窗口都按它算，不用 UTC。 */
+/** 本地日 key（YYYY-MM-DD）。切分与窗口清理（D-3）都按它算，不用 UTC。 */
 export function dayKey(at = Date.now()) {
   const d = new Date(Number(at) || Date.now());
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -584,7 +584,7 @@ export function heldRows({ limit = 200, db } = {}) {
 }
 
 
-/** 读一个话题（summary + 正文；正文来自 topic_msg，2 天前的也能读）。 */
+/** 读一个话题（summary + 正文；正文来自 topic_msg，3 天前的也能读，important 更久）。 */
 export function readTopic(topicId, { full = false, maxChars = 2000, db: conn } = {}) {
   const db = conn || openDb();
   const head = db.prepare('SELECT * FROM topic WHERE id = ?').get(String(topicId));
@@ -636,14 +636,42 @@ export function formatTopicForModel(data, { maxChars = 2000 } = {}) {
   return lines.join('\n');
 }
 
-/** 目录：当前对象的话题标题（important 优先，再按结束时间倒序）。 */
+/**
+ * 「其实只跟主人说话」的群话题（2026-11-22 主人要求）。
+ *
+ * 群聊里一段话题如果人类参与者只有主人一个，内容等价于私聊，但 owner_id 仍写成 group:<群号>。
+ * 私聊按 ownerId 查目录/检索时这类话题永远不出现 —— 实测「塔斯汀套餐」只挂在
+ * group:1132808329 名下，主人私聊的 31 条目录里没有它，他问「我昨天吃的啥」她检索不到。
+ * 所以私聊视角额外放行这些话题；群视角（ownerId 本身就是 group:）不受影响，
+ * 别人的群话题也不会因此漏进私聊 —— 只认「人类参与者只有他一个」。
+ */
+export function soloGroupTopicIds(ownerQQ, { db: conn } = {}) {
+  const who = String(ownerQQ || '').trim();
+  if (!/^\d{5,12}$/.test(who)) return [];
+  const db = conn || openDb();
+  try {
+    return db.prepare(
+      "SELECT t.id FROM topic t WHERE t.conversation_key LIKE 'group:%' "
+      + "AND EXISTS (SELECT 1 FROM topic_participant p WHERE p.topic_id = t.id AND p.role = 'user' AND p.qq = ?) "
+      + "AND NOT EXISTS (SELECT 1 FROM topic_participant q WHERE q.topic_id = t.id AND q.role = 'user' AND q.qq <> ?) "
+      + 'LIMIT 400',
+    ).all(who, who).map((r) => String(r.id));
+  } catch { return []; }
+}
+
+/** 目录：当前对象的话题标题（important 优先，再按结束时间倒序）。
+ *  私聊时额外带上「人类参与者只有她+主人」的群话题（行上标 viaGroup=true）。 */
 export function catalog({ ownerId, limit = 20, db: conn } = {}) {
   const db = conn || openDb();
   const n = Math.max(1, Math.min(50, Number(limit) || 20));
+  const who = String(ownerId || '');
+  // 私聊视角额外放行「只跟她+主人说话」的群话题（2026-11-22 主人要求），群里视角不受影响。
+  const soloIds = soloGroupTopicIds(who, { db });
+  const soloSql = soloIds.length ? ' OR id IN (' + soloIds.map(() => '?').join(',') + ')' : '';
   const rows = db.prepare(
-    "SELECT id, title, tier, importance, ended_at, day_key, scope, conversation_key FROM topic WHERE owner_id = ? "
+    "SELECT id, title, tier, importance, ended_at, day_key, scope, conversation_key FROM topic WHERE owner_id = ?" + soloSql + ' '
     + "ORDER BY (tier = 'important') DESC, ended_at DESC LIMIT ?",
-  ).all(String(ownerId || ''), n);
+  ).all(who, ...soloIds, n);
   // 参与者一次批量捞（每条各查一次 SQL 会在目录重建时放大成 N 次磁盘读）。
   const ids = rows.map((r) => String(r.id));
   const pMap = new Map();
@@ -657,7 +685,8 @@ export function catalog({ ownerId, limit = 20, db: conn } = {}) {
       }
     } catch {}
   }
-  const withPeople = rows.map((r) => ({ ...r, participants: pMap.get(String(r.id)) || [] }));
+  const soloSet = new Set(soloIds);
+  const withPeople = rows.map((r) => ({ ...r, participants: pMap.get(String(r.id)) || [], viaGroup: soloSet.has(String(r.id)) }));
   const fragRow = db.prepare("SELECT COUNT(*) AS n FROM fragment WHERE owner_id = ?").get(String(ownerId || ''));
   const profile = db.prepare('SELECT persona FROM profile WHERE owner_id = ?').get(String(ownerId || ''));
   let zones = null;
@@ -695,7 +724,9 @@ export function formatCatalogForModel(data, { titles = 8, maxChars = 600, ownerQ
         ? '  — ' + formatParticipants(row.participants, { selfId, ownerQQ, max: 4 })
         : '';
       const amb = row.scope === 'ambient' ? '  [旁观]' : '';
-      lines.push('· ' + row.id + ' ' + row.title + '  (' + when + ')' + mark + people + amb);
+      // 从群聊里捞来的（其实只跟主人说过）：标一下出处，别让她以为这段发生在私聊里。
+      const via = row.viaGroup ? '  〔群〕' : '';
+      lines.push('· ' + row.id + ' ' + row.title + '  (' + when + ')' + mark + via + people + amb);
     }
     if (data.fragments > 0) lines.push('· 另有 ' + data.fragments + ' 条零碎记忆（爱好/雷区/习惯），想找用 stellar_memory_search');
     // 按人分类（2026-11-13 主人的要求）：先确认问的是谁的事，再决定查谁。
@@ -703,7 +734,7 @@ export function formatCatalogForModel(data, { titles = 8, maxChars = 600, ownerQ
     const inGroup = String(data.ownerId || '').startsWith('group:');
     lines.push(inGroup
       ? '查法（群里）：先认人 —— 谁问你就查谁。① 他跟你的私聊记忆（stellar_memory_catalog ownerId=他的号）② 他在这群里参与过的话题（stellar_memory_search about=他的号）③ 都没有才翻零碎记忆（stellar_memory_search 关键词）。读到别人的事只给结论、别转述细节；旁听到的话题（标 [旁观]）别当成自己的经历。'
-      : '查法：先确认问的是谁的事 —— 问本人就查本人（ownerId 用当前对话对象的号）；问别人的，先按那个人的号查，查到别人的事只给结论、别转述细节。stellar_memory_catalog 看全目录 → stellar_memory_topic 读某条 → stellar_memory_search 搜关键词。都没有就说「不记得」，别硬凑。');
+      : '查法：〔群〕= 在群里跟你说的（当私聊记着）。先确认问的是谁的事 —— 问本人就查本人（ownerId 用当前对话对象的号）；问别人的，先按那个人的号查，查到别人的事只给结论、别转述细节。stellar_memory_catalog 看全目录 → stellar_memory_topic 读某条 → stellar_memory_search 搜关键词。都没有就说「不记得」，别硬凑。');
     const zoneLine = formatZoneCatalogLine(data.zones);
     if (zoneLine) lines.push(zoneLine);
     const factN = Number(data.facts && data.facts.total) || 0;
@@ -739,19 +770,23 @@ export function search({ q, ownerId, scope = 'current', about = '', limit = 5, d
   if (!query && !aboutWho) return [];
   const n = Math.max(1, Math.min(10, Number(limit) || 5));
   const cross = String(scope) === 'all';
+  // 私聊也要能搜到「人类参与者只有她+主人」的群话题（2026-11-22 主人要求）：只认 topic 行。
+  const soloIds = cross ? [] : soloGroupTopicIds(String(ownerId || ''), { db });
+  const soloSet = new Set(soloIds);
+  const soloSql = soloIds.length ? ' OR (d.ref_type = \'topic\' AND d.ref_id IN (' + soloIds.map(() => '?').join(',') + '))' : '';
   const rows = [];
   const push = (row) => { if (rows.length < n && row) rows.push(row); };
   if (query.length >= 3) {
     const sql = 'SELECT d.ref_type, d.ref_id, d.owner_id, d.body, d.at FROM search_fts f JOIN search_doc d ON d.id = f.rowid '
-      + 'WHERE search_fts MATCH ?' + (cross ? '' : ' AND d.owner_id = ?') + ' ORDER BY d.at DESC LIMIT ?';
-    const args = cross ? [query, n] : [query, String(ownerId || ''), n];
+      + 'WHERE search_fts MATCH ?' + (cross ? '' : ' AND (d.owner_id = ?' + soloSql + ')') + ' ORDER BY d.at DESC LIMIT ?';
+    const args = cross ? [query, n] : [query, String(ownerId || ''), ...soloIds, n];
     try { for (const row of db.prepare(sql).all(...args)) push(row); } catch {}
   }
   if (query && !rows.length) {
     const like = '%' + query + '%';
-    const sql = 'SELECT ref_type, ref_id, owner_id, body, at FROM search_doc '
-      + 'WHERE (body LIKE ? OR bigrams LIKE ?)' + (cross ? '' : ' AND owner_id = ?') + ' ORDER BY at DESC LIMIT ?';
-    const args = cross ? [like, '%' + query + '%', n] : [like, '%' + query + '%', String(ownerId || ''), n];
+    const sql = 'SELECT ref_type, ref_id, owner_id, body, at FROM search_doc d '
+      + 'WHERE (body LIKE ? OR bigrams LIKE ?)' + (cross ? '' : ' AND (d.owner_id = ?' + soloSql + ')') + ' ORDER BY d.at DESC LIMIT ?';
+    const args = cross ? [like, '%' + query + '%', n] : [like, '%' + query + '%', String(ownerId || ''), ...soloIds, n];
     try { for (const row of db.prepare(sql).all(...args)) push(row); } catch {}
   }
   // 按人检索（2026-11-15）：A 问「你记得我昨天说的话吗」时，光靠关键词找不到 ——
@@ -779,7 +814,7 @@ export function search({ q, ownerId, scope = 'current', about = '', limit = 5, d
     if (row.ref_type === 'topic') {
       const people = listTopicParticipants(row.ref_id, { db });
       const scopeRow = (() => { try { return db.prepare('SELECT scope FROM topic WHERE id = ?').get(String(row.ref_id)); } catch { return null; } })();
-      out.push({ ...row, participants: people, scope: scopeRow ? String(scopeRow.scope || 'direct') : 'direct' });
+      out.push({ ...row, participants: people, viaGroup: soloSet.has(String(row.ref_id)), scope: scopeRow ? String(scopeRow.scope || 'direct') : 'direct' });
     } else out.push(row);
   }
   return out;
@@ -793,11 +828,13 @@ export function formatSearchForModel(rows, { currentOwner, ownerQQ = '', selfId 
     const clock = new Date(Number(row.at)).toLocaleDateString('zh-CN');
     const kind = row.ref_type === 'topic' ? '话题' : (row.ref_type === 'fragment' ? '零碎' : (row.ref_type === 'fact' ? '事实' : '侧写'));
     const body = String(row.body || '').replace(/[\r\n]+/g, ' ').slice(0, 80);
-    const own = currentOwner && String(row.owner_id) !== String(currentOwner) ? '  (属于 ' + row.owner_id + '，别转述具体内容)' : '';
+    // viaGroup：从群聊里捞回来的「只跟她说过」的话题，对主人来说就是私聊内容，不能标成「别转述」。
+    const own = currentOwner && !row.viaGroup && String(row.owner_id) !== String(currentOwner) ? '  (属于 ' + row.owner_id + '，别转述具体内容)' : '';
+    const via = row.viaGroup ? '  〔群〕' : '';
     const people = Array.isArray(row.participants) && row.participants.length
       ? '  ' + formatParticipants(row.participants, { selfId, ownerQQ, max: 4 }) + (row.scope === 'ambient' ? '（旁观）' : '')
       : '';
-    out.push('[' + kind + '] ' + body + '  (' + clock + ')' + people + own + (row.ref_type === 'topic' ? '  → ' + row.ref_id : ''));
+    out.push('[' + kind + '] ' + body + '  (' + clock + ')' + via + people + own + (row.ref_type === 'topic' ? '  → ' + row.ref_id : ''));
   }
   return out.join('\n');
 }
@@ -911,7 +948,7 @@ export function stats({ db: conn } = {}) {
 }
 
 /**
- * 2 天窗口：删「≤ D-2」的 daily（important 永不参与删除）。原来只认恰好 D-2 那一天，
+ * 窗口清理：删「≤ D-3」的 daily（important 永不参与删除；2026-11-22 主人从 2 天改成 3 天）。原来只认恰好那一天，
  * 积压切分产出的旧 day_key 永远轮不到清理 —— 2026-11-22 改成 ≤（顺手补删 topic_participant、
  * trash 文件名加时间戳，原来同一天重跑会把恢复副本覆盖成空）。
  * 删之前先把要删的东西导出 JSONL 到 trashDir（默认 <db 同目录>/memory-trash），误删可救。
@@ -990,13 +1027,13 @@ export function legacyProbe({ dir } = {}) {
 // 单独存入，提高权重。尤其注意隐私问题」。
 //
 // 三条硬规则（不靠模型自觉）：
-//  1. 事实**不随话题走**：话题要双方发言、两天窗口会清，事实一直留着（只有人能删）。
+//  1. 事实**不随话题走**：话题要双方发言、窗口清理会清，事实一直留着（只有人能删）。
 //  2. 事实**按人归属**：owner_id 是「这条事实属于谁」。A 的生日挂在 A 名下，不是挂在
 //     「当前会话」名下 —— 这样 A 问自己生日、B 问「A 生日什么时候」都能按对象查到。
 //  3. 事实**带隐私级**：normal 群里也能用；private 只跟本人对话时用；secret 只本人私聊
 //     与面板可见。注入与检索都按级过滤，不靠名字里有没有「生日」去猜。
 //
-// 为什么另建表而不是塞 fragment：fragment 会被 promoteWindow 两天清、被目录当零碎条数统计，
+// 为什么另建表而不是塞 fragment：fragment 会被窗口清理清掉、被目录当零碎条数统计，
 // 且没有 privacy 维度。事实的寿命与可见性都和它不同，混在一起必然两头都不对。
 export const FACT_KINDS = ['birthday', 'anniversary', 'like', 'dislike', 'allergy', 'contact', 'address', 'nickname', 'promise', 'identity', 'note'];
 export const FACT_KIND_LABELS = {

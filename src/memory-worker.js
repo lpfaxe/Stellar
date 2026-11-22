@@ -5,7 +5,7 @@
  *  1) split   —— 把 cache_msg 里 process_state='new' 的行按「同一会话 + 间隔 ≤20 分钟 + ≤60 条 + ≤6000 字」
  *                切段；段内**双方都说过话**才建话题（topic），单边段先 held，挂满 2 小时丢 dropped，
  *                够长（≥40 字）的单边独白降级成 fragment（零碎记忆），不当话题。
- *  2) window  —— 每天 00:05 把 D-2 的 cache/topic/fragment 复核后清空（先导出到 trash，再删）。
+ *  2) window  —— 每天 00:05 把 D-3 的 cache/topic/fragment 复核后清空（先导出到 trash，再删）。
  *                important 的不参与删除（keep=1）。
  *  3) profile / style 留接口不实现 —— 它们要调模型，放在插件侧（有 ctx.llm），见 P1。
  *
@@ -28,7 +28,7 @@ const MONOLOGUE_MIN_CHARS = 40;          // 单边独白够长才降级成零碎
 // 排在 00:05 的作业等于永远不跑。实际值由 config.json 的 memory.window 覆盖。
 const WINDOW_HOUR = 6;
 const WINDOW_MINUTE = 30;
-const WINDOW_DAYS = 2;                    // D-2
+const WINDOW_DAYS = 3;                    // D-3（2026-11-22 主人：daily 话题留 3 天再清）
 
 // 群聊「旁观话题」门槛（2026-11-15 主人要求：群里跟她无关的内容也按话题存）。
 // 为什么不用「有 self 就建」那一套：群里她常常整段不插话，但那段对话对别人是记忆。
@@ -84,7 +84,7 @@ function buildTopic(seg, db, { importance = 0, tier, scope = 'direct' } = {}) {
  * 这段群聊她没参与，但内容够一段话 → 建一个 ambient 话题（只存不注入）。
  *
  * 注意：ambient 永远 importance=0、tier='daily'，不进 important 晋升链 ——
- * 否则两天后的复核会把「群里别人随口说的话」捧成长期记忆，污染她自己的判断。
+ * 否则三天后的复核会把「群里别人随口说的话」捧成长期记忆，污染她自己的判断。
  */
 function buildAmbientTopic(seg, db) {
   return buildTopic(seg, db, { scope: 'ambient', importance: 0, tier: 'daily' });
@@ -252,7 +252,7 @@ export function runSplit(opts = {}) {
 }
 
 /**
- * 取 D-2 的候选（复核输入）：只给标题 + 摘要 + 零碎文本，不含全文。
+ * 取 D-3 的候选（复核输入）：只给标题 + 摘要 + 零碎文本，不含全文。
  * 折中：全文可能几千字，这里每人最多 12 条、每条 80 字，够判断又不烧钱。
  */
 export function reviewCandidates({ targetDay, db: conn, perOwner = 12, maxChars = 80 } = {}) {
@@ -265,7 +265,7 @@ export function reviewCandidates({ targetDay, db: conn, perOwner = 12, maxChars 
   };
   // 只把「她参与过的」话题交给复核模型。旁观话题（scope='ambient'）不进来：
   // 复核的目标是「哪些关于她的事值得长期留着」，而旁听到的别人对话一晋升成 important 就永远删不掉
-  // （pruneWindow 不删 important），两天后整个库会被群友的闲聊塞满。
+  // （pruneWindow 不删 important），三天后整个库会被群友的闲聊塞满。
   const topics = db.prepare(
     "SELECT id, owner_id, title, summary, importance FROM topic WHERE day_key = ? AND tier = 'daily' AND COALESCE(scope, 'direct') = 'direct' ORDER BY owner_id, ended_at",
   ).all(day).slice(0, perOwner * 6).map((r) => ({
@@ -278,9 +278,9 @@ export function reviewCandidates({ targetDay, db: conn, perOwner = 12, maxChars 
 }
 
 /** 复核用的 prompt（模型只回 JSON）。 */
-export function buildReviewPrompt(cand) {
+export function buildReviewPrompt(cand, days = WINDOW_DAYS) {
   const lines = [];
-  lines.push('下面是 ' + cand.day + '（前天）留下的记忆条目。判断哪些「两天后还值得记住」，只回 JSON，不要解释。');
+  lines.push('下面是 ' + cand.day + '（' + days + ' 天前）留下的记忆条目。判断哪些「以后还值得记住」，只回 JSON，不要解释。');
   lines.push('');
   lines.push('## 话题');
   if (!cand.topics.length) lines.push('（无）');
@@ -354,7 +354,7 @@ export async function runReview(opts = {}) {
   try {
     const text = await ask({
       system: '你是 Stellar 的记忆复核器。只输出 JSON。',
-      user: buildReviewPrompt(cand),
+      user: buildReviewPrompt(cand, windowDays(opts.window)),
       maxTokens: 1200,
       reasoningEffort: 'low',
     });
@@ -424,6 +424,12 @@ export async function runReview(opts = {}) {
  * 到点了吗：本地 memory.window（默认 06:30）之后、且今天还没跑过 window。
  * 用 job_state 记 dayKey，避免进程重启后重复跑。
  */
+/** 复核窗口留几天：以 memory.window.days 为准（1–14），没配才回落到 WINDOW_DAYS。 */
+export function windowDays(win) {
+  const n = Math.floor(Number(win && win.days));
+  return Number.isFinite(n) && n >= 1 && n <= 14 ? n : WINDOW_DAYS;
+}
+
 export function windowDue({ now = Date.now(), db: conn, window: win } = {}) {
   const db = conn || openDb();
   const d = new Date(now);
@@ -434,12 +440,12 @@ export function windowDue({ now = Date.now(), db: conn, window: win } = {}) {
   const today = ymd(now);
   const st = jobState('window', { db });
   if (st && st.dayKey === today && st.state === 'done') return { due: false, reason: 'done-today', targetDay: st.cursor || '' };
-  const target = ymd(now - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const target = ymd(now - windowDays(win) * 24 * 60 * 60 * 1000);
   return { due: true, targetDay: target, today };
 }
 
 /**
- * 跑一次窗口清理（只清 D-2，且不碰 important）。
+ * 跑一次窗口清理（只清 ≤ D-3，且不碰 important）。
  * opts: { now, targetDay, trashDir, dryRun, db, log }
  */
 export function runWindow(opts = {}) {
@@ -487,7 +493,7 @@ export function runTick(opts = {}) {
 }
 
 /**
- * 人物侧写（模块四，P1）：把「近 2 天话题标题 + important 标题 + 零碎」压成一句 ≤50 字的人设。
+ * 人物侧写（模块四，P1）：把「近 7 天话题标题 + important 标题 + 零碎」压成一句 ≤50 字的人设。
  * 输入只给标题与零碎，不给全文 —— 每人一次调用约 1.5K in / 100 out。
  */
 const FRAGMENT_PROMPT_CHARS = 160;

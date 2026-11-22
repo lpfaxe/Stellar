@@ -3,7 +3,8 @@
  *
  * 覆盖：建库/schema、入站出站落盘、纯代码分段、双方硬约束、话题正文完整、
  *      catalog 只给标题、readTopic 读全文、FTS5 trigram 与 2 字 LIKE 兜底、
- *      profile/style/job_state、2 天窗口删除（important 永不删）+ trash 导出。
+ *      profile/style/job_state、窗口删除（默认 D-3，important 永不删）+ trash 导出、
+ *      群话题「人类只有她+主人」在私聊目录/检索里也能召回。
  *
  * 跑法：node scripts/test-memory-db.mjs
  */
@@ -18,7 +19,9 @@ process.env.DSH_HOME = root;
 
 const dbFile = path.join(root, 'fixture', 'memory.db');
 const mod = await import('../src/memory-db.js');
-const { openDb, listTopicParticipants, topicsForPerson, groupRoster, append, appendSelf, safeAppendSelf, pendingRows, segmentRows, insertTopic, insertFragment, readTopic, formatTopicForModel, catalog, formatCatalogForModel, search, formatSearchForModel, upsertProfile, listProfiles, insertStyleSlice, listStyleSlices, saveJobState, jobState, stats, pruneWindow, promoteTopic, dayKey, ownerIdForKey, bigramsOf } = mod;
+const { openDb, listTopicParticipants, topicsForPerson, groupRoster, append, appendSelf, safeAppendSelf, pendingRows, segmentRows, insertTopic, insertFragment, readTopic, formatTopicForModel, catalog, formatCatalogForModel, search, formatSearchForModel, upsertProfile, listProfiles, insertStyleSlice, listStyleSlices, saveJobState, jobState, stats, pruneWindow, promoteTopic, dayKey, ownerIdForKey, bigramsOf, soloGroupTopicIds } = mod;
+
+const worker = await import('../src/memory-worker.js');
 
 const DAY = '2026-11-13';
 const T0 = new Date('2026-11-13T10:00:00+08:00').getTime();
@@ -297,4 +300,46 @@ test('旁观话题：群里她没插话也要存下来，但绝不进重要晋�
   assert.match(text, /［群里的人］/);
   assert.match(text, /1000000003/);
   assert.match(text, /\[旁观\]/);
+});
+
+test('窗口默认留 3 天（D-3，2026-11-22 主人改）', () => {
+  const now = new Date('2026-11-26T10:00:00+08:00').getTime();
+  const due = worker.windowDue({ now, db });
+  assert.equal(due.due, true);
+  assert.equal(due.targetDay, '2026-11-23', '11-26 复核，清的是 ≤11-23（三天前）');
+});
+
+test('群话题「人类只有她+主人」私聊也能召回（2026-11-22）', () => {
+  const day = '2026-11-22';
+  const ck = 'group:1132808329';
+  const ins = db.prepare('INSERT INTO cache_msg (id, conversation_key, owner_id, speaker_id, speaker_name, role, kind, text, at, day_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const rows = [
+    { id: 9101, role: 'user', sid: '1000000001', name: '主人', text: '塔斯汀套餐', at: T0 + 600000 },
+    { id: 9102, role: 'self', sid: '1000000002', name: '她', text: '塔斯汀啊，还成，比泡面强点', at: T0 + 608000 },
+  ];
+  for (const r of rows) ins.run(r.id, ck, ck, r.sid, r.name, r.role, 'text', r.text, r.at, day);
+  const solo = insertTopic({
+    db,
+    rows: rows.map((r) => ({ id: r.id, ck, oid: ck, role: r.role, speaker_id: r.sid, speaker_name: r.name, text: r.text, at: r.at, day_key: day })),
+    topic: { ownerId: ck, conversationKey: ck, dayKey: day, title: '塔斯汀套餐', summary: '塔斯汀套餐 / 还成', importance: 10 },
+  });
+  assert.equal(solo.ok, true);
+  assert.ok(soloGroupTopicIds('1000000001', { db }).includes(solo.id), '私聊视角应认出这条群话题');
+  const priv = catalog({ ownerId: '1000000001', db, limit: 50 });
+  const hit = priv.rows.find((r) => r.id === solo.id);
+  assert.ok(hit, '私聊目录里要有这条');
+  assert.equal(hit.viaGroup, true);
+  assert.match(formatCatalogForModel(priv, { titles: 20, maxChars: 4000 }), /塔斯汀套餐[\s\S]*〔群〕/);
+  const grp = catalog({ ownerId: ck, db, limit: 50 });
+  assert.ok(grp.rows.some((r) => r.id === solo.id), '群视角照旧看得到');
+  const found = search({ q: '塔斯汀套餐', ownerId: '1000000001', db });
+  assert.ok(found.some((r) => r.ref_id === solo.id), '私聊关键词检索也要能搜到');
+  assert.match(formatSearchForModel(found, { currentOwner: '1000000001' }), /〔群〕/);
+  assert.ok(!/别转述/.test(formatSearchForModel(found, { currentOwner: '1000000001' })), '自己说过的话不该标成别人的');
+});
+
+test('群里有别人的话题不会漏进私聊目录', () => {
+  const priv = catalog({ ownerId: '1000000001', db, limit: 50 });
+  const leaked = priv.rows.filter((r) => String(r.conversation_key || '').startsWith('group:') && r.scope === 'ambient');
+  assert.equal(leaked.length, 0, '旁观话题属于群，不属于私聊');
 });

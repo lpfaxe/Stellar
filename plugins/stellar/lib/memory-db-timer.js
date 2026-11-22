@@ -86,7 +86,8 @@ export function scheduleOf(cfg) {
   const win = mem.window || {};
   const prof = mem.profile || {};
   return {
-    window: { hour: hourOf(win.hour, 6), minute: minuteOf(win.minute, 30), days: Number(win.days) || 2 },
+    // days 与 src/memory-worker.js 的 WINDOW_DAYS 同源：没配就 3（D-3），改这里等于改清理策略
+    window: { hour: hourOf(win.hour, 6), minute: minuteOf(win.minute, 30), days: Number(win.days) || 3 },
     profile: { hour: hourOf(prof.hour, PROFILE_HOUR), minute: minuteOf(prof.minute, 0) },
   };
 }
