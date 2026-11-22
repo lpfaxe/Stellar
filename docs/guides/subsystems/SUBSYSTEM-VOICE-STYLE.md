@@ -15,12 +15,14 @@
 差 45–270 倍。而且「拒绝发送」这种强校验等于让她哑掉，不能用。
 所以走注入：**规则进提示词，开关在面板，改完下一轮生效，不重启。**
 
-## 2. 落点只有三处
+## 2. 落点（QQ 三处 + B站/空间一处）
 
 | 文件 | 干什么 |
 |---|---|
 | `src/voice-style.js` | **唯一真相**：读文件、归一、校验、渲染成提示词、数用量。面板 import 它，不复制逻辑 |
-| `src/bridge.js:16125` | 每次唤醒拼提示词时取这一段的正文 |
+| `src/bridge.js:16125` | 每次唤醒拼提示词时取这一段的正文（QQ） |
+| `plugins/stellar/lib/voice-style-line.js` | 插件侧的薄壳：解析 `<DSH_HOME>/stellar/state`、按「关闭即不注入」的语义取正文（B站 / QQ空间） |
+| `plugins/stellar/lib/scheduler.js:188` `identityContextLines()` | 20 处 B站唤醒 + QQ空间那串共用的前置，`voiceStyleBlockForBili()` 一行全吃上 |
 | `stellar-manager/` 的「说话方式」卡 | 主人增删原则与词条、看今天用量、保存/回滚 |
 
 桥接侧接线（4 处，改的时候别漏）：
@@ -29,6 +31,13 @@
 - `src/bridge.js:16125` `const voiceStyle = voiceStylePrompt({ file: voiceStyleFile(path.join(STELLAR_DIR, 'state')) })` → `const antiAiLine = voiceStyle.text + '\n\n'`
 - `src/bridge.js:16281` `lastWakePromptMeta` 里多记 `voiceSource`（file/default/fallback）与 `voiceEntries`，方便事后查「这轮到底注了没有」
 - `src/bridge.js:10864` `sendMessagesV2` 成功分支调 `recordVoiceStats(sent, …)`（QQ 发送的唯一汇合点，统计只挂这一处）
+
+B站 / QQ空间 侧（第二批，2026-11-22）：
+
+- `plugins/stellar/lib/voice-style-line.js` 静态 import `../../../src/voice-style.js`（插件本来就这样引仓库模块，见 `scheduler.js` 顶部那串 `../../../src/*`）
+- `scheduler.js:188` 的 `identityContextLines()` 里，`personaCardBlock(),` 之后插 `voiceStyleBlockForBili(),` —— **一处覆盖 20 多个唤醒点**；别逐个 prompt 加（加漏一个就少一个渠道）
+- 语义差别：QQ 侧 `enabled:false` 回退 `LEGACY_FALLBACK`（旧版本来就有那句）；B站/空间 侧 `enabled:false` **不注入**（那边原本没有这段，按「回退」处理等于偷偷加东西）
+- 渲染失败 → 返回 `''`，同一句错只 `console.error` 一次：**宁可这一轮少一段，也不能让唤醒报错**
 
 ## 3. 数据在哪、长什么样
 
@@ -126,23 +135,26 @@
   1. 删 `stellar-manager/public/js/voice.js`、index.html 里 `voiceCard` 那一段、`style.css` 末尾的 `.voice-*`；
   2. 删 `stellar-manager/lib/voice-style.js` 与 server.mjs 三个路由；
   3. `src/bridge.js`：删 import，把 `antiAiLine` 改回一句写死的 `LEGACY_FALLBACK`（或留着也行，`src/voice-style.js` 里就有这个常量）；
-  4. 删 `src/voice-style.js`、`scripts/test-voice-style.mjs`，并从 `scripts/test-audit.mjs` 摘掉那一行；
+  4. 删 `src/voice-style.js`、`scripts/test-voice-style.mjs`、`plugins/stellar/lib/voice-style-line.js`、`scripts/test-voice-style-bili.mjs`，并从 `scripts/test-audit.mjs` 摘掉那两行、把 `scheduler.js` 的 import 与 `identityContextLines()` 里那一行去掉；
   5. 数据文件（`state/voice-style.json`、`voice-stats.json`、`voice-style.bak/`）留着不影响任何东西，想删再删。
 
 ## 8. 测试与验收
 
 ```bash
-node scripts/test-voice-style.mjs      # 35 条断言，全离线（临时目录，不碰真状态）
-npm run test:audit                     # 它已进 audit（第 183 条）
+node scripts/test-voice-style.mjs       # 35 条断言：读/归一/渲染/截断/统计
+node scripts/test-voice-style-bili.mjs  # 21 条断言：B站/空间 侧的取用与接线
+npm run test:audit                      # 两条都已进 audit（现 184 条）
 ```
 
-- 改的是 `src/**`：**要重启 DSH 才生效**。
+- 第二批（B站/空间）改的是 `plugins/stellar/**`：**同样要重启 DSH 才生效**（插件与桥接一起被宿主加载）。
+- 想确认 B站 这轮注入了哪一段：看那趟唤醒提示里 `【说话方式】` 那段；默认 139 字（≈93 token），写到 600 字上限 ≈400 token。
+- 改的是 `src/**` 与 `plugins/stellar/**`：**都要重启 DSH 才生效**（重启只能主人手动）。
 - 重启后确认两件事：`<DSH_HOME>/stellar/state/voice-style.json` 改一次、发一条消息，`voice-stats.json` 的 `messages` 加 1。
 - 想确认注入的是文件而不是兜底：看 `state/context-telemetry*.jsonl` 里 `wake.layers.voiceSource` 是 `file`。
 
 ## 9. 已知限制
 
-- **只覆盖 QQ**。B站、QQ空间、小镇各是另一套提示词，见 §10。
+- **覆盖 QQ + B站 + QQ空间**（第二批）。**鱼缸小镇不覆盖**（她的私人时间、影子会话提示词已经很长，见 §10）。
 - **词表治标**。AI 腔的大头在结构：先总结后解释、三点列举、破折号、总之/换句话说、反问收尾、客服腔。
   所以 `DEFAULT_PRINCIPLES` 三条全是结构规则，词条只做兜底。
 - 规则会和人格卡打架：写成「不许说什么」会让她越写越僵，写「换成什么」才有用。
@@ -153,11 +165,11 @@ npm run test:audit                     # 它已进 audit（第 183 条）
 
 | 渠道 | 注入点 | 改动量 | 每轮成本 | 建议 |
 |---|---|---|---|---|
-| B站 + QQ空间 | `plugins/stellar/lib/scheduler.js:188 identityContextLines()`（**20 处 B站唤醒共用的前置**） | 加一行 `voicePromptLine()`，P0.3 | +300 token（只在她醒着看 B站时付） | 值得做 |
+| B站 + QQ空间 | `plugins/stellar/lib/scheduler.js:188 identityContextLines()`（**20 处 B站唤醒共用的前置**） | 加一行 `voiceStyleBlockForBili()`，P0.3 | 默认 139 字 ≈93 token；写到上限 600 字 ≈400 token（只在她醒着看 B站时付） | **已做（2026-11-22）** |
 | 鱼缸小镇 | `src/town-prompt.js:10 townPromptLine()`（单点） | 加一段，P0.2 | +300 token | **建议不做**：小镇是她的私人时间，影子会话提示词已经很长，多这段只会稀释 |
 
-技术上三处都是单点、都不需要新机制（同一份 `voice-style.json`、同一个渲染函数），合计 ≈ 0.5 人日。
-要不要做由主人定；默认先只做 QQ，跑一周看 §5 的计数再决定。
+技术上三处都是单点、都不需要新机制（同一份 `voice-style.json`、同一个渲染函数）。
+2026-11-22 先做了 B站/空间（`voice-style-line.js` + scheduler 一行）；小镇仍按建议不做。
 
 ## 11. 文件清单
 
@@ -166,6 +178,9 @@ npm run test:audit                     # 它已进 audit（第 183 条）
 | `src/voice-style.js` | 新增 ~380 行 | 读/归一/校验/渲染/计数，桥接与面板共用 |
 | `src/bridge.js` | 改 4 处 | import、`antiAiLine` 换源、meta 记来源、发送后计数 |
 | `scripts/test-voice-style.mjs` | 新增 | 35 条断言 |
+| `plugins/stellar/lib/voice-style-line.js` | 新增（第二批） | B站/空间 侧取正文的薄壳，失败返回空串 |
+| `plugins/stellar/lib/scheduler.js` | 改 2 处（第二批） | import + `identityContextLines()` 里一行 |
+| `scripts/test-voice-style-bili.mjs` | 新增（第二批） | 21 条断言（含接线静态检查） |
 | `scripts/test-audit.mjs` | 加 1 行 | 进 audit |
 | `stellar-manager/lib/voice-style.js` | 新增 | 面板侧读写 + 备份/回滚（import 仓库模块） |
 | `stellar-manager/server.mjs` | 加 3 个路由 | 见 §6 |

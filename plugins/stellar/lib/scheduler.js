@@ -37,6 +37,7 @@ import { currentRunMode, modeAllows } from './run-mode.js'
 import { resolvePersonaFile } from './persona.js'
 import { readUnified } from './store.js'
 import { memoryCardPromptBlock } from './memory-card.js'
+import { voiceStyleBlockForBili } from './voice-style-line.js'
 import { buildSelfIdentityBlock, readQqSelfIdentity } from '../../../src/self-identity.js'
 import { adminFromSources, adminPromptBlock } from '../../../src/admin-identity.js'
 import { activeMemoryPaths, activePlatformStateDir, readPersonaLayerText } from '../../../src/character-persona.js'
@@ -184,10 +185,13 @@ function memoryCardBlockForBili() {
   return memoryCardPromptBlock('bili')
 }
 
-/** 每次唤醒都放在最前面的合体上下文（顺序：人设 → 自我锚点 → 管理员 → QQ 记忆 → 记忆卡）。 */
+/** 每次唤醒都放在最前面的合体上下文（顺序：人设 → 说话方式 → 自我锚点 → 管理员 → QQ 记忆 → 记忆卡）。 */
 function identityContextLines() {
   return [
     personaCardBlock(),
+    // 2026-11-22：「说话方式（鱼八股）」第二批 —— B站 / QQ空间 也吃同一份词表。
+    //   放在人设后面：说的是「怎么讲话」，人格卡仍是第一个说话的（冲突时以人格卡为准，见 VOICE_HEAD）。
+    voiceStyleBlockForBili(),
     selfIdentityBlockForBili(),
     adminBlockForBili(),
     qqMemoryBlockForBili(),

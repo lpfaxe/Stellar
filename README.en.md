@@ -167,7 +167,7 @@ stellar/
 ## Testing
 
 ```bash
-node scripts/test-audit.mjs        # offline regression suite, no credentials / DSH / QQ needed (183 specs of 213 scripts;
+node scripts/test-audit.mjs        # offline regression suite, no credentials / DSH / QQ needed (184 specs of 214 scripts;
                                    # the few that need the dev panel auto-SKIP in the public repo)
 npm run test:regressions           # bridge / protocol regressions
 npm run privacy-scan:strict        # must report zero hits before publishing

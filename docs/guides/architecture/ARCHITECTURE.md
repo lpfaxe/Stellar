@@ -76,6 +76,13 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 
 每一段都可以在 `config.json` 里关掉；关掉后那句会提示「本轮不注入」的日志。
 
+**同一份词表也进 B站 / QQ空间**（2026-11-22 第二批）：插件侧 `plugins/stellar/lib/voice-style-line.js`
+解析同一个文件、取同一段正文，由 `plugins/stellar/lib/scheduler.js:188` 的 `identityContextLines()`
+拼进 **20 处 B站唤醒 + QQ空间那串** 共用的前置（一处覆盖全部唤醒点，别逐个 prompt 加）。
+与 QQ 侧的差别只有兜底语义：`enabled:false` 时 QQ 回退旧句、B站/空间**不注入**；渲染失败一律返回空串
+（宁可这一轮少一段，也不能让唤醒报错）。默认 139 字（≈93 token），满配 600 字。
+详见 [../subsystems/SUBSYSTEM-VOICE-STYLE.md](../subsystems/SUBSYSTEM-VOICE-STYLE.md)。
+
 ## 5 数据放哪（三段）
 
 | 位置 | 装什么 | 能不能删 |
