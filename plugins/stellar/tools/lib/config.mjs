@@ -130,15 +130,23 @@ export function config() {
   try { user = JSON.parse(fs.readFileSync(configPath, 'utf8')) } catch { /* 没配置就用默认 */ }
   cache = merge(DEFAULTS, user)
   cache.__hasUserFile = Object.keys(user).length > 0
-  // 模式叠加：摸鱼模式要把「刷多少、醒几次」临时抬上去。写法上是覆盖读取结果，
+  // 模式叠加：摸鱼模式要「醒几次」临时抬上去。写法上是覆盖读取结果，
   // 磁盘上的 bili.config.json 一个字都不动（面板的“她每天做什么”看到的仍是原值）。
+  // 2026-11-22 主人：视频目标 / 好友爱看恢复平常值 → 这两个键不再出现在 idle 的覆盖里。
+  // ★只把**有值**的键并进去：写成 `{ videoTargetPerDay: lim.videoTargetPerDay }` 时
+  //   lim 里没有这个键，merge 会拿 undefined 盖掉配置值（PITFALLS #314）。
   let mode = 'normal'
   try { mode = currentRunMode({ config: user }).mode } catch { /* 读不到状态就按正常模式 */ }
   if (mode !== 'normal' && !process.env.STELLAR_NO_MODE_LIMITS) {
     const lim = modeLimits(mode)
-    if (Object.keys(lim).length) {
-      cache = merge(cache, { night: { videoTargetPerDay: lim.videoTargetPerDay, maxWakesPerDay: lim.maxWakesPerDay, minGapMin: lim.minGapMin }, qzone: { public: { seenTarget: lim.qzonePublicSeen } } })
-    }
+    const over = {}
+    const night = {}
+    if (lim.videoTargetPerDay != null) night.videoTargetPerDay = lim.videoTargetPerDay
+    if (lim.maxWakesPerDay != null) night.maxWakesPerDay = lim.maxWakesPerDay
+    if (lim.minGapMin != null) night.minGapMin = lim.minGapMin
+    if (Object.keys(night).length) over.night = night
+    if (lim.qzonePublicSeen != null) over.qzone = { public: { seenTarget: lim.qzonePublicSeen } }
+    if (Object.keys(over).length) cache = merge(cache, over)
   }
   cache.__runMode = mode
   cacheKey = key + '|' + mode

@@ -6507,7 +6507,9 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       const limitText = (m) => {
         const lim = m?.limits || {};
         if (m?.id === "minimal") return "只有 QQ 收到消息才醒，醒后 2 分钟没新消息就回去睡。";
-        if (m?.id === "idle") return "只写日志 + 更主动找人聊；B站每天 " + (lim.videoTargetPerDay ?? 60) + " 个，好友爱看 " + (lim.qzonePublicSeen ?? 20) + " 条。";
+        // 2026-11-22 主人：摸鱼日不再多刷（视频/好友爱看回配置的平常量），时间给小镇。
+        // 这里**不写小镇次数**：那个数字在 town-jobs.js 的 townPlanDay 里，写死两处必然漂移（PITFALLS #313）。
+        if (m?.id === "idle") return "只写日志 + 更主动找人聊 + 多待在小镇；视频与好友爱看按配置的平常量，只是醒得更勤（最多 " + (lim.maxWakesPerDay ?? 12) + " 次/天、间隔至少 " + (lim.minGapMin ?? 15) + " 分钟）。";
         return "每日任务全跑：生物钟、B站、空间、好友爱看。";
       };
 

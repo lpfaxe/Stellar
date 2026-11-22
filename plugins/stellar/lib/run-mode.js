@@ -1,8 +1,9 @@
 /* 运行模式（owner 2026-11-11 22:25 定的三档）：
  *
  *   normal  正常模式 —— 现在这套：每日任务、生物钟、空间、B站全都跑。
- *   idle    摸鱼模式 —— 只留写日志 + 更主动找人聊天；醒来更频繁，B站刷 60 个、
- *           好友爱看看 20 条。周六、周日**默认**用这一档。
+ *   idle    摸鱼模式 —— 只留写日志 + 更主动找人聊天 + 多待在小镇；醒来更频繁。
+ *           视频目标与好友爱看**回落到配置里的平常值**（2026-11-22 主人改）。
+ *           周六、周日**默认**用这一档。
  *   minimal 最低限度 —— 停掉一切自主活动（不主动唤醒、不刷 B站/空间），
  *           只有 QQ 收到消息才醒，醒后 2 分钟没新消息就回去睡。
  *
@@ -109,14 +110,26 @@ export function modeAllows(mode, action) {
   // 2026-11-13 修：原来漏了 'wake'，而 tick() 第一行就是 modeCan('wake') ——
   // 结果摸鱼模式根本不会自己醒，videoTargetPerDay 60 / maxWakesPerDay 12 都没机会生效。
   // 发动态、发说说、三连、日报、B站搭话这些「按表交作业」的任务仍然全停。
-  // 'town'（鱼缸小镇）也放行：只读回家看看，不对外发消息；次数由 townPlanDay 在 idle 下压成 1。
+  // 'town'（鱼缸小镇）也放行：只读回家看看，不对外发消息。
+  // 次数由 town-jobs.js 的 townPlanDay 决定（摸鱼日至少 4 次，2026-11-22 主人要求多待在小镇）。
   return ['diary', 'chat', 'watch', 'qzone-public', 'wake', 'todo', 'town'].includes(act);
 }
 
-/** 摸鱼模式要的数值覆盖（醒来更频繁、刷得更多）。 */
+/**
+ * 摸鱼模式要的数值覆盖。
+ *
+ * 2026-11-22 主人：「刷好友爱看与 B站视频数量恢复为平常状态，让她花更多时间在鱼缸小镇上」。
+ * 所以这里**不再**抬 `videoTargetPerDay` / `qzonePublicSeen`（那是 2026-11-11 的设计：
+ * 摸鱼日刷 60 个视频、看 20 条好友爱看）。两项一律回落到 bili.config.json 里的平常值，
+ * 省下来的时间给小镇（见 town-jobs.js 的 townPlanDay 与动作上限）。
+ * 只留「醒得更勤、间隔更短」这一层 —— 它是去小镇和找人聊天的机会来源。
+ *
+ * ⚠️ 返回值里**不要写 undefined** 的键：config.mjs 会把它们并进配置对象，
+ *    等于把配置值抹成 undefined（PITFALLS #314）。
+ */
 export function modeLimits(mode) {
   if (String(mode) === 'idle') {
-    return { videoTargetPerDay: 60, maxWakesPerDay: 12, qzonePublicSeen: 20, minGapMin: 15 };
+    return { maxWakesPerDay: 12, minGapMin: 15 };
   }
   return {};
 }

@@ -38,10 +38,12 @@ for (const item of result.unknown) console.error('   ' + item.file + ':' + item.
 const counts = {};
 for (const item of result.core) counts[item.file] = (counts[item.file] || 0) + 1;
 const limits = {
-  'src/bridge.js': 10,
+  // 发布版比开发树多一行注释「拆除：删 town-prompt.js + 这一行」，所以上限 11（2026-11-22）
+  'src/bridge.js': 11,
   'src/mcp-snowluma-safe.js': 10,
   'plugins/stellar/lib/scheduler.js': 12,
-  'plugins/stellar/lib/run-mode.js': 3,
+  // 2026-11-22 摸鱼日改去小镇：run-mode.js 的 idle 注释多一行（上限跟着 +1）
+  'plugins/stellar/lib/run-mode.js': 4,
   'src/capabilities.js': 2,
   'plugins/stellar/tools/lib/config.mjs': 3,
   // 官方插件那一层让位（2026-11-21）：audit 多两行（注释 + test-town-plugin），

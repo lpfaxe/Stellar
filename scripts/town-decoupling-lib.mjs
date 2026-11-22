@@ -36,7 +36,12 @@ export const CORE_TOWN_ALLOW = {
     '(town?.cost ?? 0)',
     '(town?.tokens ?? 0)',
     '整段在 src/town-prompt.js',
-    'townPromptLine({ stellarDir: STELLAR_DIR })',
+    'townPromptLine({ stellarDir: STELLAR_DIR, mode: townMode })',
+    // 2026-11-22 摸鱼日多给一句「时间给小镇」：整段仍在 town-prompt.js，这里只是把模式传进去
+    '摸鱼日多给一句「时间给小镇」',
+    "let townMode = 'normal'",
+    'townMode = currentRunMode({',
+    '回到 townPromptLine(',
     'biliLine + townLine',
     '小镇（2026-11-21）：整段提示在 src/town-prompt.js',
     '拆除：删 town-prompt.js'
@@ -71,12 +76,26 @@ export const CORE_TOWN_ALLOW = {
   ],
   'plugins/stellar/lib/run-mode.js': [
     "加 'town'：小镇是她自己的日子",
-    '次数由 townPlanDay 在 idle 下压到 1 次',
     "'town'（鱼缸小镇）也放行",
-    '次数由 townPlanDay 在 idle 下压成 1',
+    // 2026-11-22 摸鱼日改去小镇：次数提到 4 次，两处注释同步换过
+    '省下来的时间给小镇（见 town-jobs.js 的 townPlanDay 与动作上限）',
+    '次数由 town-jobs.js 的 townPlanDay 决定',
     "return ['diary', 'chat', 'watch', 'qzone-public', 'wake', 'todo', 'town'].includes(act)"
   ],
+  // 2026-11-22 摸鱼日：设置页模式说明里点了 town-jobs.js（不写死次数，只指路）
+  'plugins/stellar/lib/client.js': ['这里**不写小镇次数**'],
   'src/capabilities.js': ["id: 'town',", "path: 'town.enabled',"],
+  // 新增的摸鱼模式测试自己也要提小镇：逐条登记，改动都在它的断言里
+  'scripts/test-idle-mode.mjs': [
+    "'town'",
+    'town-jobs.js',
+    'townPromptLine',
+    'townJobs',
+    'townPlanDay',
+    'town-prompt.js',
+    '{ town: { enabled: false } }',
+    'town: { enabled: true }'
+  ],
   'plugins/stellar/tools/lib/config.mjs': ['fishbowl-town/settings.json', 'town: { enabled:', '把 actions 改成 true'],
   'scripts/test-audit.mjs': [
     '鱼缸小镇（2026-11-21）',

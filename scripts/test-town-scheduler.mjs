@@ -113,10 +113,11 @@ ok(/actionDailyMax:\s*3/.test(defaults) && /actionMinGapMin:\s*15/.test(defaults
 ok(/town:\s*\{[\s\S]{0,600}?dailyBudgetCNY:\s*1/.test(defaults), 'config 默认日预算 ¥1');
 ok(caps.includes("id: 'town'") && caps.includes("path: 'town.enabled'"), 'capabilities 注册 town 开关');
 
-// 8.5 摸鱼模式也回家，但一天只看一眼
+// 8.5 摸鱼模式更要多回家（2026-11-22 主人：省下的刷视频时间给小镇）
 const runMode = fs.readFileSync(path.join(root, 'plugins', 'stellar', 'lib', 'run-mode.js'), 'utf8');
 ok(/\['diary', 'chat', 'watch', 'qzone-public', 'wake', 'todo', 'town'\]/.test(runMode), "idle 白名单含 'town'（周末也能回小镇）");
-ok(/runModeNow\(\) === 'idle' \? 1 : want/.test(scheduler), 'idle 下小镇次数压到 1 次');
+ok(/const IDLE_TOWN_WAKES = 4/.test(scheduler), '摸鱼日的小镇次数是个具名常量（IDLE_TOWN_WAKES = 4）');
+ok(/runModeNow\(\) === 'idle' \? Math\.max\(want, IDLE_TOWN_WAKES\) : want/.test(scheduler), 'idle 下小镇次数取 max(配置, 4)（不再压到 1 次）');
 ok(runMode.includes("if (m === 'minimal') return act === 'reply'"), 'minimal 仍然只放 reply（小镇不跑）');
 
 // 8.6 日预算闸真的接线了（不是只写在默认值里）

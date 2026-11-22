@@ -40,7 +40,7 @@ function setRunMode(mode) {
   if (!RUNMODE.canWrite) return;
   var hint = mode === 'minimal'
     ? '最低限度：她不再自己醒，也不刷视频/动态，只有 QQ 有人说话才醒，醒 2 分钟没人理就睡回去。确定？'
-    : (mode === 'idle' ? '摸鱼模式：每日任务只留写日志，醒来更勤、刷视频 60 个/天、好友爱看 20 条/天，会更主动找人聊。确定？' : '正常模式：照常做全部每日任务。确定？');
+    : (mode === 'idle' ? '摸鱼模式：每日任务只留写日志；视频和好友爱看按平常量，醒得更勤，多待在小镇，也更主动找人聊。确定？' : '正常模式：照常做全部每日任务。确定？');
   if (!confirm(hint)) return;
   var msg = el('modeMsg');
   if (msg) { msg.textContent = '切换中…'; msg.className = 'msg'; }

@@ -166,8 +166,13 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 4. 影子会话 id 固定 `town-whale`；`retire()` 会一并收掉，不残留孤儿会话。
 5. 每天次数**先占位再叫醒**：写 `state/town/wake.json` 之后才建会话、投递提示，
    投递失败也不会在同一个窗口里反复重试把 3 次烧成无限次。
-6. 运行模式：`normal` 按 `wakesPerDay` 醒；`idle`（周末默认 / 手动摸鱼）**也回家，但一天只醒 1 次**
-   （`townPlanDay` 在 idle 下把次数压成 1 —— 回家本身不花钱）；`minimal` 仍然一次不跑。
+6. 运行模式：`normal` 按 `wakesPerDay` 醒；`idle`（周末默认 / 手动摸鱼）**回家次数至少 4 次**
+   （`townPlanDay` 取 `max(wakesPerDay, IDLE_TOWN_WAKES=4)` —— 2026-11-22 的要求「摸鱼日多待在小镇」；
+   同一天 idle 也不再抬 B站视频与好友爱看的条数，那两项回落到 `bili.config.json` 的平常值）。
+   `minimal` 仍然一次不跑。
+   注意：如果官方插件 `dsh-fishbowl-town` 接管了回合（`pluginTakesTurns()` 为真），这套影子唤醒整个让位，
+   次数改由插件自己的 `decideEveryMinutes` / `wakeMinMinutes` 决定 —— 我们的「多去小镇」这时体现为
+   唤醒提示里那句「今天是摸鱼日，时间给小镇」。
 7. 小镇自己的日预算：`townBudgetBlocked` 读 token 日账里的 `town` 那格，花到 `dailyBudgetCNY`（默认 ¥1）
    当天就不再唤醒；超过 `softBudgetCNY`（默认 ¥0.3）只在唤醒词里劝一句「能不去花钱的地方就别去」。
    全局额度（`budgetBlockedNow`）是另一道闸，两道都过才醒。
@@ -256,7 +261,7 @@ node scripts/town-remove.mjs            # 人看的清单
 node scripts/town-remove.mjs --json     # 机器可读：files / core / unknown / notes
 ```
 
-当前计划是 **files 30 / core 70 / unknown 0**——`unknown` 必须一直是 0，出现就说明有新的耦合点，先补白名单或用中文注释改写。
+当前计划是 **files 38 / core 175 / unknown 0**——`unknown` 必须一直是 0，出现就说明有新的耦合点，先补白名单或用中文注释改写。
 
 真要删（`fs.rmSync` 后逐个 `existsSync` 复查，沙箱下删除会假成功）：
 

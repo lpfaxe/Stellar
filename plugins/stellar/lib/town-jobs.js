@@ -24,6 +24,10 @@ export function createTownJobs(deps = {}) {
   //            → 峰时/预算 → 时间窗 → 今天醒够没 → 最小间隔。
   //   记忆库放 state/town/（不进安装清单、不进发布包）；TTL 由采集器每次顺带执行。
   const TOWN_SESSION_ID = 'town-whale'
+  // 摸鱼日的小镇时间（2026-11-22 主人：摸鱼别多刷视频，多待在小镇）。
+  //   原来是「idle 压到 1 次」——那是怕周末变成按表交作业；现在主人的要求反过来：
+  //   把省下来的刷视频时间放回小镇，所以 idle 至少 4 次（配置 wakesPerDay 更大就按配置）。
+  const IDLE_TOWN_WAKES = 4
   const TOWN_DIR = path.join(dshHome, 'stellar', 'state', 'town')
   const TOWN_WAKE = path.join(TOWN_DIR, 'wake.json')
   let townBusy = false
@@ -151,6 +155,10 @@ export function createTownJobs(deps = {}) {
     const T = townCfg()
     if (T.actions !== true) return '这一版动作没开：不坐下、不玩牌、不请客、不 social、不发消息。'
     const seen = townActionsToday()
+    // 动作上限只认配置里的 actionDailyMax（默认 3，这里夹到 1..6 只防写坏）：
+    // 真正拦人的是 src/town-actions.js 的 actionGate（town-tools.js 传同一个 T.actionDailyMax）。
+    // 2026-11-22 想把摸鱼日的配额调高，但**两处必须同源**（PITFALLS #313），否则这里说还能动 7 次、
+    // 工具那边第 6 次就被闸掉。既然主人这次没要求加钱，就不动这一项。
     const cap = Math.max(1, Math.min(6, Number(T.actionDailyMax ?? 3) || 3))
     const left = Math.max(0, cap - seen)
     if (left <= 0) return '今天自己动手的机会已经用完了（' + seen + '/' + cap + '），这轮就只看、记一句。'
@@ -182,9 +190,10 @@ export function createTownJobs(deps = {}) {
    */
   function townPlanDay(T = townCfg(), now = new Date()) {
     const want = Math.max(1, Math.min(6, Number(T.wakesPerDay ?? 3) || 3))
-    // 摸鱼模式（周末 / 手动 idle）里她只回家看一眼：次数压到 1，别把「自己的日子」
-    // 变成按表交作业。minimal 不放行 town（见 run-mode.js 的白名单）。
-    const n = runModeNow() === 'idle' ? 1 : want
+    // 摸鱼模式（周末 / 手动 idle）：**多**去小镇，至少 IDLE_TOWN_WAKES 次（配置更大就按配置）。
+    // 2026-11-22 主人：「让她花更多时间在鱼缸小镇上」——原来这里压到 1 次，等于摸鱼日
+    // 反而最不去小镇。minimal 仍然不放行 town（见 run-mode.js 的白名单）。
+    const n = runModeNow() === 'idle' ? Math.max(want, IDLE_TOWN_WAKES) : want
     const from = minuteOf(T.window?.start, 9 * 60)
     const to = minuteOf(T.window?.end, 23 * 60)
     const span = to - from

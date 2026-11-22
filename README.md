@@ -458,7 +458,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 ## 九、开发
 
 ```bash
-npm run test:audit              # 默认门禁（214 个脚本，其中 184 条进 audit；离线；需要完整面板的几条在公开仓库里自动 SKIP）
+npm run test:audit              # 默认门禁（216 个脚本，其中 186 条进 audit；离线；需要完整面板的几条在公开仓库里自动 SKIP）
 npm run test:regressions        # 桥接 / 协议回归
 npm run privacy-scan:strict     # 发布前隐私扫描（0 命中才可发布）
 npm run guard:check             # DSH 升级后先跑（asar 会话护栏补丁是否还在）

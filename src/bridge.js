@@ -16303,7 +16303,10 @@ function saveSocialV2State() {
     // 分层记忆优先：按当前消息检索 Top-K（只给摘要+id），没有命中才退回预渲染记忆卡。
     // 小镇（2026-11-21）：整段提示在 src/town-prompt.js 里（发布版默认不启用：必须显式 town.enabled=true 才给指针）。
     // 拆除：删 town-prompt.js + 这一行。
-    const townLine = townPromptLine({ stellarDir: STELLAR_DIR });
+    // 摸鱼日多给一句「时间给小镇」（2026-11-22 主人）；模式读不到就当正常模式。
+    let townMode = 'normal';
+    try { townMode = currentRunMode({ config: readConfigObject(path.join(ROOT, 'config.json')) }).mode; } catch {}
+    const townLine = townPromptLine({ stellarDir: STELLAR_DIR, mode: townMode });
     const memorySettings = readUnifiedMemorySettings();
     // 先让读侧去刷新（第一次唤醒它给的是上一次的缓存，进程刚起时为空 → 下面自动退回旧卡片）。
     warmMemoryFor(key, lastMsg);
