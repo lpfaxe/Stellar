@@ -56,6 +56,10 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 4. 想让她自己动手（串门 / 玩一局 / 出门逛），再把 `town.actions` 改成 `true`（**默认 false**）。
    只读模式也能用：看得到谁来串门、能查最近三天、能写一句今天的感受。
 
+**地址（`baseUrl`）从哪来**：先看这条鱼自己的 `base`，再看全局 `base`（官方插件 0.9.8 起改用的键名），
+再看遗留的 `baseUrl`，都没有才回默认。默认仍指老入口 `https://fishbowltown.com/town/api/outside` ——
+这些老镇端点（`/album`、`/chats` 等）只有老镇有，**官方已宣布老镇 2026-11-28 关门**，到时要按第 10 节拆掉这套。
+
 ### 可调项（`<DSH_HOME>/stellar/bili.config.json` 的 `town`）
 
 | 键 | 默认 | 说明 |
@@ -153,7 +157,8 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 
 ## 6. 安全边界
 
-1. 域名白名单：`fishbowltown.com` / `fish.bside-moon.cn`，只认 https，禁端口/凭据，**不跟随重定向**。
+1. 域名白名单：`fishbowltown.com` / `api.fishbowltown.com`（官方 0.9.8 起的新入口机）/ `fish.bside-moon.cn`，
+   只认 https，禁端口/凭据，**不跟随重定向**。
 2. 响应 ≤512KB，只收 JSON；动作端点只有 `visit / play / goto`，其余路径直接拒；
    `goto` 的 `do` 还要过地点白名单（pier: fish|swim、arcade: play、make: start|harvest、court: watch），
    送礼 / 兑换 / social 这类端点从来没进白名单。

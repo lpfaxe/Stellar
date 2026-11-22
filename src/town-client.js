@@ -2,7 +2,8 @@
  * Stellar —— 鱼缸小镇（Fishbowl Town）HTTP 客户端。
  *
  * 边界（这部分是安全关键，改动前先读注释）：
- * - 只允许 https + 白名单域名（fishbowltown.com / fish.bside-moon.cn），禁私网、禁端口、禁凭据；
+ * - 只允许 https + 白名单域名（fishbowltown.com / api.fishbowltown.com / fish.bside-moon.cn），
+ *   禁私网、禁端口、禁凭据；
  * - **不跟随重定向**（3xx 一律报错），防止被引到别的域；
  * - 响应体 ≤ 512KB，超了直接拒；只接受 JSON；
  * - 访问码 fbo_* 只从 fishbowl-town 插件的 settings.json 读，绝不写日志/错误/快照；
@@ -11,7 +12,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const TOWN_HOSTS = Object.freeze(['fishbowltown.com', 'fish.bside-moon.cn']);
+// api.fishbowltown.com 是官方插件 0.9.8 起的新入口机（老入口 fishbowltown.com 2026-11-28 关门）。
+export const TOWN_HOSTS = Object.freeze(['fishbowltown.com', 'api.fishbowltown.com', 'fish.bside-moon.cn']);
 export const DEFAULT_BASE = 'https://fishbowltown.com/town/api/outside';
 export const ACT_PATHS = Object.freeze(['visit', 'play', 'goto']);
 export const MAX_BODY_BYTES = 512 * 1024;
@@ -72,7 +74,9 @@ export function readTownSettings(dshHome, { fishId } = {}) {
     persona: String(hit.persona || ''),
     chatSid: String(hit.chatSid || ''),
     alsoSids: Array.isArray(hit.alsoSids) ? hit.alsoSids.map(String) : [],
-    baseUrl: normalizeBaseUrl(conf.baseUrl || DEFAULT_BASE),
+    // 地址来源（先到先用）：这条鱼自己的 base → 插件全局 base（0.9.8 起的键名）→ 遗留 baseUrl → 我们的默认。
+    // DEFAULT_BASE 故意仍指老入口：我们这些老镇端点（album/chats/…）只有老镇有，11-28 关门后再单独议。
+    baseUrl: normalizeBaseUrl(hit.base || conf.base || conf.baseUrl || DEFAULT_BASE),
   };
 }
 

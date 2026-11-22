@@ -34,6 +34,10 @@ await check('https + 白名单域名通过', () => {
   assert.equal(normalizeBaseUrl('https://fishbowltown.com/town/api/outside'), 'https://fishbowltown.com/town/api/outside');
   assert.equal(normalizeBaseUrl('https://fish.bside-moon.cn/town/api/outside/'), 'https://fish.bside-moon.cn/town/api/outside');
 });
+await check('新入口机 api.fishbowltown.com 通过（插件 0.9.8 起）', () => {
+  assert.equal(normalizeBaseUrl('https://api.fishbowltown.com/town/api/outside'), 'https://api.fishbowltown.com/town/api/outside');
+  assert.equal(normalizeBaseUrl('https://api.fishbowltown.com/town/api/outside/'), 'https://api.fishbowltown.com/town/api/outside');
+});
 await check('http 被拒', () => assert.throws(() => normalizeBaseUrl('http://fishbowltown.com/town/api/outside'), /https/));
 await check('别的域名被拒', () => assert.throws(() => normalizeBaseUrl('https://evil.example.com/town/api/outside'), /白名单/));
 await check('带端口被拒', () => assert.throws(() => normalizeBaseUrl('https://fishbowltown.com:8443/town/api/outside'), /端口/));
@@ -137,6 +141,25 @@ await check('读到 fish[0] 且不吞码', () => {
   assert.deepEqual(a.alsoSids, ['qq:1']);
   assert.equal(readTownSettings(tmp, { fishId: 'b' }).code, 'fbo_second');
   assert.equal(readTownSettings(tmp, { fishId: 'c' }), null, '禁用的鱼不该被选中');
+});
+await check('地址优先级：鱼级 base → 全局 base → 遗留 baseUrl', () => {
+  const file = path.join(tmp, 'fishbowl-town', 'settings.json');
+  const write = (conf) => fs.writeFileSync(file, JSON.stringify(conf));
+  // 只有遗留 baseUrl：照旧认它
+  write({ baseUrl: 'https://fish.bside-moon.cn/town/api/outside', fish: [{ id: 'a', code: 'fbo_a', enabled: true }] });
+  assert.equal(readTownSettings(tmp).baseUrl, 'https://fish.bside-moon.cn/town/api/outside');
+  // 插件 0.9.8 的新键 base 覆盖它
+  write({ baseUrl: 'https://fish.bside-moon.cn/town/api/outside', base: 'https://api.fishbowltown.com/town/api/outside', fish: [{ id: 'a', code: 'fbo_a', enabled: true }] });
+  assert.equal(readTownSettings(tmp).baseUrl, 'https://api.fishbowltown.com/town/api/outside');
+  // 这条鱼自己的 base 最优先
+  write({ base: 'https://api.fishbowltown.com/town/api/outside', fish: [{ id: 'a', code: 'fbo_a', base: 'https://fishbowltown.com/town/api/outside', enabled: true }] });
+  assert.equal(readTownSettings(tmp).baseUrl, 'https://fishbowltown.com/town/api/outside');
+  // 什么都没填：回我们的默认（老入口）
+  write({ fish: [{ id: 'a', code: 'fbo_a', enabled: true }] });
+  assert.equal(readTownSettings(tmp).baseUrl, 'https://fishbowltown.com/town/api/outside');
+  // 越界域名照样 fail-closed
+  write({ base: 'https://evil.example.com/town/api/outside', fish: [{ id: 'a', code: 'fbo_a', enabled: true }] });
+  assert.throws(() => readTownSettings(tmp), /白名单/);
 });
 await check('坏 JSON 回 null 不抛', () => {
   fs.writeFileSync(path.join(tmp, 'fishbowl-town', 'settings.json'), '{broken');
