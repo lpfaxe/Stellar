@@ -108,6 +108,52 @@ test('排版：一条都连不上时给可行动的原因，别报一串死链�
   assert.ok(!text.includes('实测连得上'));
 });
 
+test('排版：公网隧道排在最前，并说清「手机流量能开 + 只读」', () => {
+  const text = bridge.formatRemoteLink({
+    port: 3300,
+    host: '0.0.0.0',
+    urls: [
+      { kind: 'tunnel', url: 'https://abc-def.trycloudflare.com/', reachable: true, mode: 'quick' },
+      { kind: 'lan', url: 'http://192.168.1.23:3300/', reachable: true }
+    ],
+    tunnel: { url: 'https://abc-def.trycloudflare.com/', running: true, mode: 'quick', permanent: false, error: '' },
+    login: null
+  });
+  const tunAt = text.indexOf('公网隧道（手机流量）：');
+  const lanAt = text.indexOf('局域网：');
+  assert.ok(tunAt > 0 && lanAt > tunAt, '隧道要排在局域网前面');
+  assert.match(text, /手机流量也能打开/);
+  assert.match(text, /只能看和点审批/);
+  assert.match(text, /快速隧道，地址会变/);
+});
+
+test('排版：隧道没开时说清去哪儿开，而不是沉默', () => {
+  const text = bridge.formatRemoteLink({
+    port: 3300,
+    host: '0.0.0.0',
+    urls: [{ kind: 'lan', url: 'http://192.168.1.23:3300/', reachable: true }],
+    tunnel: { url: '', running: false, mode: 'quick', permanent: false, error: '' },
+    login: null
+  });
+  assert.match(text, /公网那条（手机流量也能开的那种）现在没开/);
+  assert.match(text, /「手机访问」里点「开启远程访问」/);
+});
+
+test('排版：隧道有地址但连不上时，提示可能被 Cloudflare 回收', () => {
+  const text = bridge.formatRemoteLink({
+    port: 3300,
+    host: '0.0.0.0',
+    urls: [
+      { kind: 'tunnel', url: 'https://dead.trycloudflare.com/', reachable: false },
+      { kind: 'lan', url: 'http://192.168.1.23:3300/', reachable: true }
+    ],
+    tunnel: { url: 'https://dead.trycloudflare.com/', running: true, mode: 'quick', permanent: false, error: '' },
+    login: null
+  });
+  assert.match(text, /现在连不上/);
+  assert.match(text, /回收/);
+});
+
 // ── 面板这一侧 ────────────────────────────────────────────────────────────
 if (!panelReady) {
   test('SKIP 面板侧：这个仓库里的 stellar-manager 没有 lib/access-link.js（最小控制台）', () => {});
@@ -189,5 +235,38 @@ if (!panelReady) {
     const info = await panel.buildRemoteLink({ code: true, links, probe: async () => false });
     assert.equal(info.opened, false);
     assert.equal(info.login, null);
+  });
+
+
+  test('隧道：不管面板绑哪张网卡都要报出来，且排在候选第一位（https）', () => {
+    const nets = { tailnet: [], lan: [{ name: 'w', address: '192.168.1.23' }], v6: [] };
+    const list = panel.candidateLinks({
+      host: '127.0.0.1', port: 3300, nets,
+      tunnel: { url: 'https://abc-def.trycloudflare.com/', running: true, mode: 'quick', permanent: false }
+    });
+    assert.equal(list[0].kind, 'tunnel', '面板只绑回环时，隧道仍是唯一出门能开的那条');
+    assert.equal(list[0].url, 'https://abc-def.trycloudflare.com/');
+    assert.equal(list[0].https, true);
+    // 没有隧道就给空，不塞占位地址（打不开的链接比没有更糟）
+    assert.ok(!panel.candidateLinks({ host: '0.0.0.0', port: 3300, nets, tunnel: null }).some((it) => it.kind === 'tunnel'));
+    assert.ok(!panel.candidateLinks({ host: '0.0.0.0', port: 3300, nets, tunnel: { url: '  ' } }).some((it) => it.kind === 'tunnel'));
+  });
+
+  test('隧道：探测打 443 而不是面板端口；可达时 best=tunnel 且码落在隧道上', async () => {
+    const seen = [];
+    const links = [
+      { kind: 'tunnel', address: 'abc-def.trycloudflare.com', url: 'https://abc-def.trycloudflare.com/', https: true },
+      { kind: 'lan', address: '192.168.1.23', url: 'http://192.168.1.23:3300/' }
+    ];
+    const info = await panel.buildRemoteLink({
+      code: true, links,
+      tunnel: { url: 'https://abc-def.trycloudflare.com/', running: true, mode: 'quick', permanent: false },
+      probe: async (address, port) => { seen.push(address + ':' + port); return true }
+    });
+    assert.deepEqual(seen.sort(), ['192.168.1.23:3300', 'abc-def.trycloudflare.com:443'].sort());
+    assert.equal(info.best, 'tunnel');
+    assert.ok(info.login.url.startsWith('https://abc-def.trycloudflare.com/?code='));
+    assert.equal(info.login.via, 'tunnel');
+    assert.equal(info.tunnel.running, true);
   });
 }

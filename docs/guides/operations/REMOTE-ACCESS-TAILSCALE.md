@@ -93,8 +93,46 @@
 | 她回「拿不到远控地址：…」 | 面板没跑 / 端口不是 3300：先看 `Get-NetTCPConnection -LocalPort 3300`，或用 `STELLAR_PANEL_PORT` 告诉她端口 |
 | 她回「远控地址只能在本机上取」 | 有人用局域网地址打这条路由（或者她被换到了别的主机）——这是设计 |
 | 链接点开说码无效 | 超过 5 分钟或已经用过一次；再调一次带 `link=true` |
-| 只有「局域网 + 本机」两行 | 没装/没连 Tailscale，且面板跑默认 `HOST='0.0.0.0'`（只开 IPv4）。要 IPv6 那行就设 `STELLAR_PANEL_HOST='::'` 再重启面板 |
+| 只有「局域网 + 本机」两行 | 隧道没开（控制台「手机访问」里点一次「开启远程访问」）。另外没装/没连 Tailscale，面板跑默认 `HOST='0.0.0.0'`（只开 IPv4）；要 IPv6 那行就设 `STELLAR_PANEL_HOST='::'` 再重启面板 |
 | 工具根本不出现 | 要**重启 DSH** 才会注册（`src/mcp-snowluma-safe.js` 的改动属进程内） |
+
+### 手机流量也能打开的那一条：把隧道算进候选（2026-11-23 补）
+
+入口表原来只扫网卡（tailnet / 局域网 / IPv6 / 本机），**手机上用流量时一条都打不开**——
+主人在外面问「把控制台地址发我」，她只会报 `http://192.168.0.3:3300/` 这种出了门就废的地址。
+现在面板把 `lib/tunnel.js` 的隧道状态一起算进候选，**排序第一**：
+
+| 候选 | 从哪来 | 出了家门能用吗 |
+| --- | --- | --- |
+| `tunnel` 公网隧道 | `tunnelState().url`（cloudflared 快速/命名隧道） | ✅ 手机流量可以；走 Cloudflare，**只读** |
+| `tailnet` | Tailscale 100.x | ✅ 装了且两端都登同一账号时 |
+| `lan` | 内网网卡 | ❌ 只在同一 WiFi |
+| `v6` | 公网 IPv6（要 `HOST='::'`） | 看运营商与对方网络 |
+| `local` | 127.0.0.1 | ❌ 只有本机 |
+
+- 隧道那条探测的是 **hostname:443**（不是面板端口 3300），因为它是 Cloudflare 边缘的 https 入口——
+  探测端口按候选自己的协议选（`buildRemoteLink` 里 `it.https ? 443 : port`）。
+- 隧道跟面板绑哪张网卡无关（cloudflared 自己连出去、回转到 `127.0.0.1:3300`），所以**不做** `binds()` 过滤：
+  哪怕面板只听回环，隧道那条照样要报。
+- 隧道没开 / 开着但没拿到地址 / 被 Cloudflare 回收，她那边分别说清「去控制台『手机访问』开一次」/
+  「还在起，十几秒后再问」/「现在连不上，可能被回收了」——不沉默，也不报死链。
+- 快速隧道（quick）地址会变，她排版时补一句「地址会变，要固定地址得配命名隧道」；
+  要稳定的公网入口就在面板里填命名隧道 token。
+
+**只读是硬闸**：走隧道进来一律 `requestScope() === 'public'`，`requireWrite()` 回 403 `readonly-public`
+（能看、能点审批，改数据要回本机或同一 WiFi）。
+
+### 本机实测（2026-11-23，隧道在跑）
+
+| 请求 | 结果 |
+| --- | --- |
+| 回环 `POST /api/remote-link {"code":false}` | 200，`best: "tunnel"`；第一条是「公网隧道（手机流量）`https://….trycloudflare.com/`（连得上）」，后面才是局域网、本机；`login: null` |
+| 同一端点 `{"code":true}` | 200 + `login.via = "tunnel"`、`ttlSec: 300`，链接落在隧道域名上 |
+| 从**公网**打开那条带码链接 | **302 + Set-Cookie**（真能换会话） |
+| 拿这个 Cookie 走隧道 `GET /api/status` | 200（能看） |
+| 拿这个 Cookie 走隧道 `POST /api/action` | 403 `readonly-public`「公网隧道只能查看和审批」 |
+| 从局域网地址访问 `/api/remote-link` | 403 `local-only`（来源被判 lan，正是设计） |
+| 不带 `x-panel-request: panel` | 403（防跨站） |
 
 ---
 

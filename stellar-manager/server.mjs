@@ -73,7 +73,9 @@ const server = http.createServer(async (req, res) => {
       const badCross = crossSite(req)
       if (badCross) return sendJson(res, 403, { ok: false, message: badCross })
       const body = await readBody(req)
-      const info = await buildRemoteLink({ code: body && body.code === true })
+      // 隧道状态也一起带过去：她在外面能不能开，取决于 cloudflared 那条通不通
+      // （ensureTunnel 顺手处理「进程没了」「快速隧道被回收」，30 秒节流，不会把这里拖慢）。
+      const info = await buildRemoteLink({ code: body && body.code === true, tunnel: ensureTunnel() })
       appendAudit('remote-link', { withCode: Boolean(info && info.login), ip: clientIp(req) })
       return sendJson(res, 200, { ok: true, ...info })
     }
