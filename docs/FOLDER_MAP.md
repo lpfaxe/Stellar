@@ -42,7 +42,7 @@
 
 | 前缀 | 意思 | 举例 |
 | --- | --- | --- |
-| `test-*.mjs` | 回归（**217 个**，`test:audit` 跑其中 187 个） | `test-memory-db.mjs` |
+| `test-*.mjs` | 回归（**219 个**，`test:audit` 跑其中 189 个） | `test-memory-db.mjs` |
 | `probe-*.mjs` | 手工探针（要真环境，不进回归） | `probe-events.mjs` |
 | `verify-*.mjs` | 断言某件事仍然成立 | `verify-dsh-020-adaptation.mjs` |
 | `bootstrap*` | 首次启动引导（幂等，绝不覆盖已有配置） | `bootstrap.mjs` |
@@ -69,7 +69,7 @@
 | 子目录 | 作用 |
 | --- | --- |
 | `lib/` | 定时器（生物钟、每日任务、记忆作业）、记忆引擎判定（`memory-engine.js`）、设置页 UI、路径解析 |
-| `tools/bili.mjs` | B站 CLI 入口（**59 条子命令**，`tools/commands/` + `tools/verify/`） |
+| `tools/bili.mjs` | B站 CLI 入口（**60 条子命令**，命令表在 `tools/lib/cmd-map.mjs`，脚本在 `tools/commands/` + `tools/verify/`） |
 | `tools/docs/` + `tools/rules/` | 给 agent 看的命令说明与行为规矩（运行时会被注入） |
 | `persona/` | 分层人格的默认片段 |
 | `presets/` | 由 `dsh/agent-presets/` 生成的 patch（**改源文件后要重跑 build**） |

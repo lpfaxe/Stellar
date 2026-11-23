@@ -74,6 +74,18 @@ B站 那条 DSH 会话默认 `danger-full-access`（`bili.config.json` 的 `agen
 
 B站 侧跑在她自己那条固定 DSH 会话里（`bili-whale` / `bili-whale-<角色id>`），跨天保留上下文，不是每天开新会话；要清就重开会话。这条会话与你的聊天窗口互不影响。
 
+### 2.4 醒来先跑一条命令
+
+唤醒提示（`lib/scheduler.js` 的 `wakePrompt()`）教她把**只读**命令用 `;` 串成一条 pwsh 一次跑完：
+
+```powershell
+node bili.mjs deps; node bili.mjs status
+```
+
+`deps` 体检，`status` 一次给全（今天看/记分/评论/搭话/分享/收藏/点赞/动态的进度、本周额度、各动作冷却、今天评分、两本日记末几行），**不用再一条条查**。写操作（`--go` 的评论、动态、收藏、分享、搭话）一次只跑一条，看完结果再决定下一条。
+
+省的是**调用次数**：一次模型调用 ≈ 重读一遍上下文（实测一次往返约 ¥0.04），而多几个字的输出几乎不要钱。
+
 ---
 
 ## 3. 会写出去的东西
@@ -119,10 +131,11 @@ B站 侧跑在她自己那条固定 DSH 会话里（`bili-whale` / `bili-whale-<
 | `debrief` / `watch-video` / `subtitles` / `video` | 不点开视频也能知道它讲什么：简介、字幕、弹幕、热评、抽帧 |
 | `watch-history` / `likes` / `fav` | 她看过什么、赞过什么、收藏了什么 |
 | `comments` / `comment-digest` / `check-reply` | 评论区内容与「谁找过我」 |
+| `status` | 一眼看全：今天各类动作进度、本周额度、各动作冷却剩余、最近评分、两本日记末几行（纯只读，一趟调一次就够） |
 | `prefs` / `quota` / `pool` / `cost` | 偏好、额度余量、素材池、花费 |
 | `my` / `whois` / `session` | 账号信息、认人、凭据状态 |
 
-全部子命令用 `node bili.mjs` 不带参数列出来（当前 59 条）。
+全部子命令用 `node bili.mjs` 不带参数列出来（当前 60 条；命令表只有一份，在 `tools/lib/cmd-map.mjs`，`bili.mjs` 只是转发）。`deps` 会顺带打印**写类命令的参数摘要**（16 条，每条都带 `--dry|--go`），一般不用再单独跑 `--help`。
 
 ### 4.1 看视频：先看目录，再问细节
 
@@ -132,6 +145,10 @@ B站 侧跑在她自己那条固定 DSH 会话里（`bili-whale` / `bili-whale-<
 索引来自 `debrief`（`shots/` 里存分段字幕摘要，`shots.retentionDays` 过期后会提示重新 debrief）；
 `watch` 自己也会建索引，所以第一次 `find` 不必先跑 `debrief`。
 **字幕全文只落盘、不进上下文** —— 想读全文是 `read` 一个文件，不是把整条字幕塞进对话。
+
+### 4.2 一次看几条：`debrief` 可以批量
+
+`node bili.mjs debrief BV1xx411c7mD BV1yy411c7mE BV1zz411c7mF --no-frames` 一次最多 5 条，逐条打印并标 `===== [i/n] BV… =====`，末尾给「成功 X 条，失败 Y 条」；超出 5 条会明说「只跑前 5 条」而不静默丢。单条仍走原来的路径。
 
 ---
 
@@ -152,6 +169,15 @@ B站 唤醒上下文里原来的**旧记忆卡块**（`memoryCardPromptBlock()`�
 ### 5.3 日记
 
 `diary` 写 `characters/<角色>/bili/whale-diary.md`（叙事）与 `whale-log.jsonl`（结构化）。面板「记日记」统计的是后者。
+
+写完一天的话用 **`diary append`** 追加，不用把整篇读进来再写回：
+
+```powershell
+node bili.mjs diary append --public "夜读十条，记住了一句话"          # 公开日记
+node bili.mjs diary append --private --heading "21:40" "今天有点累"   # 私密日记
+```
+
+只追加、不覆盖；文件不存在才补标题行；单条最多 4000 字；`diary.enabled=false` 时不写（照常退出 0）。
 
 ---
 
@@ -243,6 +269,7 @@ B站 评论与动态是公开面，一旦把主人的 QQ 号、主人的 B站 mi
 | 空间监看报「响应结构异常」 | 上游偶发或限流，不是本地配置问题；过一会儿自己好 |
 | 数据文件损坏 | 额度账本损坏 = 当作额度用尽（fail-closed）；删对应账本会重置计数 |
 | 她一直不醒 | 运行模式是不是「最低限度」；`night.windows` 是不是被改空 |
+| 每趟都提示「还没跑启动测试」 | 跑一次 `node bili.mjs selftest`；它通过后会写 `selftest-passed.json`，提示就消失（2026-11-23 前它把配置路径写死在 `~/.dsh/bili.config.json`，标记文件因此从来落不下来） |
 
 ---
 

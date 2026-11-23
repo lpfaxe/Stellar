@@ -55,7 +55,8 @@ assert.ok(cmd.includes('recordQuota'));
 assert.ok(cmd.includes('--allow-text'));
 assert.ok(cmd.includes('daily-dynamic.json'));
 
-const registry = fs.readFileSync(new URL('../plugins/stellar/tools/bili.mjs', import.meta.url), 'utf8');
+// 2026-11-23：命令表从 bili.mjs 抽到了 tools/lib/cmd-map.mjs（deps 要按它打印写命令参数）。
+const registry = fs.readFileSync(new URL('../plugins/stellar/tools/lib/cmd-map.mjs', import.meta.url), 'utf8');
 assert.ok(registry.includes("'share-dynamic'"));
 
 // 默认分享方式 = dynamic；旧 comment/dm 仍保留

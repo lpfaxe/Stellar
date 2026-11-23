@@ -1,6 +1,7 @@
 // 「看懂视频」一条龙：封面 + 简介 + 官方字幕 + 弹幕热区 + 热评 + 画面抽帧，六路齐出。
 //
 // 用法: node debrief.mjs <BV> [--bucket 30] [--top 5] [--grid 3x3] [--no-frames] [--substrip 每N秒] [--comments 8] [--cimages N 评论图] [--sort hot|new] [--replies 楼中楼条数]
+//       node debrief.mjs BV1 BV2 BV3 …  批量（最多 5 条，逐条跑，每条之间空一行）
 // 产出: 终端摘要 + 封面图 + 字幕 TXT + 弹幕对齐表 + 九宫格/字幕带（后三者交给 read_image / 模型合成）
 //
 // 设计（2026-10-14，主人定义为「看懂视频」大模块）：
@@ -16,7 +17,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import zlib from 'node:zlib'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { config } from '../lib/config.mjs'
 import { appendWatch } from '../lib/watch-history.mjs'
@@ -25,8 +26,29 @@ import { addImage } from '../lib/image-pool.mjs'
 import { fetchComments, fetchSubReplies } from '../lib/bili-comments.mjs'
 import { grabImage, biliCommentImageUrls } from '../lib/image-fetch.mjs'
 import { buildDigest, coverageText, outlineText } from '../lib/subs-digest.mjs'
+import { BV_RE, batchPlan, pickBvs } from '../lib/cmd-batch.mjs'
 
 const argv = process.argv.slice(2)
+const bvs = pickBvs(argv)
+
+// 批量（2026-11-23 加）：debrief 一次只能一条视频，她一趟要看 3~5 条就得 3~5 次模型往返。
+// 多条时本进程**逐条 spawn 自己**（参数原样带上，只去掉 BV），每条前打表头、最后给一条汇总。
+// 单条绝不进这个分支 —— 否则子进程又看到多个 BV，无限递归。
+if (bvs.length > 1) {
+  const plan = batchPlan(bvs)
+  const others = argv.filter((a) => !BV_RE.test(a))
+  if (plan.dropped) console.log(`只跑前 ${plan.bvs.length} 条（其余 ${plan.dropped} 条没跑）`)
+  let okN = 0
+  let badN = 0
+  for (let i = 0; i < plan.bvs.length; i += 1) {
+    console.log(`\n${plan.header(i + 1)}`)
+    const r = spawnSync(process.execPath, [import.meta.filename, plan.bvs[i], ...others], { stdio: 'inherit' })
+    if (r.status === 0) okN += 1
+    else badN += 1
+  }
+  console.log(`\n===== 批量结束：成功 ${okN} 条，失败 ${badN} 条 =====`)
+  process.exit(0)
+}
 const bvid = argv.find((a) => !a.startsWith('--'))
 if (!bvid) { console.error('用法: node debrief.mjs <BV> [--bucket 30] [--top 5] [--grid 3x3] [--no-frames]'); process.exit(2) }
 const opt = {}

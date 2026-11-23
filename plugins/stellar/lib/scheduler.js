@@ -331,6 +331,10 @@ export function wakePrompt(st, tools = '') {
     // 2026-10-20：她的会话 cwd 是**用户主目录**，那里没有 bili.mjs ✗
     //   → 每条提示都带上工具链的绝对路径，别让她满盘找（她真的找过，还超时了 ✗）
     ...(tools ? [`［工具］所有命令都用这一条：\`${tools}\`（下面写 "bili.mjs" 的都指它）—— 别去别处找 ✗`, ''] : []),
+    // 2026-11-23（主人 m06694 批的「B站 花费减半」甲5）：查一次状态 = 一个完整回合 ≈ ¥0.04，
+    //   而只读命令之间没有依赖 → 教她串成一条 pwsh 一次跑完，写操作才一条一条来。
+    '［省 token］**只读命令用 `;` 串成一条 pwsh 一次跑完**：deps / status / feed / debrief / find / diary tail / comment-digest / quota status / watch-history / likes / fish-guard status 都算，',
+    '   例：`node bili.mjs deps; node bili.mjs status`。写操作（--go 的评论、动态、收藏、分享、搭话）一次只跑一条，看完结果再决定下一条 ✗',
     // 2026-10-20：先告诉她"冷了几天"，再给流程 —— 心情在前，任务在后 ✓
     // 2026-10-20：还没跑过启动测试 → 第一句就提醒主人（很多人卡在"找不到会话/没给权限"）
     ...(() => {
@@ -354,7 +358,8 @@ export function wakePrompt(st, tools = '') {
     ...(SILENT
       ? ['⛔ **沉默逛 B 站已开启：本轮只看不说。** 只做 deps / feed / debrief / score / 日记；禁止评论、回复、搭话、发动态、分享、私信、弹幕；不要调用 comment / daily / share-dynamic / dynamic / dm / danmaku 的 --go。']
       : ['⭐ **本轮硬规则（2026-10-23 主人定）：至少发一条主动评论（见 4.7）；鱼群泛滥时强制聚拢，不许以“没有可聚拢鱼楼”跳过；额度/冷却满了除外。**']),
-    '1) `node bili.mjs deps` —— 体检红着就报备我、只做读、别对外发',
+    '1) `node bili.mjs deps; node bili.mjs status` —— 一条跑完：体检红着就报备我、只做读、别对外发；',
+    '   status 一次给全：今天看/记分/评论/搭话/分享/收藏/点赞/动态的进度、本周额度、各动作冷却、今天评分、两本日记末几行 —— **不用再一条条查** ✗',
     `2) 读两本日记（\`${path.join(biliDir, 'whale-diary.md')}\` + \`${path.join(biliDir, 'whale-diary-private.md')}\`）`,
     // 2026-10-20：feed 已默认多源（搜索+热门+排行+关注）+ 去播放量偏向 + 偏好命中权重 ✓
     // 2026-10-23：feed 改成按「口味权重」分名额 + 排除观看历史/最近推过的 + 搜索页轮换。

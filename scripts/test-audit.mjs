@@ -395,6 +395,10 @@ const tests = [
   'test-bili-share-dedup.mjs',
   // 唤醒人格卡注入：二代唤醒必须带人格卡正文，且与 qq_get_prompt 同源（2026-11-01 A1）。
   'test-persona-wake-injection.mjs',
+  // B站省 token 第一批：status 一次给全（只读、不写账本）+ 命令表抽 lib / diary append / debrief 批量
+  //（2026-11-23，甲案 P0：把"每趟十几次只读调用、写命令先 --help"这类往返压掉）。
+  'test-bili-status.mjs',
+  'test-bili-batch.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

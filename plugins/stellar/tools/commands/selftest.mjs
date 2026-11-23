@@ -6,15 +6,17 @@
 //   ① 插件新开的会话在「工作区 → 未分组」里，不点开那个文件夹看不见
 //   ② 那个新会话默认没有完全权限，agent 起来后什么都干不了
 // 这个命令把"该确认的事"列成一张表，缺哪项就直说缺哪项。
-import { accountBili, biliState, biliStateDir } from '../lib/state-paths.mjs'
+import { accountBili, biliState, biliStateDir, BILI_CONFIG } from '../lib/state-paths.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const HOME = (process.env.USERPROFILE || process.env.HOME || '/')
-const DSH = path.join(HOME, '.dsh')
-const CFG = path.join(DSH, 'bili.config.json')
+// 2026-11-23 修：以前写死 <HOME>/.dsh/bili.config.json —— 真配置在 <DSH_HOME>/stellar/bili.config.json，
+//   于是"配置文件"永远 ✗ → bad>0 → selftest-passed.json 从来没落下来 → 她每一趟都被提醒"还没跑启动测试"。
+//   唯一真相用 state-paths 的 BILI_CONFIG（它认 STELLAR_BILI_CONFIG 覆盖，测试沙箱也走得通）。
+const CFG = BILI_CONFIG
 const CRED = accountBili('credentials.json')
 const OK = '✓'
 const NO = '✗'

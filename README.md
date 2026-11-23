@@ -348,7 +348,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 子系统 | 你能看到的能力 | 细节 |
 | --- | --- | --- |
 | **QQ** | 群 / 私聊收发、引用回复、分条、表情包、图片 / 动图、拍一拍、合并转发展开、上线补历史、提问 / 审批回传、四种桥接模式 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) |
-| **B站** | 扫码登录、看视频 / 打分 / 收藏、评论与回帖、发动态（含图文）、弹幕、私信、三连、直播间监听、每日 vlog、分享到 QQ；**58 条 CLI 命令** | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
+| **B站** | 扫码登录、看视频 / 打分 / 收藏、评论与回帖、发动态（含图文）、弹幕、私信、三连、直播间监听、每日 vlog、分享到 QQ；**60 条 CLI 命令** | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
 | **QQ空间** | 看自己的 / 好友的 / 通讯录里某个人的说说、点赞、评论与回复、删自己发的评论；「好友爱看」公开流（看 → 打分 → 点赞 → 评论） | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
 | **记忆** | 话题切分、重要事实（生日 / 忌口 / 过敏 / 地址 / 电话）、见闻区（B站 / 好友爱看）、人物侧写、风格参考库、三级隐私、按人查询 | [MEMORY.md](docs/guides/features/MEMORY.md) |
 | **人格** | 多角色整包切换、自动存档 / 回档、管理员双身份、跨平台身份对齐、风格参考片段注入 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) · [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) |
@@ -406,7 +406,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
 | 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 154 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
 | 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 7 页签与面板 7 页签 / 38 张卡 |
-| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 240 | B站 59 条命令、空间功能、鱼群与弹幕 |
+| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 278 | B站 60 条命令、空间功能、鱼群与弹幕 |
 | 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 85 个工具、守卫、两代 preset |
 | 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 137 | 角色包怎么放、人格卡怎么起作用 |
 | 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 556 | 她为什么会主动找人说话 |
@@ -458,7 +458,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 ## 九、开发
 
 ```bash
-npm run test:audit              # 默认门禁（217 个脚本，其中 187 条进 audit；离线；需要完整面板的几条在公开仓库里自动 SKIP）
+npm run test:audit              # 默认门禁（219 个脚本，其中 189 条进 audit；离线；需要完整面板的几条在公开仓库里自动 SKIP）
 npm run test:regressions        # 桥接 / 协议回归
 npm run privacy-scan:strict     # 发布前隐私扫描（0 命中才可发布）
 npm run guard:check             # DSH 升级后先跑（asar 会话护栏补丁是否还在）

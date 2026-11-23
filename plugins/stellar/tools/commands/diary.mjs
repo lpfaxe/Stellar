@@ -4,6 +4,8 @@
 //   node diary.mjs show [--days 1]      人读摘要：今天看了什么 / 想了什么 / 发了什么 / 额度还剩多少
 //   node diary.mjs log <kind> [--target X] [--note "…"]   记一条结构化事件到 ~/.dsh/stellar/bili/whale-log.jsonl
 //   node diary.mjs tail [--n 20]        最近的结构化事件
+//   node diary.mjs append --public  "正文…"     追加到公开日记 whale-diary.md（只追加，永不整文件覆盖）
+//   node diary.mjs append --private "正文…"     追加到私密日记 whale-diary-private.md（正文含引号就加 --stdin 从管道读；--heading "21:40 夜读十条" 先写一行小标题）
 //
 // 三个数据源（各司其职）：
 //   ~/.dsh/stellar/bili/whale-diary.md      叙事（她自己的话：看过的、想法池、谁回过她）—— 给人读
@@ -32,6 +34,57 @@ const QUOTA = biliState('quota.json')
 const LOG = biliState('whale-log.jsonl')
 const today = () => new Date().toLocaleDateString('sv-SE')
 const hhmm = (iso) => String(iso).slice(11, 16)
+
+// 追加正文（2026-11-23 加）：以前没有写正文的入口，她只能 PowerShell 把整个文件读出来再覆盖写
+// —— 11-23 真的这么干过一次。整文件覆盖只要一次读漏/编码错/并发写就把旧日记弄丢，
+// 所以这里**只 appendFileSync**：文件不存在才写标题行，标题格式照抄现有文件首行（读不到才用默认）。
+// stdin（--stdin）是给"正文里有引号/换行/反引号"的情况留的：PowerShell 里不用再跟转义打架。
+if (cmd === 'append') {
+  const rest = argv.slice(1)
+  let isPrivate = false
+  let fromStdin = false
+  let heading = ''
+  const words = []
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i]
+    if (a === '--public') { isPrivate = false; continue }
+    if (a === '--private') { isPrivate = true; continue }
+    if (a === '--stdin') { fromStdin = true; continue }
+    if (a === '--heading') { heading = String(rest[i + 1] ?? '').trim(); i += 1; continue }
+    if (a.startsWith('--heading=')) { heading = a.slice('--heading='.length).trim(); continue }
+    if (a.startsWith('--')) { console.error(`append 不认识的参数：${a}（可用：--public / --private / --stdin / --heading）`); process.exit(1) }
+    words.push(a)
+  }
+  const file = biliState(isPrivate ? 'whale-diary-private.md' : 'whale-diary.md')
+  const label = isPrivate ? '私密' : '公开'
+  let body = fromStdin ? fs.readFileSync(0, 'utf8') : words.join(' ')
+  body = String(body).replace(/\r\n/g, '\n').trim()
+  if (!body) {
+    console.error(`没给正文 —— 用法: node diary.mjs append ${isPrivate ? '--private' : '--public'} "正文…"（正文里有引号就加 --stdin 从管道读）`)
+    process.exit(1)   // 不写文件
+  }
+  const chars = [...body].length
+  if (chars > 4000) {
+    console.error(`一条最多 4000 字，分两次写（这条 ${chars} 字）`)
+    process.exit(1)   // 不写文件
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  let old = ''
+  try { old = fs.readFileSync(file, 'utf8') } catch {}
+  const name = String(config().persona?.name ?? '').trim() || '她'
+  const defaultTitle = isPrivate ? `# 私人日记 · ${name}` : `# 鲸鱼日记 · ${name}`
+  const firstLine = old.split('\n')[0] ?? ''
+  const title = old.trim() ? (firstLine.startsWith('#') ? firstLine : defaultTitle) : defaultTitle
+  const now = new Date()
+  const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const text = heading ? `\n## ${heading}\n\n- ${hm} ${body}\n` : `\n- ${hm} ${body}\n`
+  if (!old.trim()) fs.appendFileSync(file, title + '\n')
+  fs.appendFileSync(file, text)
+  const all = (old.trim() ? old : title + '\n') + text
+  const lines = all.split('\n').length - (all.endsWith('\n') ? 1 : 0)
+  console.log(`已追加 ${chars} 字到${label}日记（现共 ${lines} 行，文件 ${file}）`)
+  process.exit(0)
+}
 
 if (cmd === 'log') {
   const kind = opt._a ?? 'event'
@@ -110,4 +163,4 @@ if (cmd === 'show' || !cmd) {
   process.exit(0)
 }
 
-console.log('用法: node diary.mjs show [--days 1] | log <kind> [--target X] [--note "…"] | tail [--n 20]')
+console.log('用法: node diary.mjs show [--days 1] | log <kind> [--target X] [--note "…"] | tail [--n 20] | append --public|--private "正文…" [--stdin] [--heading "…"]')
