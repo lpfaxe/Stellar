@@ -143,7 +143,7 @@ B站 / QQ空间 侧（第二批，2026-11-22）：
 ```bash
 node scripts/test-voice-style.mjs       # 35 条断言：读/归一/渲染/截断/统计
 node scripts/test-voice-style-bili.mjs  # 21 条断言：B站/空间 侧的取用与接线
-npm run test:audit                      # 两条都已进 audit（现 186 条）
+npm run test:audit                      # 两条都已进 audit（现 187 条）
 ```
 
 - 第二批（B站/空间）改的是 `plugins/stellar/**`：**同样要重启 DSH 才生效**（插件与桥接一起被宿主加载）。

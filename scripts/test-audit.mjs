@@ -82,6 +82,7 @@ const tests = [
   // Tailscale 的 100.64/10 必须按内网算（否则手机走 tailnet 只能只读）；
   // 边界 100.63 / 100.128 不能误判成内网，带 Cloudflare 头的一律 public。
   'test-tailnet-scope.mjs',
+  'test-panel-link.mjs',
   // 公网 IPv6 白名单（2026-11-13）：面板监听 :: 之后，公网来源默认必须只读；
   // 只有登记过的前缀才可写，防爆破还要按 /64 归并（否则换地址就绕过阶梯锁）。
   'test-panel-remote-allow.mjs',

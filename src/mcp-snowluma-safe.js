@@ -28,6 +28,7 @@ import { createQuestion } from './owner-questions.js';
 import { serializeModelData } from './qq-model-view.js';
 import { EMOTION_LABELS } from './sticker-semantics.js';
 import { cabinetDir, saveToCabinet, humanBytes, listCabinetNames, CABINET_MAX_BYTES } from './file-cabinet.js';
+import { panelLinkText, panelPort } from './panel-link.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -4330,6 +4331,32 @@ server.tool(
       return { content: [{ type: 'text', text: clip(describePlan(est, snap)) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: '估算失败：' + (error?.message ?? error) }], isError: true };
+    }
+  }
+);
+
+// ── 控制台远控地址：主人一句「把控制台地址发我」，她就能报出来 ────────────────
+//
+// 地址不在这里算：面板自己知道绑在哪个网卡上（stellar-manager/lib/access-link.js），
+// 桥接再扫一遍网卡只会得出第二套答案（PITFALLS #313 的老毛病）。这里只问本机面板。
+// 2026-11-23 主人要求：要在被要求时能调出控制台的远控地址。
+server.tool(
+  'stellar_panel_link',
+  '调出控制台（Stellar 面板）的远控地址：手机或外面能打开的那几条，并实测能不能连。只给主人用（key=private:<主人QQ>）。不带参数=只报地址；link=true 额外给一条 5 分钟内有效、只能用一次的登录链接（等于一次登录，只能发主人本人，别发群里）。',
+  {
+    key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
+    token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
+    link: z.boolean().optional().describe('true = 顺便生成一次性登录链接（5 分钟、只能用一次）')
+  },
+  async ({ key, token, link }) => {
+    try {
+      const denied = await ownerOnlyError(key, token);
+      if (denied) return { content: [{ type: 'text', text: denied }], isError: true };
+      const text = await panelLinkText({ code: link === true, port: panelPort() });
+      return { content: [{ type: 'text', text: clip(text) }] };
+    } catch (error) {
+      const port = panelPort();
+      return { content: [{ type: 'text', text: '拿不到远控地址：' + (error?.message ?? error) + '（控制台在 127.0.0.1:' + port + '，没跑就先启动它）' }], isError: true };
     }
   }
 );

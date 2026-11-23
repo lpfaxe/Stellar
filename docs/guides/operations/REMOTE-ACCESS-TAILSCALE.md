@@ -59,6 +59,45 @@
 - `stellar/scripts/test-tailnet-scope.mjs`：4 条边界断言（三个端点算内网、100.63/100.128 不算、带 CF 头仍只读、地址只挑 CGNAT）。
 ---
 
+## 她也能报地址：`stellar_panel_link`（2026-11-23）
+
+主人在 QQ 里说一句「把控制台地址发我」，她自己就能把它报出来，不用主人跑到那台电脑上翻面板。
+
+| 谁问 | 她能做什么 |
+| --- | --- |
+| 主人私聊（`private:<主人QQ>`） | 调 `stellar_panel_link`：列出现有地址，并**真开一次 TCP 连接**说是连得上还是连不上 |
+| 主人私聊 + `link=true` | 额外给一条 **5 分钟、一次性**的登录链接（`?code=`，等价于一次登录） |
+| 别人（群友 / 陌生人） | 调不动：工具第一步 `ownerOnlyError(key, token)` 直接拒 |
+
+链路只有两跳，不新开端口：
+
+```
+她（stellar_panel_link） --POST /api/remote-link--> 面板（127.0.0.1:3300）
+                                                    └─ lib/access-link.js：找地址 → 探活 → 可选发一次性码
+```
+
+**面板那道门外加三把锁**（`stellar-manager/server.mjs` 的 `POST /api/remote-link`）：
+
+1. **只认本机来源**：`requestScope(req) !== 'local'` → 403 `local-only`。她与面板在同一台机器上，走回环；
+   局域网、tailnet、公网来的请求全被拒 —— 这条路由**不是新的远程入口**。
+2. **同源标记**：`crossSite(req)` 要求 `x-panel-request: panel`，网页里被诱导的跨站 POST 打不进来。
+3. **码不落日志**：`appendAudit('remote-link', { withCode, ip })` 只记「这次带没带码」。
+
+**没要码时返回体里没有任何凭据**（`login: null`）；要码时才 `issueLoginCode()`，明文只出现这一次，
+磁盘只存 sha256，5 分钟后自己失效。她排版时会明写一句「只能发给主人本人，别发到群里」。
+
+### 排障
+
+| 现象 | 先查什么 |
+| --- | --- |
+| 她回「拿不到远控地址：…」 | 面板没跑 / 端口不是 3300：先看 `Get-NetTCPConnection -LocalPort 3300`，或用 `STELLAR_PANEL_PORT` 告诉她端口 |
+| 她回「远控地址只能在本机上取」 | 有人用局域网地址打这条路由（或者她被换到了别的主机）——这是设计 |
+| 链接点开说码无效 | 超过 5 分钟或已经用过一次；再调一次带 `link=true` |
+| 只有「局域网 + 本机」两行 | 没装/没连 Tailscale，且面板跑默认 `HOST='0.0.0.0'`（只开 IPv4）。要 IPv6 那行就设 `STELLAR_PANEL_HOST='::'` 再重启面板 |
+| 工具根本不出现 | 要**重启 DSH** 才会注册（`src/mcp-snowluma-safe.js` 的改动属进程内） |
+
+---
+
 ## 备选且更省事的一条：公网 IPv6 直连（2026-11-13 已做）
 
 Tailscale 要先装客户端、还要外区 Apple ID；这台机器本身就有一条公网 IPv6（移动宽带 RA 下发 `2409:8d30:d001:4194::/64`），

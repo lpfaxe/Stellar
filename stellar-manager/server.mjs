@@ -19,6 +19,7 @@ import { buildDailyTasks } from './lib/daily-tasks.js'
 import { buildDailyPlan, saveDailyPlan } from './lib/daily-plan.js'
 import { buildVlog, vlogAction, vlogMedia, vlogScript } from './lib/vlog.js'
 import { readAccess, saveAccess } from './lib/access.js'
+import { buildRemoteLink } from './lib/access-link.js'
 import { actOnApproval, readApprovals } from './lib/approvals.js'
 import { capabilitiesSnapshot, saveCapabilities } from './lib/capabilities.js'
 import { buildTown, townPluginStatus, setTownPluginEnabled, listTownAlbum, townAlbumFile, townAlbumThumb } from './lib/town.js'
@@ -63,6 +64,18 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/manifest.webmanifest') {
       res.writeHead(200, { 'content-type': 'application/manifest+json; charset=utf-8', 'cache-control': 'no-store' })
       return res.end(JSON.stringify(MANIFEST))
+    }
+    // 远控地址：只给「本机上的她」问（她的 MCP 进程走回环来取，见 src/panel-link.js）。
+    // 为什么不套会话鉴权：她手上没有面板口令，也不该有——回环 + 同源 + 明确要才发码，
+    // 是这套东西里最小的一条口子。审计只记「这次要没要码」，码本身不进任何日志。
+    if (url.pathname === '/api/remote-link' && req.method === 'POST') {
+      if (requestScope(req) !== 'local') return sendJson(res, 403, { ok: false, code: 'local-only', message: '远控地址只能在本机上取（她跑在同一台电脑上）' })
+      const badCross = crossSite(req)
+      if (badCross) return sendJson(res, 403, { ok: false, message: badCross })
+      const body = await readBody(req)
+      const info = await buildRemoteLink({ code: body && body.code === true })
+      appendAudit('remote-link', { withCode: Boolean(info && info.login), ip: clientIp(req) })
+      return sendJson(res, 200, { ok: true, ...info })
     }
     if (!gate(req, res, url)) return
 
