@@ -123,7 +123,7 @@ Contacts appear after the first message, memory after a few rounds, Bilibili/QZo
 | **Proactive** | goal hypothesis → outreach / sharing, conversation closure with “how to pick it up next” |
 | **Daily** | run modes, biological clock, daily task list, to-do reminders, quiet hours |
 | **Budget** | daily token limits (QQ / Bilibili / friends-feed / town / other / total), cost dashboard, price-table conversion |
-| **Tool surface** | **84 MCP tools** (`src/mcp-snowluma-safe.js` 71: 36 `qq_*` + 35 `stellar_*`; `src/town-tools.js` 10 `stellar_town_*`; 1 host-level + 2 web-search — 45 `stellar_*` in total), three MCP servers, four presets, fail-closed guards |
+| **Tool surface** | **86 MCP tools** (`src/mcp-snowluma-safe.js` 73: 36 `qq_*` + 37 `stellar_*`; `src/town-tools.js` 10 `stellar_town_*`; 1 host-level + 2 web-search — 47 `stellar_*` in total), three MCP servers, four presets, fail-closed guards |
 | **UI** | settings page (7 tabs), full panel (7 pages / 38 cards), bridge console (single page) |
 
 **Optional, off by default — Fishbowl Town.** The repo ships an *interface* to
@@ -167,7 +167,7 @@ stellar/
 ## Testing
 
 ```bash
-node scripts/test-audit.mjs        # offline regression suite, no credentials / DSH / QQ needed (189 specs of 219 scripts;
+node scripts/test-audit.mjs        # offline regression suite, no credentials / DSH / QQ needed (196 specs of 226 scripts;
                                    # the few that need the dev panel auto-SKIP in the public repo)
 npm run test:regressions           # bridge / protocol regressions
 npm run privacy-scan:strict        # must report zero hits before publishing

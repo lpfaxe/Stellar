@@ -27,6 +27,7 @@
 | `socialV2.selfImage` | 她自己的形象图（`qq_get_self_image` 用） | 留空则找 `assets/self-image.png` / `.jpg` / `.webp`；都没有就回「还没有形象图片」 |
 | `socialV2.*` | 回复策略、唤醒条件、表情、收尾、图片额度 | 见各功能篇 |
 | `socialV2.send.allowBiliLinksInGroups` | 群里能不能发 B站 视频链接 | **默认 `false`**：群聊出站一律剥掉 `bilibili.com` / `b23.tv` 链接与 `BV` 号，纯链接拒发（`GROUP_BILI_LINK`）、正文里的回 `linksStripped`；改 `true` 才放行。私聊不受影响（`src/group-link-guard.js`） |
+| `socialV2.town.chatSync` | QQ → 小镇的会话重绑 | **默认开**；写 `false` 才关。主人私聊的 DSH 会话 id 变了就把新 id 写进官方插件的 `alsoSids`，失败静默退避 10 分钟（`src/town-chat-sync.js`，见 [SUBSYSTEM-TOWN.md](../subsystems/SUBSYSTEM-TOWN.md) 第 16 节） |
 | `memory.engine` | `db` / `card` | **记忆总开关**：`db`=记忆库（`memory.db`）唯一真相，旧记忆卡与向量记忆两条管线**整体不启动**（2026-11-22）；`card`=旧行为。当前是 `db` |
 | `memory.*` | 其余记忆子块 | 见 [../features/MEMORY.md](../features/MEMORY.md)；`memory.window.days` 是 daily 话题保留天数（默认 3） |
 | `biliBridge.dynamics.enabled` | 把她自己的 B站 空间动态同步到群 | **默认 `true`**；不想要群里出现链接就设 `false`（代码与 `share` 配置都保留）。**改完必须重启 DSH** —— 轮询定时器只在桥接启动时创建 |
@@ -61,6 +62,8 @@
 | `night` | 生物钟：今晚几点醒、看几个、抽几帧 |
 | `qzone` | QQ空间：`weekly.min` 本周目标（默认 **7** 条，周一为界）、`dailyLimit` 硬上限、好友爱看（看几条/赞几个/评几个）、关注谁 |
 | `limits` | 每日额度：视频数、点赞数、评论数、分享数 |
+| `wake` | **醒来账**：`mergeGapMin`（默认 20，次生叫醒被压到上一趟收工 N 分钟后）+ `maxCallsPerTurn`（默认 12，每趟提示词里的工具调用上限）。**两项写 `0` = 关；删键 = 用默认值**（见 [../subsystems/SUBSYSTEM-BILI.md](../subsystems/SUBSYSTEM-BILI.md)） |
+| `budget` | **每日金额闸**：`dailyCNY`（默认 0.8），读 `token-usage-daily.json` 的 `bili.cost`，到上限当天所有主动醒一律拦（含生物钟 / 监听 / 空间监看）。**写 `0` = 不限**；另有一道 token 额度闸，两道各管一个维度 |
 | `fishGuard` | B站 侧鱼群保护（与 QQ 侧是两份配置，默认都空） |
 | `notify` | 通知与免打扰 |
 
@@ -92,6 +95,7 @@
 | `console-token` | 桥接 | 控制台令牌（未在配置里指定时） | 能（会重新生成） |
 | `current-role.json` | 桥接 | 当前角色指针 | **别删**，删了她不知道自己是谁 |
 | `state/town/album/`（`index.json` + 原图/缩略图） | 插件 | 小镇相册镜像（60 张 / 120 MB 双限，单张 >8 MB 只留缩略图） | 能（下次采集重建索引，照片本身在小镇侧） |
+| `state/town/chat-bind.json` | 桥接（写进插件侧 `DSH_HOME/stellar/state/town/`） | QQ → 小镇的绑定记录 `{ok, sid, at, base, fishId, removed, error?}`；会话 id 变了才 `POST /fishbowl-town/save` 重绑（退避 10 分钟），**不存访问码** | 能（下一趟投递会重新绑） |
 | `turn-context.json` / `turn-context/` | 桥接 | 本轮是谁在说话（15 分钟过期） | 能 |
 | `state/voice-style.json` | 插件侧 `DSH_HOME/stellar/state/`（面板保存时建；桥接按 `mtimeMs:size` 读） | 她每轮看到的「说话方式」原则与词条（≤600 字硬上限；文件不存在按默认 3 条渲染） | 能（等于回到内置那句） |
 | `state/voice-stats.json` | 同上 | 今天的说话方式计数（条数/破折号/三点列举/客服腔/撞上原句/用上改法），只记数量不存原文 | 能 |

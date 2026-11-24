@@ -85,6 +85,17 @@ export const DEFAULTS = {
   share: { enabled: true, via: 'dynamic', minScore: 13, silentAfterDays: 3, decayPerDay: 1 },  // 分享型开关与评分阈值
   // 倾听（2026-10-18 补默认值，与设置页对齐）：评论区 + 直播间
   listen: { comment: true, commentIntervalSec: 300, scope: 'both', oncePerPerson: false, allDay: false, dm: false, live: false, liveRoom: '', liveScope: 'owner' },
+  // B站 的「醒来账」（2026-11-24 主人批的方案 A；实测两天 27 趟、394 次调用、¥2.06）：
+  //   mergeGapMin      上一趟收工后多少分钟内不新开趟（0 = 关掉合并）。次生叫醒（监听命中 /
+  //                    空间互动 / 直播间 / 轻醒 / 找人聊 / vlog）会被压到窗口之后；主人本人的回复、
+  //                    待办到点、驳回返工**不受限**（urgent）。
+  //   maxCallsPerTurn  一趟最多几次工具调用（0 = 不限）。软预算：写进提示词，靠她自己收工。
+  //   两项都是「少开趟、每趟少绕」——钱不是花在产出上，是花在每趟重铺桌子（底价 ¥0.0083/趟）。
+  wake: { mergeGapMin: 20, maxCallsPerTurn: 12 },
+  // 每日金额闸（2026-11-24）：读 token-usage-daily.json 的 bili.cost，到上限今天不再醒。
+  //   为什么单独一道：token 额度按 token 算，主人要的是「一天最多花多少钱」。
+  //   鱼缸小镇那边早就有这道闸，B站 侧参照同一套做法。0 = 不限（不推荐）。
+  budget: { dailyCNY: 0.8 },
   // 作息：windows[] = 每天允许醒来的时段（每个窗口 = 一次机会）；maxWakesPerDay 缺省 = 窗口数（硬上限 3）
   night: { enabled: true, windows: [{ start: '06:00', end: '09:00', wakes: 1 }, { start: '12:00', end: '14:00', wakes: 1 }, { start: '18:00', end: '21:00', wakes: 2 }, { start: '21:00', end: '00:30', wakes: 2 }], skipChance: 0.3, maxVideos: 5, minGapMin: 20, maxWakesPerDay: 6, videoTargetPerDay: 40, weeklyMax: 140, frames: 'none' },
   // 2026-11-10 控制台「她的能力」：新增能力的开关都放这里。

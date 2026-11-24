@@ -38,8 +38,9 @@ for (const item of result.unknown) console.error('   ' + item.file + ':' + item.
 const counts = {};
 for (const item of result.core) counts[item.file] = (counts[item.file] || 0) + 1;
 const limits = {
-  // 发布版比开发树多一行注释「拆除：删 town-prompt.js + 这一行」，所以上限 11（2026-11-22）
-  'src/bridge.js': 11,
+  // 发布版比开发树多一行注释「拆除：删 town-prompt.js + 这一行」；
+  // 2026-11-22 两边互通再加 3 行（import / 注释 / 开关判断），所以上限 13。
+  'src/bridge.js': 13,
   'src/mcp-snowluma-safe.js': 10,
   'plugins/stellar/lib/scheduler.js': 12,
   // 2026-11-22 摸鱼日改去小镇：run-mode.js 的 idle 注释多一行（上限跟着 +1）
@@ -48,7 +49,8 @@ const limits = {
   'plugins/stellar/tools/lib/config.mjs': 3,
   // 官方插件那一层让位（2026-11-21）：audit 多两行（注释 + test-town-plugin），
   // 面板 server 多 5 行（插件状态查询 + 开关双写）——都是接线，不是逻辑。
-  'scripts/test-audit.mjs': 13,
+  // 2026-11-22 两边互通：audit 多两行（test-town-chat-sync / test-town-prompt-digest）
+  'scripts/test-audit.mjs': 15,
   'stellar-manager/server.mjs': 14,
   'stellar-manager/public/js/core.js': 1,
   'stellar-manager/public/js/boot.js': 1,

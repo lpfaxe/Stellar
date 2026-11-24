@@ -4,27 +4,17 @@
 // 只变成字面量「[卡片消息]」—— 标题、简介、链接全丢，她既不知道分享了什么，
 // 也没法顺着去看。而她又没有「点开卡片」这种能力（卡片要 QQ 客户端渲染）。
 //
-// 这条测试直接从 src/bridge.js 里把 parseArkCard/arkCardText 抠出来跑：
-// 改的是真源码，不是复制品；不引入 import，vm 里不需要任何依赖。
+// 2026-11-24 起卡片解析在 src/qq-card.js（普通消息与合并转发共用一份），
+// 这条测试直接 import 真实现跑，不再从 bridge.js 里抠函数。
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'src', 'bridge.js'), 'utf8');
-const start = SRC.indexOf('function parseArkCard(raw) {');
-const end = SRC.indexOf('async function segmentsToText(');
-assert.ok(start > 0 && end > start, '在 bridge.js 里找不到 parseArkCard / segmentsToText 的边界');
-
-// vm 里没有 URL 全局：trimShareUrl 用 new URL() 解析分享链接，缺了它就会走 catch，
-// 把带埋点参数的长链接原样吐出来（第一版就是这样，测试看着像代码坏了）。
-const sandbox = { URL };
-vm.createContext(sandbox);
-vm.runInContext(SRC.slice(start, end) + '\nthis.parseArkCard = parseArkCard; this.arkCardText = arkCardText;', sandbox);
-const { parseArkCard, arkCardText } = sandbox;
+const q = await import(pathToFileURL(path.join(__dirname, '..', 'src', 'qq-card.js')).href);
+const parseArkCard = q.parseCard;
+const arkCardText = (card) => q.cardText(card);
 
 const card = (detail) => JSON.stringify({ app: 'com.tencent.miniapp_01', meta: { detail_1: detail } });
 

@@ -19,7 +19,7 @@ bridge  ──── node src/bridge.js ──────────  http://1
   │  └──► DSH（DeepSeek Harness，端口由它自己挑；config.dsh.baseUrl）
   │                                          │ 会话 prompt / 工具调用（MCP stdio）
   │                                          ▼
-  │                                       她（一个 DSH 会话，带 84 个 MCP 工具）
+  │                                       她（一个 DSH 会话，带 86 个 MCP 工具）
   └──► 面板 stellar-manager ── 3300（可选，另起一个进程）
 ```
 
@@ -39,7 +39,7 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 | --- | --- | --- | --- |
 | 消息链路 | `src/bridge.js`（约 1.9 万行，最大单体） | 收发、唤醒、上下文拼装、67 条控制台路由 | 不直接调模型；不写业务判断（那些在共享引擎里） |
 | MCP 工具面 | `src/mcp-snowluma-safe.js` 等三个 server | 把能力以工具形式交给 DSH 里的她 | 不藏私活：每个工具都要有对应的 HTTP/本地实现 |
-| 共享引擎 | `src/*.js` 里的纯逻辑 | 记忆库（`memory.db`）为主、额度、鱼群保护、收尾判断、身份、抓取、说话方式（`voice-style.js`，2026-11-22）、群聊链接闸（`group-link-guard.js`，2026-11-22）、远控地址（`panel-link.js`，2026-11-23，只问本机面板；面板侧 `access-link.js` 把 cloudflared 隧道也当候选并排第一，走隧道进来一律只读）；旧的两条记忆管线（衰减记忆卡 + 向量记忆）在 `memory.engine='db'` 时整体不启动（2026-11-22） | 不碰网络状态机；能被单测直接 import |
+| 共享引擎 | `src/*.js` 里的纯逻辑 | 记忆库（`memory.db`）为主、额度、鱼群保护、收尾判断、身份、抓取、卡片解析（`qq-card.js`，2026-11-24：`json` / `xml` 段统一解析，token 与预览图不进上下文）、说话方式（`voice-style.js`，2026-11-22）、群聊链接闸（`group-link-guard.js`，2026-11-22）、远控地址（`panel-link.js`，2026-11-23，只问本机面板；面板侧 `access-link.js` 把 cloudflared 隧道也当候选并排第一，走隧道进来一律只读）；旧的两条记忆管线（衰减记忆卡 + 向量记忆）在 `memory.engine='db'` 时整体不启动（2026-11-22） | 不碰网络状态机；能被单测直接 import |
 | 插件宿主 | `plugins/stellar/` | 定时作业（记忆切分/复核/侧写、生物钟、每日任务）、设置页 | 不参与消息收发 |
 | 面板 | `stellar-manager/` | 观察与手动操作 | 不改消息链路状态（只写配置文件） |
 
@@ -60,12 +60,16 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 6. 收发两侧都异步写进 `memory.db` 的缓冲表（不阻塞链路）；
 7. 面板通过 bridge 的只读接口观察这一切。
 
+- **漏传令牌的兜底**（`src/tokenless-guard.js`，2026-11-22）：她偶尔会漏 `x-agent-token`，以前整条拒。
+  现在三条**同时**成立才放行 —— 没带令牌、声明了 `x-agent-call`、这个 key 此刻正有唤醒回合；缺一条仍然 403。
+  这不是放宽权限：前提是「这一轮本来就该它说话」。
+
 ## 4 唤醒提示词里都有什么（顺序即优先级）
 
 | 段 | 来源 | 为什么在这 |
 | --- | --- | --- |
 | 人格 | `personaWakeBlockV2` → 角色卡 | 不给就不知道自己是谁 |
-| 【会话令牌】 | `state.agentToken` | 她调 `qq_*`/`stellar_*` 时得带上，否则一律拒绝 |
+| 【会话令牌】 | `state.agentToken` | 她调 `qq_*`/`stellar_*` 时得带上；漏传时按 key 兜底（见第 3 节最后一条），其余一律 403 |
 | 身份/归属 | `selfIdentityTextV2` + `buildProvenanceBlock` | 别把群里转发的聊天说成「我在 B站 说的」 |
 | 记忆·事实 | `memoryFactBlockV2` | 生日、忌口这类被问得最多，且不依赖切分是否跑完 |
 | 记忆·目录 | `memoryCatalogBlockV2` | 让她知道「聊过哪些事」，细节自己去查 |

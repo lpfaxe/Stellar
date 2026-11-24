@@ -44,7 +44,11 @@ export const CORE_TOWN_ALLOW = {
     '回到 townPromptLine(',
     'biliLine + townLine',
     '小镇（2026-11-21）：整段提示在 src/town-prompt.js',
-    '拆除：删 town-prompt.js'
+    '拆除：删 town-prompt.js',
+    // 2026-11-22 QQ 私聊会话会滚动，插件里静态绑的 alsoSids 几小时就失效：
+    // 逻辑整块在 src/town-chat-sync.js，这里只是接线（import / 注释 / 开关判断三行）。
+    'town-chat-sync.js',
+    '.town?.chatSync'
   ],
   'src/mcp-snowluma-safe.js': [
     "import { registerTownTools } from './town-tools.js'",
@@ -110,6 +114,9 @@ export const CORE_TOWN_ALLOW = {
     "'test-town-decoupling.mjs',",
     // 相册镜像（2026-11-22）
     "'test-town-album.mjs',",
+    // 两边互通（2026-11-22）：近况一行 + 同步回插件，两条测试也进 tests[]
+    "'test-town-chat-sync.mjs',",
+    "'test-town-prompt-digest.mjs',",
     // 发布树的 tests[] 是每行一条（历史原因），逐条认领
     "'test-town-memory-pure.mjs',", "'test-town-client.mjs',", "'test-town-store.mjs',",
     "'test-town-collector.mjs',", "'test-town-scheduler.mjs',", "'test-town-tools.mjs',", "'test-town-turns.mjs',",

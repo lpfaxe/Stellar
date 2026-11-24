@@ -1,9 +1,9 @@
 # 工具面与 preset（AGENT-TOOLS-AND-PRESETS）
 
-> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 84 个工具）、**哪些手被绑住**
+> 这份文档回答：**agent 的手从哪来**（三个 MCP server + 86 个工具：36 个 `qq_*` + 47 个 `stellar_*` + 3 个宿主级）、**哪些手被绑住**
 > （五层闸门 + fail-closed 守卫）、**她戴哪张面具**（`qq-chat` / `qq-chat-v2` 两代 preset）、
 > **这些是怎么装进 DSH 的**。
-> **最后核对**：2026-10-26（全仓库逐行梳理）。配套阅读：总纲 [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) · 边界 [BOUNDARIES.md](../operations/BOUNDARIES.md) · 索引 [../README.md](../../README.md)。
+> **最后核对**：2026-11-24（工具数按代码重核：`grep -c "server.tool(" src/mcp-snowluma-safe.js` = 73，`src/town-tools.js` = 10）。配套阅读：总纲 [ARCHITECTURE.md](../architecture/ARCHITECTURE.md) · 边界 [BOUNDARIES.md](../operations/BOUNDARIES.md) · 索引 [../README.md](../../README.md)。
 
 ---
 
@@ -11,7 +11,7 @@
 
 **两个 MCP 手 + 一张面具。**
 
-- `snowluma`（36 个 `qq_*` + 35 个 `stellar_*` 工具 = 71 个，注册在 `src/mcp-snowluma-safe.js`；小镇的 10 个 `stellar_town_*` 由同一个 server 里的 `src/town-tools.js` 注册：`recall` / `status` / `bonds` / `lobby` / `day` / `now` / `album` / `visit` / `play` / `goto`，合计 45 个 `stellar_*`）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏、B站/空间/小镇/文件柜。新增的三件是 `stellar_town_now`（一次给「此刻 / 大厅 / 今天 / 三天回顾」）、`stellar_town_album`（把镇上相册镜像到本地、返回绝对路径）与 `stellar_bili_find`（按问题查一条视频的字幕段落）。
+- `snowluma`（**83 个工具**：36 个 `qq_*` + 37 个 `stellar_*`，注册在 `src/mcp-snowluma-safe.js`；小镇的 10 个 `stellar_town_*` 由同一个 server 里的 `src/town-tools.js` 注册：`recall` / `status` / `bonds` / `lobby` / `day` / `now` / `album` / `visit` / `play` / `goto`，合计 47 个 `stellar_*`）是主力手：读消息、发消息、等待、表情、记忆、表情包收藏、B站/空间/小镇/文件柜。最近四件是 `stellar_town_now`（一次给「此刻 / 大厅 / 今天 / 三天回顾」）、`stellar_town_album`（把镇上相册镜像到本地、返回绝对路径）、`stellar_bili_find`（按问题查一条视频的字幕段落）与 `stellar_qzone_card`（读一张转发的 QQ 空间卡片 / 说说：给卡片 `url` 或 24 位说说 `tid` → 正文、作者、时间、评论数，并把说说里的图最多 4 张作为图片块附上；只读，不点赞不评论，打不开就照实说）。
 - `snowluma-host`（1 个）是探活手：只问 SnowLuma 在不在，**没有启停能力**（EULA）。
 - `web-search-safe`（2 个）是外部信息手：只读搜索与抓取，带 SSRF 防护。
 - preset 决定"她是谁、在哪说话"：`qq-chat`（一代/普通）与 `qq-chat-v2`（二代仿真）。
@@ -22,7 +22,7 @@
 
 | server | 入口 | 工具 | 挂载 | 边界 |
 | --- | --- | --- | --- | --- |
-| `snowluma` | `src/mcp-snowluma-safe.js`（71 个工具）+ `src/town-tools.js`（10 个小镇工具） | 36 个 `qq_*` + 45 个 `stellar_*`（其中 10 个 `stellar_town_*`） | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
+| `snowluma` | `src/mcp-snowluma-safe.js`（73 个工具）+ `src/town-tools.js`（10 个小镇工具） | 36 个 `qq_*` + 47 个 `stellar_*`（其中 10 个 `stellar_town_*`） | `~/.dsh/profiles/<profile>/cordis.patch.yml`（`setup-dsh.mjs` 写入） | 发送必须命中白名单；会话绑定 `x-agent-token`；工具开关逐项可控 |
 | `snowluma-host` | `src/mcp-host-server.js`（94 行） | `snowluma_status` | 同上 | **只读探活**；v0.1.5 起移除了 `start_snowluma`/`stop_snowluma` |
 | `web-search-safe` | `src/mcp-web-search-safe.js`（128 行） | `web_search`、`web_fetch` | 同上 | 只读；禁内网/环回/CGNAT；DNS 解析后逐地址校验；重定向每跳复核 |
 

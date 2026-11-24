@@ -207,6 +207,34 @@ function agentHeaders(extra = {}) {
 }
 
 /**
+ * 把模型传来的出站消息归一成「去掉空白后的字符串数组」。
+ *
+ * 模型实际会写三种形状（2026-11-22 从 state/tool-calls.jsonl 数出来的）：
+ *   - 真数组 `["一","二"]`
+ *   - 数组的 JSON 字符串 `"[\"一\",\"二\"]"`
+ *   - 单条的 JSON 字符串 `"\"你好\""`
+ * 桥接（bridge.js 的 /api/socialV2/send-message 与 /send-burst）三种都认，但**字段名只有一个**：
+ * `messages`（复数）。qq_reply_and_finish 的单条路径原来发的是 `message`（单数），桥接读不到
+ * messages ⇒ 400「key 和 messages 不能为空」——2026-11-20 至 11-22 的 50 次调用全挂在这上面
+ * （真数组 77 次成功、真数组字符串 14 次成功），模型于是学会「拆成两步发」。
+ * 归一逻辑只留这一份，避免两个工具再次各自漂移（PITFALLS #302）。
+ */
+function normalizeOutgoingMessages(messages) {
+  let value = messages;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('"')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) value = parsed.map(String);
+        else if (typeof parsed === 'string') value = parsed;
+      } catch {}
+    }
+  }
+  return (Array.isArray(value) ? value : [value]).map((m) => String(m ?? '').trim()).filter(Boolean);
+}
+
+/**
  * 长轮询专用 POST（`node:http`，不经过 undici）。
  *
  * 为什么必须单独一条：Node 的全局 `fetch` 是 undici，自带 300 秒 `headersTimeout`。
@@ -592,7 +620,7 @@ server.tool(
   '一次做完「回话 + 收尾」（2026-11-04 复合工具）：发完消息顺手把这段对话收掉，省掉单独调 qq_close_conversation 的那一步（少一步就少付一遍上下文）。适合：你回完这句就该结束的情况（对方说完收尾语、话题闭环、道别）。还在聊、要等对方补充时不要用它，改用 qq_send_message。对方明确在提问/求助时先用 qq_send_message 回完，桥接也会拒绝这种收尾。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
-    token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+    token: z.string().optional().describe('会话令牌（见唤醒提示中的【会话令牌】）；实在没有可以不传，桥接会按 key 认「这个会话此刻正在跑的那一轮」，但只在它正醒着时有效'),
     messages: z.union([z.array(z.string()).min(1), z.string()]).describe('要发送的内容：字符串=一条，数组=多条（一次最多 8 条）'),
     summary: z.string().max(200).optional().describe('这次收在哪（一句话，给下次的自己看）'),
     nextOpening: z.string().max(120).optional().describe('下次可以怎么自然接（一句话，可选）'),
@@ -600,21 +628,22 @@ server.tool(
   },
   async ({ key, token, messages, summary, nextOpening, throughSeq }) => {
     try {
-      let finalMessages = messages;
-      if (typeof finalMessages === 'string') {
-        const trimmed = finalMessages.trim();
-        if (trimmed.startsWith('[')) {
-          try {
-            const parsed = JSON.parse(trimmed);
-            if (Array.isArray(parsed)) finalMessages = parsed.map(String);
-          } catch {}
-        }
+      const list = normalizeOutgoingMessages(messages);
+      if (!list.length) {
+        return {
+          content: [{ type: 'text', text: '没有可发送的内容：messages 是空的，既没有发出消息，也没有收尾。把要说的话写进 messages（字符串=一条，数组=多条，最多 8 条）。' }],
+          isError: true
+        };
       }
-      const isBurst = Array.isArray(finalMessages);
+      const isBurst = list.length > 1;
       const sent = await agentApi(isBurst ? '/api/socialV2/send-burst' : '/api/socialV2/send-message', {
         method: 'POST',
-        body: JSON.stringify(isBurst ? { key, messages: finalMessages } : { key, message: String(finalMessages) }),
-        headers: { 'x-agent-token': token },
+        // 字段名必须是 messages（复数），单条也走同一个字段：这里原来发 `message`（单数），
+        // 桥接读不到 messages 就回 400「key 和 messages 不能为空」（PITFALLS #302）。
+        body: JSON.stringify({ key, messages: isBurst ? list : list[0] }),
+        // 漏传令牌时不要把整个头省掉：省掉就退化成「管理端全权」（confused deputy，
+        // 见 agentHeaders 的注释）。这里只是不发这一个头，桥接按 key 兜底。
+        ...(token ? { headers: { 'x-agent-token': token } } : {}),
         timeoutMs: 300000
       });
       let closed = null;
@@ -623,7 +652,7 @@ server.tool(
         closed = await agentApi('/api/socialV2/close', {
           method: 'POST',
           body: JSON.stringify({ key, throughSeq, summary, nextOpening }),
-          headers: { 'x-agent-token': token }
+          ...(token ? { headers: { 'x-agent-token': token } } : {})
         });
       } catch (error) {
         // 发都发出去了，收尾失败不能把整次调用判成失败（否则模型会以为没发出去而重发）。
@@ -733,7 +762,7 @@ server.tool(
   '统一发送工具：可发一条或多条，可引用某条消息，可自定义/按字数计算条间时间差。二代仿真模式专用。注意：字符串=一条消息，数组=多条消息；每个字符串内部不要用空格分隔中文短句，需要多条请用数组元素；每条消息要读起来完整，不要把同一句话拆到两条里。一次最多 8 条（数组按条数算，桥接硬拦）；内容太长先总结/挑重点，不要拆成 10 条刷屏。只有以下情况才需要传 replyToMessageId 引用：① 你这条消息指向的人或消息并非最新一条别人的消息（也就是你在回更早的某条）；② 你连续几句话里不同消息指代的是不同的消息或不同的人。其他情况（上下文唯一、刚在接同一条最新消息）不要引用，别让对方猜，也别为了用工具而用。说完这轮就结束时，优先用 qq_reply_and_finish 一步收掉（少一步少付一遍上下文）。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
-    token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+    token: z.string().optional().describe('会话令牌（见唤醒提示中的【会话令牌】）；实在没有可以不传，桥接会按 key 认「这个会话此刻正在跑的那一轮」，但只在它正醒着时有效'),
     messages: z.union([z.string(), z.array(z.string()).min(1)]).describe('要发送的内容：字符串=一条；数组=分多条'),
     replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
     atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中用于点名某个人；与引用二选一即可，不要滥用）'),
@@ -743,28 +772,14 @@ server.tool(
   },
   async ({ key, token, messages, replyToMessageId, atUserId, gapMode, gapMs, gaps }) => {
     try {
-      let finalMessages = messages;
-      if (typeof finalMessages === 'string') {
-        const trimmed = finalMessages.trim();
-        // 兼容模型把数组序列化成 JSON 字符串传入的情况，例如 "[...]"。
-        if (trimmed.startsWith('[')) {
-          try {
-            const parsed = JSON.parse(trimmed);
-            if (Array.isArray(parsed)) finalMessages = parsed.map(String);
-          } catch {}
-        } else if (trimmed.startsWith('"')) {
-          // 兼容模型把单条消息序列化成 JSON 字符串的情况，例如 "\"你好\"" → "你好"。
-          try {
-            const parsed = JSON.parse(trimmed);
-            if (typeof parsed === 'string') finalMessages = parsed;
-            else if (Array.isArray(parsed)) finalMessages = parsed.map(String);
-          } catch {}
-        }
+      const list = normalizeOutgoingMessages(messages);
+      if (!list.length) {
+        return { content: [{ type: 'text', text: '没有可发送的内容：messages 是空的，没有发出任何消息。把要说的话写进 messages。' }], isError: true };
       }
       const data = await agentApi('/api/socialV2/send-message', {
         method: 'POST',
-        body: JSON.stringify({ key, messages: finalMessages, replyToMessageId, atUserId: atUserId ?? null, gapMode, gapMs, gaps }),
-        headers: { 'x-agent-token': token },
+        body: JSON.stringify({ key, messages: list, replyToMessageId, atUserId: atUserId ?? null, gapMode, gapMs, gaps }),
+        ...(token ? { headers: { 'x-agent-token': token } } : {}),
         timeoutMs: 300000
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
@@ -2103,6 +2118,7 @@ const GATED_TOPICS = Object.freeze({
   stellar_bili_comments: 'bili',
   stellar_qzone_post: 'qzone',
   stellar_qzone_read: 'qzone',
+  stellar_qzone_card: 'qzone',
   stellar_qzone_react: 'qzone',
   stellar_qzone_delete_comment: 'qzone',
   stellar_douyin_watch: 'douyin',
@@ -2125,11 +2141,9 @@ const GATED_TOPICS = Object.freeze({
   };
 }
 
-// ── 小镇记忆查询（2026-11-21）───────────────────────────────────────────────
 // ── 小镇工具（2026-11-21）：整块在 src/town-tools.js 里，这里只负责挂上去。
 // 拆除：删 src/town-tools.js + 这一行 + GATED_TOPICS / RULE_TOPICS 的两行 town（scripts/town-remove.mjs 会列全）。
 registerTownTools(server, { dshHome, z, ownerOnlyError });
-
 server.tool(
   'stellar_rules',
   '查某一类工具的规矩（B 站/空间/生图/看图/抖音/日报/花钱/群聊/小镇）。不带 topic 返回目录。首次使用某类工具时规则会自动附在结果里，这里只是需要先看一眼或用完想复查时用。',
@@ -3931,6 +3945,65 @@ server.tool(
       return { content: blocks, isError: code !== 0 };
     } catch (error) {
       return { content: [{ type: 'text', text: '读空间失败：' + (error?.message ?? error) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'stellar_qzone_card',
+  '读一张转发的 QQ 空间卡片（主人转给你、你只看到「[卡片·QQ空间] …（说说 <id>｜作者 QQ …）」的那种）。给 url（卡片里的链接）或 tid（那段 24 位说说 id）。返回说说正文、作者、时间、评论数，并把说说里的图片直接附上（最多 4 张，有些必须看图才说得清，比如截图/照片）。只读，不点赞不评论。打不开就老实说打不开（可能删了、或只对部分人可见），别编内容。',
+  {
+    key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
+    token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
+    url: z.string().optional().describe('卡片里的链接：mqqapi://qzoneschema/?schema=… 或 https://mobile.qzone.qq.com/… 都行'),
+    tid: z.string().optional().describe('说说 id：卡片文本里「说说 db0c50b4c006f06aec7c0100」那一段（24 位十六进制）')
+  },
+  async ({ key, token, url, tid }) => {
+    try {
+      const denied = await ownerOnlyError(key, token);
+      if (denied) return { content: [{ type: 'text', text: denied }], isError: true };
+      const link = String(url ?? '').trim();
+      const wantTid = String(tid ?? '').trim();
+      if (!link && !wantTid) {
+        return {
+          content: [{ type: 'text', text: '需要 url（卡片里的链接）或 tid（24 位说说 id）其中之一。卡片长这样：「[卡片·QQ空间] 分享了一条说说 — …（说说 db0c…｜作者 QQ …）」，括号里那段就是 tid。' }],
+          isError: true
+        };
+      }
+      const argv = ['qzone', 'card'];
+      if (/^[0-9a-fA-F]{24}$/.test(wantTid)) argv.push('--tid', wantTid);
+      else if (link) argv.push('--url', link);
+      else return { content: [{ type: 'text', text: 'tid 不是 24 位十六进制，链接也不像空间链接。' }], isError: true };
+      // --images：把说说里的图下载下来当图片块附上（2026-11-24 主人：转发动态里的图也要能读出来）
+      argv.push('--json', '--images', '--max-images', '4');
+      const { code, text } = await runLocalScript(argv, { timeoutMs: 120000 });
+      let data = null;
+      try {
+        const tail = String(text ?? '').trim().split('\n').filter(Boolean).pop() || '';
+        data = JSON.parse(tail);
+      } catch { data = null; }
+      if (!data) {
+        if (code !== 0) {
+          return { content: [{ type: 'text', text: '这条说说打不开：' + clip(text || ('退出码 ' + code), 1200) }], isError: true };
+        }
+        return { content: [{ type: 'text', text: clip(text, 4000) }] };
+      }
+      if (!data.ok) {
+        return { content: [{ type: 'text', text: clip(String(data.message || '这条说说打不开'), 1200) }], isError: true };
+      }
+      const blocks = [{ type: 'text', text: clip(String(data.text ?? ''), 4000) }];
+      const pics = Array.isArray(data.images) ? data.images : [];
+      let attached = 0;
+      for (const pic of pics) {
+        const blk = mediaImageBlock(pic?.file);
+        if (blk) { blocks.push(blk); attached += 1; }
+      }
+      if (!attached && pics.length === 0 && /图 \d+ 张/.test(String(data.text ?? ''))) {
+        blocks.push({ type: 'text', text: '（这条有图，但这次没下下来；过一会儿再试，或只问文字）' });
+      }
+      return { content: blocks };
+    } catch (error) {
+      return { content: [{ type: 'text', text: '读卡片失败：' + clip(error?.message ?? String(error), 800) }], isError: true };
     }
   }
 );

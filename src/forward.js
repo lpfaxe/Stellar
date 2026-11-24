@@ -8,6 +8,7 @@
 // - 只格式化，不访问网络；调用方负责“id 必须来自当前会话已见消息”的校验
 
 import { truncateText } from './md-to-plain.js';
+import { cardTextFromSegmentData } from './qq-card.js';
 
 export function sanitizeForwardId(value) {
   const s = String(value ?? '').trim();
@@ -48,7 +49,11 @@ function segmentText(seg) {
     case 'file': return `[文件${d.name ?? ''}]`;
     case 'reply': return '[引用]';
     case 'forward': return '[转发]';
-    case 'json': return '[卡片消息]';
+    // 2026-11-24 主人转发的 QQ 空间卡片她读不出东西：这里以前一律拍平成「[卡片消息]」，
+    // 标题/链接/说说 id 全丢。现在跟普通消息走同一个解析（src/qq-card.js），
+    // 卡片会变成「[卡片·QQ空间] 分享了一条说说 — 示例账号的说说（说说 db0c…｜作者 QQ …）」。
+    case 'json': return cardTextFromSegmentData(d.data ?? d.json ?? d);
+    case 'xml': return cardTextFromSegmentData(d.data ?? d.xml ?? d);
     default: return `[${seg.type ?? '未知'}]`;
   }
 }

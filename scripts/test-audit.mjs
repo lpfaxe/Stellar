@@ -71,6 +71,13 @@ const tests = [
   'test-voice-style.mjs',
   'test-voice-style-bili.mjs',
   'test-group-link-guard.mjs',
+  // 2026-11-24：漏传令牌兜底 / 小镇双向同步 / 转发卡片两种形状
+  'test-tokenless-guard.mjs',
+  'test-town-chat-sync.mjs',
+  'test-town-prompt-digest.mjs',
+  'test-subs-digest.mjs',
+  'test-reply-and-finish-send.mjs',
+  'test-qq-card.mjs',
   // 参考引擎（方案 B）：参考角色名必须清洗（名字进提示词=模型扮演 TA）、PART1 角色档案不入库、
   // >800 字不索引、只挑命中情境的 2 片且总字符 ≤900、同一情境连续第 3 次跳过。
   // 待办「提醒谁」（2026-11-13）：targetKey/targetName 必须优先于会话 key 与 requester，
@@ -399,6 +406,7 @@ const tests = [
   //（2026-11-23，甲案 P0：把"每趟十几次只读调用、写命令先 --help"这类往返压掉）。
   'test-bili-status.mjs',
   'test-bili-batch.mjs',
+  'test-bili-wake-budget.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

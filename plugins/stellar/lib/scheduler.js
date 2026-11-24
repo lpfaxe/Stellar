@@ -53,6 +53,7 @@ import { biliSessionCreateParams } from './bili-workspace.js'
 import { createTownJobs } from './town-jobs.js'
 import { dueTodos, markReminded, formatTodo, todoTarget } from '../../../src/todos.js'
 import { capabilityEnabled } from '../../../src/capabilities.js'
+import { budgetPromptLine, biliBudgetState, lastTurnEndAt, shouldDeferWake, wakeBudgetConfig } from './bili-wake-budget.js'
 
 // 当前角色的 B站 行为目录（角色系统未启用时回退旧目录）。
 function platformDir() {
@@ -539,6 +540,30 @@ export function startScheduler(ctx, opts) {
   const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
   const today = () => new Date().toLocaleDateString('sv-SE')
 
+  // ── B站 的「醒来账」：合并窗口 + 每趟预算 + 每日金额闸（2026-11-24，方案 A）──────
+  // 钱花在哪（实测两天 27 趟）：每趟醒来先付 ¥0.0083 的底价，再为「组织流程」绕 6–8 个来回。
+  // 所以省钱的杠杆是「少开趟、每趟少绕」——不是压提示词长度（#317 那次已经证明压字数没用）。
+  // 三个旋钮都在 bili.config.json 的 wake / budget 段，一处改完所有调用点跟着变（PITFALLS #313）。
+  const TELEMETRY_FILE = path.join(dshHome, 'stellar', 'context-telemetry-plugin.jsonl')
+  function wakeBudget() {
+    try { return wakeBudgetConfig(config()) } catch { return wakeBudgetConfig({}) }
+  }
+  // 记「刚刚有过一趟收工」：只在 promptBili 里更新，避免各处自己猜。
+  let lastSecondaryWakeAt = 0
+  function biliSpendForPrompt() {
+    try { return biliBudgetState(dshHome, config()).spent } catch { return null }
+  }
+  function deferWake(where, { urgent = false } = {}) {
+    const { mergeGapMin } = wakeBudget()
+    if (!mergeGapMin) return false
+    const lastEnd = lastTurnEndAt(TELEMETRY_FILE, sessionId) || lastSecondaryWakeAt
+    const verdict = shouldDeferWake({ now: Date.now(), lastTurnEndAt: lastEnd, mergeGapMin, reason: where, urgent })
+    if (!verdict.defer) return false
+    const mins = Math.max(1, Math.round(verdict.waitMs / 60_000))
+    log(`[bili-whale] ${where} 压到合并窗口里：上一趟收工不到 ${mergeGapMin} 分钟，约 ${mins} 分钟后再醒（wake.mergeGapMin）`)
+    return true
+  }
+
   // 峰时顺延：B站插件的 4 个后台 tick 也走同一套价格表，不能绕过桥接的闸门。
   let peakLoggedAt = 0
   function peakOffloadActive(at = Date.now()) {
@@ -566,6 +591,24 @@ export function startScheduler(ctx, opts) {
     log(`[bili-whale] 今日 token 额度已到上限，跳过${where}${message ? `：${message}` : ''}`)
   }
   async function budgetBlockedNow(where = '叫醒') {
+    // ① 每日**金额**闸（2026-11-24）：bili.config.json 的 budget.dailyCNY，读 token-usage-daily.json 的 bili.cost。
+    //    为什么单独一道：token 额度是按 token 算的，主人要的是「一天最多花多少钱」；
+    //    参考鱼缸小镇那边的日预算做法（那边早就有这道闸），B站 侧一直缺，
+    //    所以某天烧到 ¥1.35 也没人拦。
+    try {
+      const { dailyCNY } = wakeBudget()
+      if (dailyCNY > 0) {
+        const gate = biliBudgetState(dshHome, config())
+        if (gate.blocked) {
+          logBudgetBlocked(where, `今天已花 ¥${gate.spent.toFixed(2)} / 上限 ¥${gate.cap.toFixed(2)}（budget.dailyCNY）`)
+          return true
+        }
+      }
+    } catch (error) {
+      // 账本读坏了不能把她整条链路弄瘫：记一笔后按「没超」继续（下次再判）。
+      log(`[bili-whale] 金额闸检查失败（${where}）：${String(error?.message ?? error).slice(0, 120)}`)
+    }
+    // ② 每日 token 额度闸（2026-10-23）：原有的那道，继续留着 —— 两道闸各管一个维度。
     if (!tokenBudget?.block) return false
     try {
       const gate = await tokenBudget.block('bili')
@@ -672,6 +715,18 @@ export function startScheduler(ctx, opts) {
     } catch (error) {
       log(`[调度] 注入内部调度令牌失败：${error?.message ?? error}`)
     }
+    // 本次预算（软提示，2026-11-24 方案 A）：排在令牌之后、任务之前 ——
+    // 她先知道「这一趟只给 12 次调用」，才不会被清单逼着一条条查下去。
+    try {
+      const line = budgetPromptLine(config(), { spent: biliSpendForPrompt() })
+      if (line && Array.isArray(args?.content)) {
+        args = { ...args, content: [{ type: 'text', text: line + '\n\n' }, ...args.content] }
+      }
+    } catch (error) {
+      log(`[调度] 注入本次预算失败：${error?.message ?? error}`)
+    }
+    // 记一个「这一趟是什么时候真正投出去的」——合并窗口在没有 telemetry 时用它兜底。
+    lastSecondaryWakeAt = Date.now()
     return ctx.sessionController.prompt(args, signal)
   }
 
@@ -1085,6 +1140,7 @@ export function startScheduler(ctx, opts) {
     if (listening) return
     if (peakBlockedNow('评论区倾听')) return
     if (await budgetBlockedNow('评论区倾听')) return
+    if (deferWake('评论区倾听')) return
     let cfg
     try { cfg = JSON.parse(fs.readFileSync(CFG_FILE_REF, 'utf8')) } catch { cfg = {} }
     const listenerCfg = cfg.listen ?? {}
@@ -1168,6 +1224,7 @@ export function startScheduler(ctx, opts) {
       return
     }
     if (await budgetBlockedNow('直播间叫醒')) return
+    if (deferWake('直播间叫醒')) return
     if (peakBlockedNow('直播间叫醒')) {
       if (liveProc !== null) {
         liveStopping = true
@@ -1351,6 +1408,7 @@ export function startScheduler(ctx, opts) {
   async function qzoneWatchTick() {
     if (!modeCan('qzone-watch')) return
     if (await budgetBlockedNow('空间监看')) return
+    if (deferWake('空间互动')) return
     if (!interactEnabled()) return
     if (!ctx.sessionController) return
     if (qzWatchBusy) return
@@ -1602,6 +1660,7 @@ export function startScheduler(ctx, opts) {
     if (mode !== 'idle') return            // 正常模式靠 waking 里的「搭话」，最低限度一律不主动
     if (!ctx?.sessionController) return
     if (await budgetBlockedNow('找人聊')) return
+    if (deferWake('找人聊')) return
     if (peakBlockedNow('找人聊')) return
     const hour = new Date().getHours()
     if (hour < 9 || hour >= 23) return     // 别半夜敲人
@@ -1823,6 +1882,7 @@ export function startScheduler(ctx, opts) {
   async function vlogTick() {
     if (!modeCan('vlog')) return
     if (await budgetBlockedNow('每日 vlog')) return
+    if (deferWake('每日 vlog')) return
     if (vlogBusy) return
     if (!ctx.sessionController) return
     if (!capabilityEnabled('biliVlog')) return

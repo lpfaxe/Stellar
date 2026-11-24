@@ -70,7 +70,7 @@ export const CMD_MAP = {
   douyin: ['commands/douyin.mjs', '主人甩来抖音分享文案/链接：无头浏览器读页面文案/作者/数据/热评（不抽帧）：<url 或分享文案> [--comments N] [--json]'],
   cost: ['commands/cost.mjs', '花钱前先算账（只读）：不带参数=今日账单+价目表；--preset bili-watch / --tokens N --out N --turns N / --chars N [--json]'],
   vlog: ['commands/vlog.mjs', '每日 vlog：plan 看素材 / render 渲染入队 / queue 队列 / publish <id> [--go] / reject / reflect 复盘 / cost 花费 / status'],
-  qzone: ['commands/qzone.mjs', 'QQ 空间说说（走 SnowLuma）：profile / post --text … [--image …] [--right 4] --dry|--go / list / feeds / delete --tid <tid> --go'],
+  qzone: ['commands/qzone.mjs', 'QQ 空间说说（走 SnowLuma）：profile / post --text … [--image …] [--right 4] --dry|--go / list / feeds / card --tid <说说 id> | --url <卡片链接> / detail --tid <tid> / delete --tid <tid> --go'],
   'sticker-tags': ['commands/sticker-tags.mjs', '表情包标签回填 + 按 md5 去重（本地启发式，零费用）：--dry 先看 / --go 写入'],
   'dynamic-edit': ['commands/edit-dynamic.mjs', '编辑已存在的动态（文字/图片都能改，id 不变、评论与点赞保留）：<dyn_id> <文本文件> [--go]'],
   danmaku: ['commands/danmaku.mjs', '直播间弹幕：pre --room N / send --room N --msg "…" --dry|--go / history / live'],

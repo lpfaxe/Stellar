@@ -21,7 +21,7 @@ QQ 提问 ─ stellar_town_recall ┘ └─ town_day         每天一句感受
 影子会话 town-whale（每天 3 次，town-act 预设：只有小镇工具）
 ```
 
-- **QQ 链路零改动**：QQ 那边不注入小镇正文，只在唤醒提示里给一行指针（「想知道就调 `stellar_town_recall`」）。
+- **QQ 链路不新增回合**：唤醒提示里只多一句本地快照的近况（约 100 字，见第 16 节），想查细节再调 `stellar_town_recall` / `stellar_town_now`；不让她为了说一句镇上见闻先跑一趟工具。
 - **影子会话零对外能力**：`town-act` 预设里的 `town-tool-restrict` 是 allowlist，只有小镇工具能跑；
   能动的是「七件只读 + 三件动作」（只读里含一次看全的 `now` 与相册镜像 `album`；`visit` / `play` / `goto` 要另外打开），
   social、送礼、私信这些**连工具都没注册**（工具不存在 = 绕不过去）。
@@ -261,7 +261,7 @@ node scripts/town-remove.mjs            # 人看的清单
 node scripts/town-remove.mjs --json     # 机器可读：files / core / unknown / notes
 ```
 
-当前计划是 **files 38 / core 175 / unknown 0**——`unknown` 必须一直是 0，出现就说明有新的耦合点，先补白名单或用中文注释改写。
+当前计划是 **files 41 / core 179 / unknown 0**——`unknown` 必须一直是 0，出现就说明有新的耦合点，先补白名单或用中文注释改写。
 
 真要删（`fs.rmSync` 后逐个 `existsSync` 复查，沙箱下删除会假成功）：
 
@@ -497,3 +497,47 @@ persona 的裁剪顺序也为此改过：**先给这三段留预算，剩下的�
 - 官方插件自己的 HTTP 客户端没有 https/host 校验、跟随重定向、无响应体上限；它答的是它自己的回合，我们不 import 它，只能靠「装哪个版本」控制面。
 - 插件与我们是两套账（它的 `state.json` / 我们的 `town.db`），同一件事会各记一份；面板只读我们这份。
 - 记忆清洗只做「标 quoted」，没有做敏感信息脱敏。
+
+## 16. 两边的话怎么互通（2026-11-22）
+
+小镇在岛上，QQ 在这边。她要在 QQ 里随口说出「昨天在咖啡馆见了谁」，也得让岛上知道「QQ 这边刚换了会话」。
+两件事都**不做轮次**：不新增工具、不让她先查一遍再回答。
+
+### 16.1 岛 → QQ：每轮多一句近况
+
+`src/town-prompt.js` 的 `townPromptLine()` 在原来那句「想知道就调 `stellar_town_now`」后面再拼一段：
+
+```
+【小镇近况（游戏里的，不是现实）】鱼丸·柚约Fugu在咖啡馆见了面，聊了打招呼…；身上 18.53 元；大厅 68 桌在等人
+```
+
+- 来源是本地快照 `<DSH_HOME>/stellar/state/town/status.json`（官方插件与我们的采集器都会写它），按 `mtimeMs:size` 缓存，不联网、不调工具。
+- 从 `recall` 里抠出「今天（M-DD）：」那一行，按 `；` 切开取前两条，去掉「说话人：」前缀与句末标点，完全相同的去重；再补「身上 X 元」「大厅 N 桌」，整段 `slice(0,160)`。
+- **快照超过 24 小时就不提**：宁可不说话，也不把前天的事当今天说。
+- 成本：每轮多约 100 字（≈100 token）；对比「让她自己调一次 `stellar_town_now`」= 一次完整往返 ≈ ¥0.04 —— 差约 80 倍。省 token 要省**轮次**，不是省字数。
+- 开关：判定读 `bili.config.json` 的 `town.enabled`。**发布版默认不启用**——必须显式写 `town.enabled: true` 才会有这整段（`townPromptLine()` 返回空串）；写 `false` 或删掉都是关（开发树是反过来的：默认开、写 `false` 才关）。就算开着，快照不新也不写。
+
+### 16.2 QQ → 岛：会话换了就重绑（`src/town-chat-sync.js`）
+
+官方插件的 `fish[].alsoSids` 是「把哪些 DSH 会话当成主人在说话」，只在 `POST /fishbowl-town/save` 时热生效（没有定时重读设置）。
+而我们的 QQ 会话 id 每 2–3 次唤醒就会滚动一次（按上下文 token 触发）—— 手绑一次，几小时后指向的就是个死会话。
+
+所以桥接在每轮投递前 fire-and-forget 调一次 `syncTownChatBinding()`：
+
+| 触发条件 | 行为 |
+| --- | --- |
+| 不是主人私聊（`private:<admin.qq>`） | 什么都不做（群聊、别人的私聊一律不绑） |
+| 会话 id 没变 | 读 `state/town/chat-bind.json`，`skipped:'same'`，不打插件 |
+| 会话 id 变了 | `POST {dsh.baseUrl}/fishbowl-town/save?fish=whale`，body `{addAlso: 新 sid, removeAlso: 旧 sid, bridgeChat: true}`，头带 `origin` |
+| 上一次失败不到 10 分钟 | `skipped:'backoff'`（网络抖的时候不每轮重试打第三方） |
+| `socialV2.town.chatSync === false` | 整段不执行 |
+
+- 通道复用桥接已有的 `NodeApiClient`（DSH 鉴权、端口发现都不另搓 cookie）。
+- **失败只静默记一笔** `{ok:false, error}`：绑不上只退化成「她看不到 QQ 这边的话」，不影响消息发送、不阻断投递。
+- 记录文件是插件侧的 `state/town/chat-bind.json`（即在 `<DSH_HOME>/stellar/state/town/` 下），只有 `{ok, sid, at, base, fishId, removed}`，**不存访问码**。
+- 拆除：删 `src/town-chat-sync.js` + `bridge.js` 里调用那一段 + `chat-bind.json`。
+
+### 16.3 测试
+
+`scripts/test-town-prompt-digest.mjs`（31 条：抠今天那句、去重去标点、24 小时过期不提、关镇返回空串）与
+`scripts/test-town-chat-sync.mjs`（42 条：非主人 key / 坏 sid / 空 base 不打请求、首绑、幂等、换会话带 removeAlso、失败退避、网络异常不抛）。

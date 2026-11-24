@@ -19,6 +19,8 @@ import { GEN1_ROLE_LINE_RE, parseRoleSections, roleCharStats, roleSectionReport,
 import { fileURLToPath } from 'node:url';
 import { townPromptLine } from './town-prompt.js';
 import { normalizeMemoryEngine, resolveMemoryConfigFile } from './unified-memory-config.js';
+import { tokenlessTurnDecision } from './tokenless-guard.js';
+import { isOwnerPrivateKey, syncTownChatBinding } from './town-chat-sync.js';
 import { voiceStylePrompt, recordVoiceStats, voiceStyleFile, voiceStatsFile } from './voice-style.js';
 import { guardGroupMessages, guardGroupSegments, stripBiliLinks, GROUP_LINK_HINT } from './group-link-guard.js';
 import { SnowLumaWebSocketClient, text } from '@snowluma/sdk';
@@ -41,6 +43,7 @@ import { discoverDshBaseUrl, isLoopbackBaseUrl, probeDshBaseUrl } from './dsh-po
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { hardenDir, hardenSensitiveFile, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
+import { cardShape, cardTextFromSegmentData } from './qq-card.js';
 import { buildProvenanceBlock, buildSelfIdentityBlock, selfIdentityPath } from './self-identity.js';
 import {
   GREETING_RETRY_MS, buildMorningGreetingPrompt, localDateKey, parseGreetingTime,
@@ -1867,6 +1870,12 @@ function localClock(atMs = Date.now()) {
 
 const appendBridgeLog = createCappedLogger(BRIDGE_LOG, 2000);
 
+// 卡片解析不出来时留一行形状日志（app / bizsrc / meta 的键名，**不含 config/token/正文**）。
+// 2026-11-24：这种情况以前完全静默，只能靠主人再转一次才发现解析器漏了一种形状（PITFALLS #326）。
+function logCardMiss(raw) {
+  try { log('[卡片] 认不出的卡片形状：' + JSON.stringify(cardShape(raw))); } catch {}
+}
+
 function log(...args) {
   let line;
   try {
@@ -1922,84 +1931,12 @@ function withTimeout(promise, ms, label) {
 }
 
 /**
- * QQ 小程序卡片（B站视频分享卡就是它）在 OneBot 里是 `{type:'json',data:{data:'<json 字符串>'}}`。
- * 以前这里只输出字面量「[卡片消息]」，等于把对方发来的视频标题、简介、链接全丢了 ——
- * 她既不知道人家分享了什么，也没法顺着链接去看。
- *
- * 只取三样东西：标题、简介、跳转链接。卡片里的 token/icon/preview 一律不进上下文
- * （token 是登录凭据，icon 是长 URL，对理解内容没帮助，却会白吃 token）。
+ * QQ 卡片在这里只是薄包装：真正的解析与渲染在 src/qq-card.js（普通消息和合并转发共用一份）。
+ * 2026-11-24：主人转发的 QQ 空间卡片她读不出来 —— 转发那条路（src/forward.js）以前把 json 段
+ * 拍平成「[卡片消息]」，而这里的 parseArkCard 只认小程序卡的 meta.detail_1，Qzone 卡的正文在
+ * meta.news 上，于是标题/链接/说说 id 全丢。现在两处都走 qq-card.js。
+ * 卡片里的 token/icon/preview 一律不进上下文。
  */
-function parseArkCard(raw) {
-  if (!raw) return null;
-  let obj = raw;
-  if (typeof raw === 'string') {
-    const s = raw.trim();
-    if (!s.startsWith('{')) return null;
-    try { obj = JSON.parse(s); } catch { return null; }
-  }
-  if (!obj || typeof obj !== 'object') return null;
-  // 有的实现把卡片再包一层 {app, meta, config}；也有的直接给 {prompt, meta}
-  const meta = obj.meta && typeof obj.meta === 'object' ? obj.meta : obj;
-  const detail = meta.detail_1 && typeof meta.detail_1 === 'object' ? meta.detail_1 : meta;
-  const pick = (...vals) => {
-    for (const v of vals) {
-      const s = String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
-      if (s) return s;
-    }
-    return '';
-  };
-  const title = pick(detail.title, meta.title, detail.desc);
-  const desc = pick(detail.desc !== title ? detail.desc : '', meta.desc, meta.preview, detail.summary);
-  // 实测（2026-11-11 get_mini_app_ark）：detail_1 里没有 jumpUrl，只有一个短链 url
-  // （m.q.qq.com/a/s/<hash>）。真链路里 qqdocurl 才带原站地址，所以先取 qqdocurl。
-  const jump = pick(
-    detail.qqdocurl, detail.jumpUrl, detail.jump_url,
-    meta.qqdocurl, meta.jumpUrl, meta.jump_url, obj.jumpUrl, obj.jump_url,
-    detail.url, meta.url, obj.url,
-  );
-  if (!title && !desc && !jump) return null;
-  return {
-    app: pick(obj.app, meta.app),
-    title: title.slice(0, 120),
-    desc: desc && desc !== title ? desc.slice(0, 160) : '',
-    jump: jump.slice(0, 400),
-  };
-}
-
-/** 卡片 → 一行文本。跳转链接尽量提取 BV 号，方便她用 stellar_bili_watch 直接看。 */
-const ARK_APP_NAMES = /^(哔哩哔哩|bilibili|QQ|微信|WeChat|小程序|迷你世界)/i;
-
-/**
- * 分享链接后面常拖着一大串埋点参数（share_session_id/bbid/timestamp…），
- * 对理解内容没用却占上下文；b23.tv / bilibili.com 只留 scheme+host+path 就够了，
- * 她拿着这个干净链接丢给 stellar_bili_watch 一样能跳。其它站点原样保留。
- */
-function trimShareUrl(url) {
-  const s = String(url ?? '').trim();
-  if (!/^https?:\/\//i.test(s)) return s;
-  try {
-    const u = new URL(s);
-    const keep = /(^|\.)(b23\.tv|bilibili\.com)$/i.test(u.hostname);
-    if (!keep) return s;
-    return u.origin + u.pathname;
-  } catch { return s; }
-}
-function arkCardText(card) {
-  if (!card) return '[卡片消息]';
-  const bv = (String(card.jump).match(/BV[0-9A-Za-z]{10}/) || [])[0] || '';
-  const bits = [];
-  // 实测 detail_1.title 经常就是应用名「哔哩哔哩」，真正的视频标题在 desc 里。
-  // 这种时候别把应用名当成标题念一遍（会说成「哔哩哔哩 — 标题」，像两个人）。
-  const titleIsApp = !card.title || ARK_APP_NAMES.test(card.title);
-  if (!titleIsApp) bits.push(card.title);
-  if (card.desc) bits.push(card.desc);
-  else if (titleIsApp && card.title) bits.push(card.title);
-  let line = '[卡片' + (card.app && /miniapp/i.test(card.app) ? '·小程序' : '') + ']';
-  if (bits.length) line += ' ' + bits.join(' — ');
-  if (bv) line += '（' + bv + '）';
-  else if (card.jump) line += '（链接：' + trimShareUrl(card.jump) + '）';
-  return line.slice(0, 330);
-}
 async function segmentsToText(segments, options = {}) {
   const { resolveAtName, resolveReply, includeReply = true } = options ?? {};
   // 有些 OneBot 实现直接把纯文本消息放在 message 字段里（string）
@@ -2047,12 +1984,13 @@ async function segmentsToText(segments, options = {}) {
         break;
       }
       case 'json': {
-        // 2026-11-11 主人要：她得能看懂别人分享的 B站视频卡片。
-        // data 可能是字符串也可能已经是对象（网关实现不同），两种都试。
-        const card = parseArkCard(d.data ?? d.json ?? d);
-        out.push(arkCardText(card));
+        // 2026-11-24：普通消息里的卡片跟合并转发共用 src/qq-card.js（B站卡取 BV、空间卡取说说 id）。
+        const cardText = cardTextFromSegmentData(d.data ?? d.json ?? d);
+        if (cardText === '[卡片消息]') logCardMiss(d.data ?? d.json ?? d);
+        out.push(cardText);
         break;
       }
+      case 'xml': out.push(cardTextFromSegmentData(d.data ?? d.xml ?? d)); break;
       // markdown：SnowLuma 1.14.9 的线上段落是 `{type:'markdown',data:{content}}`。
       // 上游 1.14.17+（commit 1934e4e7「include text alongside received markdown」）
       // 起还会带上 `data.text`。两个形状都读，这样将来升级 SnowLuma 运行时不会退化成
@@ -4873,6 +4811,23 @@ function maybeApproveImageRequest(text, key) {
       }
       return false;
     };
+    /**
+     * 兜底判定：这次请求没带会话令牌，但能不能算成「这个 key 自己那一轮」发的？
+     *
+     * 背景（2026-11-22 主人批准）：模型偶尔漏传 token，MCP 的 zod 会直接拒（请求根本没到
+     * 桥接），到了这一层的无令牌调用又一律 403 —— 两条路都表现为「她说的话丢了」，
+     * 且她自己也收不到失败（工具报错只进上下文）。实测 2026-11-21~22 有 16 次这种丢失。
+     *
+     * 三个条件缺一不可，作用是把「无令牌」从**提权**变成**受限降级**：
+     *   1. 请求声明了 x-agent-call（管理端/网页不走这条，避免把它们也降级）；
+     *   2. 外层关卡已经验过控制台令牌（只可能是本机 MCP 进程）；
+     *   3. 这个 key 此刻正有唤醒回合在跑（pendingWakeKeys）—— 否则连「她正在说话」都不成立。
+     * 它只能落到这一个 key：调用方自己给的 key 命中不了，就 403，不跨会话冒充。
+     */
+    // 判定逻辑在 src/tokenless-guard.js（可单测），这里只把当前 pendingWakeKeys 递进去。
+    // 三条同时成立才放行：没有令牌 + 声明了 x-agent-call + 这个 key 此刻正在唤醒回合里。
+    const tokenlessTurnForKey = (req, key) =>
+      tokenlessTurnDecision({ headers: req.headers, key, pendingKeys: pendingWakeKeys }).allowed;
     // 二代会话工具必须仍命中当前模式的白名单/准入；避免白名单移除后旧 agentToken 继续读状态。
     const v2SessionAllowed = isSessionAllowedInCurrentMode;
 
@@ -5020,7 +4975,13 @@ function maybeApproveImageRequest(text, key) {
         if (!hasToken) {
           const tokenlessAgentAllowed = url.pathname === '/api/status'
             || url.pathname.startsWith('/api/send/')
-            || url.pathname.startsWith('/api/images/');
+            || url.pathname.startsWith('/api/images/')
+            // 2026-11-22 主人批准「桥接兜底」：模型漏传会话令牌时不再整条丢掉，改成
+            // 「按 key 认这个 key 此刻正在跑的那一轮」（见 tokenlessTurnForKey）。
+            // 这里只放行三条，而且端点里必须再证一次；不满足就 403，绝不退化成本机全权。
+            || url.pathname === '/api/socialV2/send-message'
+            || url.pathname === '/api/socialV2/send-burst'
+            || url.pathname === '/api/socialV2/close';
           if (!tokenlessAgentAllowed) {
             sendJson({ ok: false, error: '未授权：该接口的智能体调用必须携带有效的会话令牌' }, 403);
             return;
@@ -7139,9 +7100,14 @@ function maybeApproveImageRequest(text, key) {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
           if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
+          const tokenlessClose = tokenlessTurnForKey(req, key);
+          if (!req.headers['x-agent-token'] && !tokenlessClose) {
+            sendJson({ ok: false, error: '收尾必须携带 agent token（或让这个会话正处于唤醒回合中，由桥接按 key 兜底）' }, 403);
+            return;
+          }
           if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('closeConversation')) { sendJson({ ok: false, error: '工具未启用：qq_close_conversation' }, 403); return; }
+          if ((tokenlessClose || req.headers['x-agent-token']) && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          if ((tokenlessClose || req.headers['x-agent-token']) && !v2ToolEnabled('closeConversation')) { sendJson({ ok: false, error: '工具未启用：qq_close_conversation' }, 403); return; }
           try {
             const result = closeConversationV2(key, body);
             sendJson(result);
@@ -7546,14 +7512,18 @@ function maybeApproveImageRequest(text, key) {
             sendJson({ ok: false, error: '已禁用多条发送，请合并为一条消息' }, 403);
             return;
           }
+          const tokenlessBurst = tokenlessTurnForKey(req, key);
           if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('sendBurst')) { sendJson({ ok: false, error: '工具未启用：qq_send_burst' }, 403); return; }
+          if ((tokenlessBurst || req.headers['x-agent-token']) && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          if ((tokenlessBurst || req.headers['x-agent-token']) && !v2ToolEnabled('sendBurst')) { sendJson({ ok: false, error: '工具未启用：qq_send_burst' }, 403); return; }
           if (currentMode !== 'reserved2') {
             sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403);
             return;
           }
-          if (!req.headers['x-agent-token']) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return; }
+          if (!req.headers['x-agent-token'] && !tokenlessBurst) {
+            sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token（或让这个会话正处于唤醒回合中，由桥接按 key 兜底）' }, 403);
+            return;
+          }
           const keyMatch = /^(group|private):(\d+)$/.exec(key);
           if (!keyMatch) {
             sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400);
@@ -7699,10 +7669,14 @@ function maybeApproveImageRequest(text, key) {
             crossFrom = ownerScopedKeyOf(req.headers['x-agent-token']);
             if (!crossFrom) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('sendMessage')) { sendJson({ ok: false, error: '工具未启用：qq_send_message' }, 403); return; }
+          const tokenlessSend = tokenlessTurnForKey(req, key);
+          if ((tokenlessSend || req.headers['x-agent-token']) && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          if ((tokenlessSend || req.headers['x-agent-token']) && !v2ToolEnabled('sendMessage')) { sendJson({ ok: false, error: '工具未启用：qq_send_message' }, 403); return; }
           if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!req.headers['x-agent-token']) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return; }
+          if (!req.headers['x-agent-token'] && !tokenlessSend) {
+            sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token（或让这个会话正处于唤醒回合中，由桥接按 key 兜底）' }, 403);
+            return;
+          }
           const keyMatch = /^(group|private):(\d+)$/.exec(key);
           if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
           const kind = keyMatch[1];
@@ -8174,6 +8148,8 @@ function maybeApproveImageRequest(text, key) {
           }
           if (kind === 'private' && atUserId) { sendJson({ ok: false, error: '私聊不需要 @' }, 400); return; }
           if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
+          const sendCfg = cfg.socialV2?.send ?? {};
+          const maxChars = Math.max(1, Number(sendCfg.maxMessageChars) || 500);
           // 群聊不发 B站 视频链接（2026-11-22 主人要求）：图片的配文也要过同一道闸。
           // 配文被剥空不拦图片本身 —— 图还是可以发，只是不再替她贴链接。
           let groupLinksStripped = 0;
@@ -8185,8 +8161,6 @@ function maybeApproveImageRequest(text, key) {
               log('[群链接闸] ' + key + ' 配文剥掉 ' + groupLinksStripped + ' 个 B站链接');
             }
           }
-          const sendCfg = cfg.socialV2?.send ?? {};
-          const maxChars = Math.max(1, Number(sendCfg.maxMessageChars) || 500);
           if (caption.length > maxChars) { sendJson({ ok: false, error: '配文不能超过 ' + maxChars + ' 字' }, 400); return; }
           if (caption && SENSITIVE_RE.test(caption)) { sendJson({ ok: false, error: '配文含敏感信息，已阻止发送' }, 403); return; }
           if (caption && [...KNOWN_AGENT_TOKENS].some((t) => t && caption.includes(t))) { sendJson({ ok: false, error: '配文包含会话令牌，已阻止发送' }, 403); return; }
@@ -13882,6 +13856,21 @@ function saveSocialV2State() {
   async function deliverPromptNow(key, promptText, opts = {}) {
     try { agentState.touch(key, opts.wakeReason ? 'wake' : 'deliver'); } catch {}
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
+    // 小镇近况：主人的 QQ 私聊会话会滚动（maybeRollSessionV2），插件里静态绑的 alsoSids 几小时就失效。
+    // 每次投递前对一眼，只有换了会话才去改插件设置；失败静默，不影响投递（见 src/town-chat-sync.js）。
+    try {
+      if (cfg.socialV2?.town?.chatSync !== false && isOwnerPrivateKey(key, cfg.admin?.qq)) {
+        void syncTownChatBinding({
+          stellarDir: STELLAR_DIR,
+          key,
+          ownerUin: cfg.admin?.qq,
+          sessionId: state.sessions[key],
+          baseUrl: api.baseUrl,
+          fetchImpl: (url, init) => api.doFetch(url, init),
+          log,
+        }).catch(() => {});
+      }
+    } catch {}
     // Recheck queued wakes at dispatch time: no model call while paused/disabled
     // and no reserved2 prompt leaking into an ordinary chat after a mode switch.
     const wakeBlocked = () => opts.wakeReason && (currentMode !== 'reserved2' || socialV2.paused || cfg.socialV2?.enabled === false);
@@ -14540,6 +14529,8 @@ function saveSocialV2State() {
         // 参考引擎（设计 §6.2，方案 B）：只在命中高情绪时注入 2 片、硬上限 900 字符，
         // 且不提供任何「查参考」的工具。triggerOnly=false 只用于调试（普通闲聊也注入）。
         styleRef: {
+          // 2026-11-22 主人要求关掉参考库：默认改成关（opt-in）。原来 `!== false` 意味着
+          // 「配置里没写就开着」，删段也关不掉；现在写 true 才开。
           enabled: styleCfg.enabled === true,
           maxChars: Math.max(200, Math.min(1200, Number(styleCfg.maxChars) || 900)),
           slices: Math.max(1, Math.min(3, Number(styleCfg.slices) || 2)),
@@ -16297,16 +16288,17 @@ function saveSocialV2State() {
     const biliLine = biliMemoryOn
       ? `【B站身份】B 站那个号就是你本人${biliSelfName ? `：「${biliSelfName}」` : ''}${biliSelfMid ? `（mid ${biliSelfMid}，space.bilibili.com/${biliSelfMid}）` : ''}。QQ 和 B 站是同一个人，别人发来的截图里出现这个号也是你自己。要看你最近看过/发过什么，用 stellar_bili_my / stellar_bili_history 现查，别凭印象编。\n\n`
       : '';
+    // 小镇（2026-11-21）：只给一行指针，不注入记忆正文 —— 小镇的事按需现查，
+    // 否则每次唤醒都多背 400 字，而绝大多数唤醒跟小镇无关。整段在 src/town-prompt.js。
+    // 摸鱼日多给一句「时间给小镇」（2026-11-22 主人）。模式按桥接同一套判定读，
+    // 读失败就当正常模式 —— 少一句提示比挂掉一次唤醒好。
+    let townMode = 'normal';
+    try { townMode = currentRunMode({ config: readConfigObject(path.join(ROOT, 'config.json')) }).mode; } catch {}
+    const townLine = townPromptLine({ stellarDir: STELLAR_DIR, mode: townMode });
     // 记忆方式二选一：narrative 注入预渲染记忆卡；vector 注入按当前消息检索到的旧事。
     // 两套存储都在后台继续写，这里只决定读哪一份（2026-11-02 用户要求）。
     // 叙事侧必须带 key：dev 的按会话记忆隔离靠 memoryCardPromptBlock(key)。
     // 分层记忆优先：按当前消息检索 Top-K（只给摘要+id），没有命中才退回预渲染记忆卡。
-    // 小镇（2026-11-21）：整段提示在 src/town-prompt.js 里（发布版默认不启用：必须显式 town.enabled=true 才给指针）。
-    // 拆除：删 town-prompt.js + 这一行。
-    // 摸鱼日多给一句「时间给小镇」（2026-11-22 主人）；模式读不到就当正常模式。
-    let townMode = 'normal';
-    try { townMode = currentRunMode({ config: readConfigObject(path.join(ROOT, 'config.json')) }).mode; } catch {}
-    const townLine = townPromptLine({ stellarDir: STELLAR_DIR, mode: townMode });
     const memorySettings = readUnifiedMemorySettings();
     // 先让读侧去刷新（第一次唤醒它给的是上一次的缓存，进程刚起时为空 → 下面自动退回旧卡片）。
     warmMemoryFor(key, lastMsg);

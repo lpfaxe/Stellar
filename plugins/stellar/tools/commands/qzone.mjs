@@ -5,6 +5,9 @@
 //   node bili.mjs qzone post    --text "..." [--image a.png] [--right 1|4|16|64|128] [--targets 123,456] --dry|--go
 //   node bili.mjs qzone read    [--scope mine|owner|friends] [--num 10] [--json]
 //   node bili.mjs qzone detail  --tid <tid> [--uin <QQ>] [--num 20]
+//   node bili.mjs qzone card    --tid <说说 id> | --url <链接>   # 读一张转发的空间卡片（2026-11-24）
+//       卡片里的链接是 mqqapi://qzoneschema/?schema=<base64>，里面的 cellid 就是 tid；
+//       走 get_qzone_feed_detail（不是 detail 用的 get_qzone_msg_detail —— 那是另一套 id）。
 //   node bili.mjs qzone comment-media --tid <tid>      # 下载评论区里的图（JSON，给 MCP 附图用）
 //   node bili.mjs qzone like    --tid <tid> [--uin <QQ>] [--time <ts>] --dry|--go
 //   node bili.mjs qzone unlike  --tid <tid> [--uin <QQ>] [--time <ts>] --dry|--go
@@ -34,6 +37,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { ffmpegPath } from '../lib/ffmpeg.mjs'
 import { checkPrivacy, privacyRejectText } from '../lib/privacy-guard.mjs'
+import { feedCardText, mediaImageUrls, qzoneIdsFromUrl } from '../../../../src/qq-card.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '../../../..')          // stellar 仓库根
@@ -1231,6 +1235,73 @@ function publicShots() {
   console.log('文字账本没有动：qzone public today 仍能看到今天刷过什么、打了多少分、赞没赞、评论了什么。')
 }
 
+// 读一张转发的 QQ 空间卡片（2026-11-24 主人要：转发里那张空间卡她得能看见内容）。
+// 只读：不写账本、不改日记。
+// 卡片里的链接是 mqqapi://qzoneschema/?schema=<base64>，解出来的 cellid 就是说说 id；
+// 这条 id 属于「空间动态」接口（get_qzone_feed_detail），跟 detail 用的 get_qzone_msg_detail
+// 是两套 id，混用会得到「数据不存在」。
+async function card() {
+  const url = typeof args.get('url') === 'string' ? String(args.get('url')).trim() : ''
+  let tid = typeof args.get('tid') === 'string' ? String(args.get('tid')).trim() : ''
+  let uin = typeof args.get('uin') === 'string' ? String(args.get('uin')).trim() : ''
+  if (!tid && url) {
+    const ids = qzoneIdsFromUrl(url)
+    tid = ids.cellId
+    uin = uin || ids.uin
+  }
+  if (!/^[0-9a-fA-F]{24}$/.test(tid)) {
+    const msg = '需要 --tid <24 位说说 id> 或 --url <空间链接>；读不到可用的说说 id'
+    if (JSON_OUT) console.log(JSON.stringify({ ok: false, message: msg }))
+    else console.error(msg)
+    process.exit(2)
+  }
+  // 图片：主人 2026-11-24 追加「转发动态里的图片也要能读出来」——
+  // 图在 feed.cell_media.media_items 里，下载到临时目录后把本地路径交给 MCP 当 image 块。
+  const wantImages = args.has('images')
+  const maxImages = Math.max(1, Math.min(9, Number(args.get('max-images') ?? 4) || 4))
+  const done = (text, images) => {
+    if (JSON_OUT) {
+      console.log(JSON.stringify({ ok: true, tid, uin, text, images }))
+      return
+    }
+    console.log(text)
+    if (uin) console.log(`作者 QQ：${uin}`)
+    if (images.length) console.log('图片已下载：' + images.map((x) => x.file).join('  '))
+  }
+  try {
+    const detail = await call('get_qzone_feed_detail', { tid })
+    const feed = detail?.feed
+    const text = feedCardText(feed, { tid })
+    if (text) {
+      const images = []
+      if (wantImages) {
+        const urls = mediaImageUrls(feed?.cell_media?.media_items, { max: maxImages })
+        for (let i = 0; i < urls.length; i += 1) {
+          const got = await grabImage(urls[i], tid.slice(0, 12), i + 1)
+          if (got) images.push(got)
+        }
+      }
+      done(text, images)
+      return
+    }
+  } catch (error) {
+    const first = error instanceof Error ? error.message : String(error)
+    // 兜底：老接口的 tid（msg_list 那套）偶尔也能撞上
+    try {
+      const data = await call('get_qzone_msg_detail', { tid, pos: 0, num: 1 })
+      const body = oneLine(data?.content ?? '', 800)
+      if (body) {
+        done(`[空间说说] ${body}\n（这条走的是老接口：评论数、图数读不到）`, [])
+        return
+      }
+    } catch { /* 两条都不行，下面统一报 */ }
+    const msg = `这条说说打不开：${first}\n可能已经删了、只对部分人可见，或者 id 不是说说 id（24 位十六进制）。`
+    if (JSON_OUT) console.log(JSON.stringify({ ok: false, message: msg }))
+    else console.error(msg)
+    process.exit(1)
+  }
+}
+
 async function main() {
   if (sub === 'profile') {
     const data = await call('get_qzone_profile')
@@ -1258,6 +1329,11 @@ async function main() {
 
   if (sub === 'comment-media' || sub === 'cmedia') {
     await commentsMedia()
+    return
+  }
+
+  if (sub === 'card') {
+    await card()
     return
   }
 

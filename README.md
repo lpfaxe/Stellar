@@ -356,7 +356,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | **日常** | 三档运行模式（正常 / 摸鱼 / 最低限度）、生物钟、每日任务清单、待办提醒、安静时段 | 本文 §3.2 / §3.6 |
 | **图片** | 网图池（每天清空、最多 30 张、可单删全删）、B站 封面池、每日截图留存 | 面板「她今天」 |
 | **额度** | 每日 token 额度（QQ / B站 / 好友爱看 / 小镇 / 其他 / 总额，80% 提醒、100% 停）、消费看板、按价目折算成本 | [TOKEN_USAGE_CONSOLE.md](docs/guides/operations/TOKEN_USAGE_CONSOLE.md) |
-| **工具面** | **85 个 MCP 工具**（`src/mcp-snowluma-safe.js` 72 个：36 个 `qq_*` + 36 个 `stellar_*`；`src/town-tools.js` 10 个 `stellar_town_*`；宿主级 1 个 + 联网搜索 2 个 —— 合计 46 个 `stellar_*`）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
+| **工具面** | **86 个 MCP 工具**（`src/mcp-snowluma-safe.js` 73 个：36 个 `qq_*` + 37 个 `stellar_*`；`src/town-tools.js` 10 个 `stellar_town_*`；宿主级 1 个 + 联网搜索 2 个 —— 合计 47 个 `stellar_*`）、三个 MCP server、两代 preset、fail-closed 工具守卫 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
 | **界面** | 设置页 7 个标签、完整面板 7 个页面 / 38 张卡、桥接自带单页控制台 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) |
 
 ---
@@ -401,18 +401,18 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 
 | # | 文档 | 行数 | 什么时候翻它 |
 | --- | --- | --- | --- |
-| 1 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) | 115 | 总纲：进程、分层、一条消息的旅程、改什么要重启什么 |
-| 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 111 | 三份配置的每个键、状态文件全表、备份与回滚 |
+| 1 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) | 133 | 总纲：进程、分层、一条消息的旅程、改什么要重启什么 |
+| 2 | [DATA-AND-CONFIG.md](docs/guides/operations/DATA-AND-CONFIG.md) | 137 | 三份配置的每个键、状态文件全表、备份与回滚 |
 | 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
-| 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 154 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
-| 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 94 | 设置页 7 页签与面板 7 页签 / 38 张卡 |
-| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 278 | B站 60 条命令、空间功能、鱼群与弹幕 |
-| 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 232 | 85 个工具、守卫、两代 preset |
-| 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 137 | 角色包怎么放、人格卡怎么起作用 |
-| 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 556 | 她为什么会主动找人说话 |
-| 10 | [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) | 151 | QQ 号与 B站 号怎么算同一个人 |
-| 11 | [CONVERSATION_CLOSURE.md](docs/guides/features/CONVERSATION_CLOSURE.md) | 136 | 一段对话怎么算结束 |
-| 12 | [FOLDER_MAP.md](docs/FOLDER_MAP.md) | 86 | 目录里都是什么 |
+| 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 169 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
+| 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 110 | 设置页 7 页签与面板 7 页签 / 38 张卡 |
+| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 311 | B站 60 条命令、空间功能、鱼群与弹幕 |
+| 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 245 | 86 个工具、守卫、两代 preset |
+| 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 136 | 角色包怎么放、人格卡怎么起作用 |
+| 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 553 | 她为什么会主动找人说话 |
+| 10 | [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) | 150 | QQ 号与 B站 号怎么算同一个人 |
+| 11 | [CONVERSATION_CLOSURE.md](docs/guides/features/CONVERSATION_CLOSURE.md) | 135 | 一段对话怎么算结束 |
+| 12 | [FOLDER_MAP.md](docs/FOLDER_MAP.md) | 90 | 目录里都是什么 |
 其它：DSH 装配 [DSH_SETUP.md](docs/guides/getting-started/DSH_SETUP.md) · SnowLuma 排错 [SNOWLUMA_TROUBLESHOOT.md](docs/guides/getting-started/SNOWLUMA_TROUBLESHOOT.md) ·
 安全基线 [SECURITY_BASELINE.md](docs/guides/operations/SECURITY_BASELINE.md) · 全部索引 [docs/README.md](docs/README.md)。
 
@@ -458,7 +458,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 ## 九、开发
 
 ```bash
-npm run test:audit              # 默认门禁（219 个脚本，其中 189 条进 audit；离线；需要完整面板的几条在公开仓库里自动 SKIP）
+npm run test:audit              # 默认门禁（226 个脚本，其中 196 条进 audit；离线；需要完整面板的几条在公开仓库里自动 SKIP）
 npm run test:regressions        # 桥接 / 协议回归
 npm run privacy-scan:strict     # 发布前隐私扫描（0 命中才可发布）
 npm run guard:check             # DSH 升级后先跑（asar 会话护栏补丁是否还在）

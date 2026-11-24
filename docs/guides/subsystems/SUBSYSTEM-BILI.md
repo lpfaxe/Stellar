@@ -86,6 +86,39 @@ node bili.mjs deps; node bili.mjs status
 
 省的是**调用次数**：一次模型调用 ≈ 重读一遍上下文（实测一次往返约 ¥0.04），而多几个字的输出几乎不要钱。
 
+### 2.5 醒来账：合并窗口 + 每趟预算 + 每日金额闸
+
+钱不是花在她干的活上，是花在**每趟重新铺一遍桌子**上。实测（11-23 与 11-24 两天，27 趟 / 394 次调用 / ¥2.06）：
+
+| 事实 | 数字 |
+| --- | --- |
+| 每趟第一次调用（底座 67K token 全付 hit） | **¥0.0083**，27 趟 ≈ ¥0.224（11%） |
+| 每趟调用数 | 平均 13.6–16.7 次，最大 45；11-23 有 4 趟吃掉 76% 的钱 |
+| 「上一趟收工不到 10 分钟又醒」 | 11-23 有 11 趟占 30%，11-24 有 5 趟占 51% |
+| 工具构成 | `pwsh` 89%（133 次 / 128,921 字符）—— 钱花在「查状态 → 读输出 → 再决定下一条」 |
+| 峰时占比 | 两天只有 ¥0.010（`socialV2.cost.peakOffload=true` 在起作用） |
+
+所以杠杆是**少开趟、每趟少绕**，不是压提示词长度：42% 的钱是 cacheHit，而 hit 单价只有 miss 的 1/50 —— 多一次调用就多付一遍 67K 的 hit。
+
+三个旋钮都在 `bili.config.json`（删掉某一项 = 用默认值）：
+
+```json
+"wake":   { "mergeGapMin": 20, "maxCallsPerTurn": 12 },
+"budget": { "dailyCNY": 0.8 }
+```
+
+| 旋钮 | 默认 | 行为 | 关掉 |
+| --- | --- | --- | --- |
+| `wake.mergeGapMin` | 20 | **次生叫醒**（评论区倾听 / 空间互动 / 直播间 / 轻醒 / 找人聊 / vlog）在上一趟收工不足 N 分钟时被压着，日志写「压到合并窗口里」 | 写 `0` |
+| `wake.maxCallsPerTurn` | 12 | 每趟提示词多一行「本次最多 12 次工具调用 —— 到数就收工写日记」 | 写 `0` |
+| `budget.dailyCNY` | 0.8 | 读 `token-usage-daily.json` 的 `bili.cost`；到上限今天所有 `budgetBlockedNow()` 一律拦（含生物钟、监听、空间监看） | 写 `0` |
+
+**urgent 三类不受合并限制**：主人本人的回复、待办到点、驳回返工 —— 这三类不会被压 20 分钟。
+
+实现位置：判定与拼句全在 `plugins/stellar/lib/bili-wake-budget.js`（纯函数，20 条测试在 `scripts/test-bili-wake-budget.mjs`）；`lib/scheduler.js` 的 `deferWake(where, {urgent})` 挂在 5 个次生叫醒点，`budgetBlockedNow()` 先过金额闸再过 token 额度闸（两道闸各管一个维度，别合并），`promptBili()` 在令牌行之后注入 `【本次预算】`。
+
+「上一趟什么时候收工」读 `context-telemetry-plugin.jsonl` 的 `turn_end`（只读文件尾 256KB），读不到就用进程内的 `lastSecondaryWakeAt` 兜底 —— 宁可少拦一次，也不要因为读不到时间戳让她永远不醒。
+
 ---
 
 ## 3. 会写出去的东西
@@ -253,7 +286,7 @@ B站 评论与动态是公开面，一旦把主人的 QQ 号、主人的 B站 mi
 
 ## 9. 配置（`bili.config.json`）
 
-主要几段：`persona`（称呼与自称）、`preferences`（喜欢/不喜欢与权重）、`owner`（主人 mid 与昵称）、`limits`（四本账）、`dynamics`（四类动态）、`qzone`（空间说说与监看）、`report` / `triple` / `vlog`（每日固定动作）、`share`（分享开关与阈值）、`listen`（评论区与直播倾听）、`night`（作息窗口）、`capabilities`（能力开关）、`fishGuard`（鱼群保护）、`agent`（会话权限）、`shots`（视频缓存）。
+主要几段：`persona`（称呼与自称）、`preferences`（喜欢/不喜欢与权重）、`owner`（主人 mid 与昵称）、`limits`（四本账）、`dynamics`（四类动态）、`qzone`（空间说说与监看）、`report` / `triple` / `vlog`（每日固定动作）、`share`（分享开关与阈值）、`listen`（评论区与直播倾听）、`night`（作息窗口）、`wake` / `budget`（醒来账）、`capabilities`（能力开关）、`fishGuard`（鱼群保护）、`agent`（会话权限）、`shots`（视频缓存）。
 
 设置页改的是这份；**合体层的 `~/.dsh/stellar/config.json` 是另一份**（桥接与插件读），两份都要写时用面板的「设置」页，它会双写。
 
