@@ -7,7 +7,7 @@
 
 | | |
 | --- | --- |
-| 版本 | `1.1.0` |
+| 版本 | `1.1.1` |
 | 目标 DSH | `0.2.1-rc.2 或更新`（本机长期跑在 `0.2.2-rc.1`；`node scripts/verify-dsh-020-adaptation.mjs` 可逐项复核） |
 | 平台 | Windows 10/11（沙箱 ACL、SnowLuma 接入与启动脚本都与它绑定） |
 | 许可 | MIT（SnowLuma 是第三方专有运行时，**不随本仓库分发**） |
@@ -458,7 +458,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 ## 九、开发
 
 ```bash
-npm run test:audit              # 默认门禁（226 个脚本，其中 196 条进 audit；离线；需要完整面板的几条在公开仓库里自动 SKIP）
+npm run test:audit              # 默认门禁（229 个 test-*.mjs，其中 199 条进 audit；离线，约 5–8 分钟；需要完整面板的几条在公开仓库里自动 SKIP）
 npm run test:regressions        # 桥接 / 协议回归
 npm run privacy-scan:strict     # 发布前隐私扫描（0 命中才可发布）
 npm run guard:check             # DSH 升级后先跑（asar 会话护栏补丁是否还在）
