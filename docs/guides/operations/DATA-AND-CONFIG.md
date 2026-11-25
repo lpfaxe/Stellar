@@ -76,8 +76,8 @@
 
 运行时状态**分两处**，别搞混：
 
-- **桥接侧 `<仓库>/state/`** —— `src/bridge.js:250 const STATE_DIR = path.join(ROOT, 'state')`；`ROOT` 是 Stellar 的安装目录（`src/bridge.js:171`）。桥接自己写、自己读。
-- **插件侧 `DSH_HOME/stellar/state/`** —— `plugins/stellar/lib/run-mode.js:29`、`plugins/stellar/lib/memory-db-timer.js:86`。DSH 进程里的插件半写，面板读。
+- **桥接侧 `<仓库>/state/`** —— `src/bridge.js` 的 `const STATE_DIR = path.join(ROOT, 'state')`；`ROOT` 是 Stellar 的安装目录（同文件顶部的 `ROOT` 定义）。桥接自己写、自己读。
+- **插件侧 `DSH_HOME/stellar/state/`** —— `plugins/stellar/lib/run-mode.js` 与 `plugins/stellar/lib/memory-db-timer.js` 各自的 `STATE_DIR` 常量。DSH 进程里的插件半写，面板读。
 
 | 文件 | 位置 | 内容 | 能删吗 |
 | --- | --- | --- | --- |
@@ -100,7 +100,7 @@
 | `state/voice-style.json` | 插件侧 `DSH_HOME/stellar/state/`（面板保存时建；桥接按 `mtimeMs:size` 读） | 她每轮看到的「说话方式」原则与词条（≤600 字硬上限；文件不存在按默认 3 条渲染） | 能（等于回到内置那句） |
 | `state/voice-stats.json` | 同上 | 今天的说话方式计数（条数/破折号/三点列举/客服腔/撞上原句/用上改法），只记数量不存原文 | 能 |
 | `state/voice-style.bak/` | 同上 | 每次保存前的旧版，只留最新 10 份 | 能 |
-| `purpose-outreach.json` | 角色目录 `characters/<id>/`，写不进才回退桥接 `state/`（`src/bridge.js:2265-2267`） | 主动搭话的状态 | 能 |
+| `purpose-outreach.json` | 角色目录 `characters/<id>/`，写不进才回退桥接 `state/`（`src/bridge.js` 里目的状态落盘的兜底分支） | 主动搭话的状态 | 能 |
 | `plugin.log` | 插件（`DSH_HOME/stellar/`） | 插件半的日志 | 能 |
 | `bridge.log` / `qq-activity.log` | 桥接 | 桥接与 QQ 活动日志 | 能 |
 | `memory-review-request.json` / `memory-profile-request.json` | 插件 | 面板点的「立即复核 / 生成侧写」 | 能（40 分钟内有效） |

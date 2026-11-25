@@ -37,9 +37,9 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 
 | 层 | 在哪 | 职责 | 不该做什么 |
 | --- | --- | --- | --- |
-| 消息链路 | `src/bridge.js`（约 1.9 万行，最大单体） | 收发、唤醒、上下文拼装、67 条控制台路由 | 不直接调模型；不写业务判断（那些在共享引擎里） |
+| 消息链路 | `src/bridge.js`（约 1.9 万行，最大单体） | 收发、唤醒（含合并窗口，见 [WAKE-BATCH.md](WAKE-BATCH.md)）、上下文拼装、150+ 条控制台路由 | 不直接调模型；不写业务判断（那些在共享引擎里） |
 | MCP 工具面 | `src/mcp-snowluma-safe.js` 等三个 server | 把能力以工具形式交给 DSH 里的她 | 不藏私活：每个工具都要有对应的 HTTP/本地实现 |
-| 共享引擎 | `src/*.js` 里的纯逻辑 | 记忆库（`memory.db`）为主、额度、鱼群保护、收尾判断、身份、抓取、卡片解析（`qq-card.js`，2026-11-24：`json` / `xml` 段统一解析，token 与预览图不进上下文）、说话方式（`voice-style.js`，2026-11-22）、群聊链接闸（`group-link-guard.js`，2026-11-22）、远控地址（`panel-link.js`，2026-11-23，只问本机面板；面板侧 `access-link.js` 把 cloudflared 隧道也当候选并排第一，走隧道进来一律只读）；旧的两条记忆管线（衰减记忆卡 + 向量记忆）在 `memory.engine='db'` 时整体不启动（2026-11-22） | 不碰网络状态机；能被单测直接 import |
+| 共享引擎 | `src/*.js` 里的纯逻辑 | 记忆库（`memory.db`）为主、唤醒合并窗口（`wake-batch.js` / `typing-watch.js`，2026-11-25）、额度、鱼群保护、收尾判断、身份、抓取、卡片解析（`qq-card.js`，2026-11-24：`json` / `xml` 段统一解析，token 与预览图不进上下文）、说话方式（`voice-style.js`，2026-11-22）、群聊链接闸（`group-link-guard.js`，2026-11-22）、远控地址（`panel-link.js`，2026-11-23，只问本机面板；面板侧 `access-link.js` 把 cloudflared 隧道也当候选并排第一，走隧道进来一律只读）；旧的两条记忆管线（衰减记忆卡 + 向量记忆）在 `memory.engine='db'` 时整体不启动（2026-11-22） | 不碰网络状态机；能被单测直接 import |
 | 插件宿主 | `plugins/stellar/` | 定时作业（记忆切分/复核/侧写、生物钟、每日任务）、设置页 | 不参与消息收发 |
 | 面板 | `stellar-manager/` | 观察与手动操作 | 不改消息链路状态（只写配置文件） |
 
@@ -53,6 +53,7 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 
 1. SnowLuma 推一条 OneBot 事件到 bridge；
 2. bridge 判黑名单/白名单、判是不是该理（`wake-policy.js` / `wake-filter.js`）、写未读；
+   连发多条只在合并窗口结束时醒一次（窗口长度见 [WAKE-BATCH.md](WAKE-BATCH.md)）；
 3. 决定唤醒时，拼一份提示词（`buildWakePromptV2`）：人格 → 令牌 → 记忆（事实/目录/侧写）→ 平台归属 → B站记忆 → 状态 → 收尾建议 → 工具说明；
 4. 把提示词投给 DSH 的一个会话（`dsh-client.js`），她开始调工具；
 5. 她调 `qq_send_message` → MCP → bridge 的 `/api/send/*` → SnowLuma → QQ；
@@ -76,13 +77,13 @@ SnowLuma 的 3000/3001 也在本机。**唯一**对外的出口是面板可选�
 | 侧写 | `memoryProfileLineV2` | 每人一句，避免把 A 的事安在 B 头上 |
 | B站 简报 | `biliMemory.briefBlock()` | 群友问「B站那个号」时她不能把自己当别人 |
 | 此刻状态 / 唤醒 / 收尾 | 各种 `*LineV2` | 让「该不该回、回几条、能不能睡」有依据 |
-| 说话方式（鱼八股） | `voiceStylePrompt()` → `antiAiLine`（`src/bridge.js:16125`） | 原来的「【反AI味】」那句换成主人能改的一份（`state/voice-style.json`，≤600 字，下一轮生效） |
+| 说话方式（鱼八股） | `voiceStylePrompt()` → `antiAiLine`（`src/bridge.js` 的拼唤醒提示词处） | 原来的「【反AI味】」那句换成主人能改的一份（`state/voice-style.json`，≤600 字，下一轮生效） |
 | 参考风格 | `memoryStyleBlockV2` | **已停用**（2026-11-22）：`memory.styleRef.enabled` 默认 `false`，只有显式写 `true` 才注入 2 片、≤900 字符 |
 
 每一段都可以在 `config.json` 里关掉；关掉后那句会提示「本轮不注入」的日志。
 
 **同一份词表也进 B站 / QQ空间**（2026-11-22 第二批）：插件侧 `plugins/stellar/lib/voice-style-line.js`
-解析同一个文件、取同一段正文，由 `plugins/stellar/lib/scheduler.js:188` 的 `identityContextLines()`
+解析同一个文件、取同一段正文，由 `plugins/stellar/lib/scheduler.js` 的 `identityContextLines()`
 拼进 **20 处 B站唤醒 + QQ空间那串** 共用的前置（一处覆盖全部唤醒点，别逐个 prompt 加）。
 与 QQ 侧的差别只有兜底语义：`enabled:false` 时 QQ 回退旧句、B站/空间**不注入**；渲染失败一律返回空串
 （宁可这一轮少一段，也不能让唤醒报错）。默认 139 字（≈93 token），满配 600 字。

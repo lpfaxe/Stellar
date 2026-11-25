@@ -21,7 +21,7 @@
 
 | # | 门禁 | 命令 | 通过标准 |
 | --- | --- | --- | --- |
-| 1 | 全部测试 | `node scripts/test-audit.mjs` | `Audit suite: 196/196` |
+| 1 | 全部测试 | `node scripts/test-audit.mjs`（**后台跑**，前台 120 秒会被外层超时掐断） | `Audit suite: 199/199` |
 | 2 | 清单与 HEAD 逐字节一致 | `node scripts/release-manifest.mjs --verify-ref HEAD` | `问题 0 个` |
 | 3 | 没有隐私与凭据 | `node scripts/privacy-scan.mjs --strict` | 「未发现敏感信息」 |
 

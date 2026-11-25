@@ -29,7 +29,9 @@
 
 ## 安全边界（这套代码里已经生效的）
 
-- **公网仍然只读**：`requestScope()` 见 `cf-ray` / `cf-connecting-ip` / `x-forwarded-for` / `https` 就判 `public` → `canWrite=false`。
+- **公网只读，唯一例外是「重启 DSH」**：`requestScope()` 见 `cf-ray` / `cf-connecting-ip` / `x-forwarded-for` / `https` 就判 `public` → `canWrite=false`；
+  写动作里只有 `restart-dsh` 被 `lib/remote-restart.js` 单独放行（人不在家、DSH 卡死时它是唯一必须能做的事），
+  且有 60 秒冷却 + 每次一行审计。其余写动作仍然 403 `readonly-public`。
 - **tailnet 可写**：`100.64.0.0/10` 判 `lan`。依据是「能出现在这个网段里，说明设备已经在你的 Tailscale 账号里认证过」。
 - **临时登录码**：`POST /api/login-code` 生成 5 分钟一次性码，链接里不放长期口令。
 - **口令不出内网**：`/api/status` 对非回环请求把 token 打码（`前2位••••后2位`）；明文只在 `127.0.0.1` 上显示。

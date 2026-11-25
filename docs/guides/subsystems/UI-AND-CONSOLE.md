@@ -59,6 +59,13 @@
 | B站 视频 / 封面 | 今天还没刷；封面池每天清空，记录留三天 |
 | 通讯录 | 名单还没导入（「从 QQ 同步好友/群」） |
 
+### 「对方正在输入」观测卡（2026-11-25）
+
+- 数据源是桥接写的 `state/typing-log.jsonl`（一行一个事件），面板只读不改；桥接每 6 小时裁一次文件，面板再按保留天数过滤，所以两边数字对得上。
+- 每行是「时间 · 状态（打字中 / 停手 / 说话中）· 谁（QQ 号，主人会标出来）」，不记任何消息正文 —— 观测合并窗口够不够用，不需要也**不应该**存内容。
+- 状态码来自 OneBot 的 `notice/notify/input_status`：`event_type` 0 = 停手、1 = 打字、3 = 说话；只认私聊，带 `group_id` 的事件一律不认。
+- 这张卡空着通常只是当天没人私聊她，不是坏了；要关掉记录去 `config.json` 把 `typing.logEnabled` 设 false。
+
 ### 「她今天的任务清单」现在怎么算（2026-11-22）
 
 - 一栏 13 项：醒来 / 看视频 / 刷动态 / 说说 / 三连 / 日报 / 看空间 / 搭话 / 视频日志 / 日记 / 记忆维护 / 主动找你 / 事项。每项三态：没动 / 做了一半 / 做完（`stellar-manager/lib/daily-tasks.js` 的 `buildDailyTasks()`）。
@@ -85,7 +92,7 @@
 | 来源 | 看到什么 | 能不能改 |
 | --- | --- | --- |
 | 本机（127.0.0.1） | 全部 | 能改；**但要先有一次会话**（带 `?code=` 打开一次即得） |
-| 局域网 / 隧道（要口令） | 全部 | 默认**只读**；白名单里加了来源才能写 |
+| 局域网 / 隧道（要口令） | 全部 | 默认**只读**；白名单里加了来源才能写。唯一的例外是「重启 DSH」（60 秒冷却 + 审计），见 [../operations/REMOTE-ACCESS-TAILSCALE.md](../operations/REMOTE-ACCESS-TAILSCALE.md) |
 
 面板默认只监听 `127.0.0.1`。想让手机连，两条路：
 Cloudflare 隧道（`配置.bat` → 远程访问）或 Tailscale（见 [../operations/REMOTE-ACCESS-TAILSCALE.md](../operations/REMOTE-ACCESS-TAILSCALE.md)）。

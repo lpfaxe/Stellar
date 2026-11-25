@@ -2,6 +2,46 @@
 
 > 从 **1.0.0** 开始记。更早的开发迭代不在这里，也不代表现在的能力——以本文件和代码为准。
 
+## [1.1.1] - 2026-11-25
+
+这一版没加新能力，主要修三件"看得见的错"：**她不该每条消息都秒回**（连发会被合并成一次唤醒）、**人在外面时 DSH 卡死也能救**（隧道里唯一放行的写动作是重启）、**价格表只有一份真相**（控制台/面板/估价工具都从价目表取数，不再各写一份）。顺带把文档里的行号锚点换成"文件 + 符号名"，并加了门禁，让它们不会再悄悄漂掉。
+
+### 唤醒：连发多条只在停手后醒一次
+
+- 新增唤醒合并窗口（`src/wake-batch.js`）：被点名 3 秒（`wake.batchWindowDirectMs`）、私聊 2 秒（`wake.batchWindowPrivateMs`）、群聊 6 秒（`wake.batchWindowMs`），都夹在 1 秒~1 小时之间。
+- 收到新消息时窗口**顺延**（`typing.extendMs`，默认 2 秒）：普通连发封顶 15 秒（`maxWindowMs`）、对方正在打字时封顶 60 秒（`maxTypingMs`）。"无上限一直等"被明确否掉 —— 对方开着输入框去吃饭，她就永远不回了。
+- 新增 OneBot 打字事件支持（`src/typing-watch.js`）：`notice/notify/input_status`，`event_type` 0 = 停手、1 = 打字、3 = 说话；**只认私聊**，带 `group_id` 的一律不认。
+- 合并窗口只**推迟**唤醒：不产生新唤醒、不推进未读水位、不升级唤醒原因、不额外计费。
+- 新增 `state/typing-log.jsonl`（只记 QQ 号 / 时间 / 状态，**不记正文**，7 天滚动，桥接每 6 小时裁一次）；面板新增「对方正在输入」观测卡，`/api/social-v2` 响应里多一个 `typing` 字段。
+- 详见 [docs/guides/architecture/WAKE-BATCH.md](docs/guides/architecture/WAKE-BATCH.md)。
+
+### 远程：DSH 卡住时可以从隧道重启
+
+- 控制台写动作里只有 `restart-dsh` 对**公网**放行（`stellar-manager/lib/remote-restart.js`）：人不在家、DSH 卡死时这是唯一必须能做的事。
+- 60 秒冷却（`REMOTE_RESTART_GAP_MS`）+ 每次一行审计；其余写动作仍然是 403 `readonly-public`。
+- 刻意**不做一次性令牌**：令牌会被转发、会过期、会被人截图，而"重启"本身就是幂等的 —— 冷却比令牌更合适。
+
+### 价格：一张表，四列
+
+- 价目表的唯一真相仍是 `src/model-prices.js`（`PRICE_TABLE_VERSION='2026-11-04'`）；本版把散落的第二份删掉，并补上 **cacheWrite（缓存写入）** 桶：flash ¥1、pro ¥4.5，条目没写时跟随 `cacheMiss`。
+- 新增 `peakNote()` 统一生成峰谷说明（"高峰 ×2（北京时间 周一至周五 9:00–12:00 / 14:00–18:00，法定节假日除外）"）：控制台价格表、流水表、MCP 估价工具、面板都调它，改表就一起变。
+- 修复：`stellar-manager/lib/cost.js` 里那一整张写死的 flash 价表与 `?? 2` / `?? [[9,12],[14,18]]` 兜底已删（缺价返回 `priced:false`）；`stellar-manager/lib/restart-advice.js` 的 `MISS_PRICE=1` 改为从价目表取；`lib/status.js` 不再写死「峰时 ×2」；`public/js/cost.js` 与 `public/console.html` 的峰谷文案/窗口不再各写一份。
+- `src/cost-estimate.js` 支持 `opts.priceTable` / `pricing`（自定义模型也算得对），`budgetSnapshot()` 返回 `rates` + `peakMultiplier` + `priceNote`。
+- 控制台「最近调用」与「价格表」各多一列 `cacheWrite` / 「写入」；节假日说明改为「2026 年 33 天 + 2027 年 32 天，某年没登记会静默按 2 倍高估」。
+- 文档：`DESIGN-WORKFLOW.md` 把配置路径从 `tokenBudget.models[...]` 改正为 `pricing.models[...]`（按旧文档改不生效）。
+
+### 文档：锚点不再写行号
+
+- 新增 `scripts/check-doc-anchors.mjs`：扫 `docs/**/*.md` 与根 `README.md` / `AGENTS.md`，**行号锚点（`path:123`、`path#L123`）在 `--strict` 下报错**，行号超过文件末尾一律报错，代码目录下的失效路径也报错（运行期路径只提示）；白名单 `scripts/doc-anchor-allow.txt` 只豁免"路径不存在"。
+- 新增 `scripts/test-doc-anchors.mjs`（5 组断言：干净通过 / 行号在 strict 被拦且非 strict 放行 / 越界必拦 / 代码目录失效路径拦而 `state/` 只提示 / 白名单豁免），已进 `scripts/test-audit.mjs`。
+- 本仓库 21 处行号锚点全部改成"文件 + 符号名"（`voiceStylePrompt()`、`sendMessagesV2()`、`townPromptLine()`、`STATE_DIR` 定义处…）。为什么这么改：行号会随 `src/bridge.js` 长大持续前移，一次审计里 78% 的锚点已经指错，而符号名抗重构。
+
+### 修复
+
+- `tools/bili.mjs` 的命令表搬到 `tools/lib/cmd-map.mjs`（与 `deps.mjs` 共用唯一真相）；删掉 3 个指向不存在脚本的入口（`auto` / `dyn-keywords` / `dyn-page`），并给 `verify/verify-reply.mjs` 挂上 `check-reply` 入口。
+- 修 `MODULE-PLUGIN` 里 `lib/qq-mode.js:1-14` 这类指到文件末尾之外的锚点（该文件只有 3 行 re-export）。
+- `docs/guides/architecture/ARCHITECTURE.md` 的控制台路由数从「67 条」更正为「150+ 条」。
+
 ## [1.1.0] - 2026-11-22
 
 这一版把「她在各个地方的状态」做薄了一层：小镇信息改成**要用才取**、B站看视频改成**先看目录再问细节**，两块都为了少花 token；顺手修了三处「账/库/任务一直空着却没人报错」的老问题。

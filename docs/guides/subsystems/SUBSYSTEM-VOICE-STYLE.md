@@ -20,22 +20,22 @@
 | 文件 | 干什么 |
 |---|---|
 | `src/voice-style.js` | **唯一真相**：读文件、归一、校验、渲染成提示词、数用量。面板 import 它，不复制逻辑 |
-| `src/bridge.js:16125` | 每次唤醒拼提示词时取这一段的正文（QQ） |
+| `src/bridge.js` 的 `voiceStylePrompt()` | 每次唤醒拼提示词时取这一段的正文（QQ） |
 | `plugins/stellar/lib/voice-style-line.js` | 插件侧的薄壳：解析 `<DSH_HOME>/stellar/state`、按「关闭即不注入」的语义取正文（B站 / QQ空间） |
-| `plugins/stellar/lib/scheduler.js:188` `identityContextLines()` | 20 处 B站唤醒 + QQ空间那串共用的前置，`voiceStyleBlockForBili()` 一行全吃上 |
+| `plugins/stellar/lib/scheduler.js` 的 `identityContextLines()` | 20 处 B站唤醒 + QQ空间那串共用的前置，`voiceStyleBlockForBili()` 一行全吃上 |
 | `stellar-manager/` 的「说话方式」卡 | 主人增删原则与词条、看今天用量、保存/回滚 |
 
 桥接侧接线（4 处，改的时候别漏）：
 
-- `src/bridge.js:21` import `{ voiceStylePrompt, recordVoiceStats, voiceStyleFile, voiceStatsFile }`
-- `src/bridge.js:16125` `const voiceStyle = voiceStylePrompt({ file: voiceStyleFile(path.join(STELLAR_DIR, 'state')) })` → `const antiAiLine = voiceStyle.text + '\n\n'`
-- `src/bridge.js:16281` `lastWakePromptMeta` 里多记 `voiceSource`（file/default/fallback）与 `voiceEntries`，方便事后查「这轮到底注了没有」
-- `src/bridge.js:10864` `sendMessagesV2` 成功分支调 `recordVoiceStats(sent, …)`（QQ 发送的唯一汇合点，统计只挂这一处）
+- `src/bridge.js` 顶部 import `{ voiceStylePrompt, recordVoiceStats, voiceStyleFile, voiceStatsFile }`
+- 拼唤醒提示词处（`src/bridge.js` 调 `voiceStylePrompt()`）`const voiceStyle = voiceStylePrompt({ file: voiceStyleFile(path.join(STELLAR_DIR, 'state')) })` → `const antiAiLine = voiceStyle.text + '\n\n'`
+- `src/bridge.js` 的 `lastWakePromptMeta` 里多记 `voiceSource`（file/default/fallback）与 `voiceEntries`，方便事后查「这轮到底注了没有」
+- `src/bridge.js` 的 `sendMessagesV2()` 成功分支调 `recordVoiceStats(sent, …)`（QQ 发送的唯一汇合点，统计只挂这一处）
 
 B站 / QQ空间 侧（第二批，2026-11-22）：
 
 - `plugins/stellar/lib/voice-style-line.js` 静态 import `../../../src/voice-style.js`（插件本来就这样引仓库模块，见 `scheduler.js` 顶部那串 `../../../src/*`）
-- `scheduler.js:188` 的 `identityContextLines()` 里，`personaCardBlock(),` 之后插 `voiceStyleBlockForBili(),` —— **一处覆盖 20 多个唤醒点**；别逐个 prompt 加（加漏一个就少一个渠道）
+- `scheduler.js` 的 `identityContextLines()` 里，`personaCardBlock(),` 之后插 `voiceStyleBlockForBili(),` —— **一处覆盖 20 多个唤醒点**；别逐个 prompt 加（加漏一个就少一个渠道）
 - 语义差别：QQ 侧 `enabled:false` 回退 `LEGACY_FALLBACK`（旧版本来就有那句）；B站/空间 侧 `enabled:false` **不注入**（那边原本没有这段，按「回退」处理等于偷偷加东西）
 - 渲染失败 → 返回 `''`，同一句错只 `console.error` 一次：**宁可这一轮少一段，也不能让唤醒报错**
 
@@ -165,8 +165,8 @@ npm run test:audit                      # 两条都已进 audit（现 196 条）
 
 | 渠道 | 注入点 | 改动量 | 每轮成本 | 建议 |
 |---|---|---|---|---|
-| B站 + QQ空间 | `plugins/stellar/lib/scheduler.js:188 identityContextLines()`（**20 处 B站唤醒共用的前置**） | 加一行 `voiceStyleBlockForBili()`，P0.3 | 默认 139 字 ≈93 token；写到上限 600 字 ≈400 token（只在她醒着看 B站时付） | **已做（2026-11-22）** |
-| 鱼缸小镇 | `src/town-prompt.js:10 townPromptLine()`（单点） | 加一段，P0.2 | +300 token | **建议不做**：小镇是她的私人时间，影子会话提示词已经很长，多这段只会稀释 |
+| B站 + QQ空间 | `plugins/stellar/lib/scheduler.js` 的 `identityContextLines()`（**20 处 B站唤醒共用的前置**） | 加一行 `voiceStyleBlockForBili()`，P0.3 | 默认 139 字 ≈93 token；写到上限 600 字 ≈400 token（只在她醒着看 B站时付） | **已做（2026-11-22）** |
+| 鱼缸小镇 | `src/town-prompt.js` 的 `townPromptLine()`（单点） | 加一段，P0.2 | +300 token | **建议不做**：小镇是她的私人时间，影子会话提示词已经很长，多这段只会稀释 |
 
 技术上三处都是单点、都不需要新机制（同一份 `voice-style.json`、同一个渲染函数）。
 2026-11-22 先做了 B站/空间（`voice-style-line.js` + scheduler 一行）；小镇仍按建议不做。
