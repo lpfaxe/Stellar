@@ -101,6 +101,26 @@ export const CORE_TOWN_ALLOW = {
     'town: { enabled: true }'
   ],
   'plugins/stellar/tools/lib/config.mjs': ['fishbowl-town/settings.json', 'town: { enabled:', '把 actions 改成 true'],
+  // 素材包（2026-11-25）：日报/说说要读小镇存档与相册。读取逻辑在 src/town-kit.js（独占文件），
+  // 这里只剩 import + 调用 + 「相册」这个来源名，所以逐行认领。
+  'plugins/stellar/tools/lib/material-kit.mjs': [
+    'src/town-kit.js',
+    'collectTownKit, listTownAlbum, townAlbumRoot',
+    'townAlbum',
+    'townAlbumRoot(dshHome)',
+    'collectTownKit(',
+    'albumRoot: town',
+    'town,',
+    'town.warnings',
+    'k.town'
+  ],
+  // 素材包的测试要断言「相册目录长什么样」「来源名是谁」，它读到的 town 就是被测对象。
+  'scripts/test-material-kit.mjs': [
+    "'town', 'album'",
+    "'townAlbum'",
+    'IMAGE_SOURCE_WEIGHTS.townAlbum',
+    'town: {'
+  ],
   'scripts/test-audit.mjs': [
     '鱼缸小镇（2026-11-21）',
     "'test-town-memory-pure.mjs', 'test-town-client.mjs', 'test-town-store.mjs',",
@@ -270,7 +290,8 @@ export function scan({ root, files }) {
 /** 拆除时要手工改的核心挂点（人读的说明）。 */
 export const REMOVAL_NOTES = [
   'src/bridge.js：删 import { townPromptLine } + townLine 那一行',
-  'src/mcp-snowluma-safe.js：删 import { registerTownTools } + registerTownTools(...) 一行 + GATED_TOPICS 的 stellar_town_recall + RULE_TOPICS 的 town',
+    'src/town-kit.js：删文件（素材包的 import 与调用一并删，见 plugins/stellar/tools/lib/material-kit.mjs）',
+'src/mcp-snowluma-safe.js：删 import { registerTownTools } + registerTownTools(...) 一行 + GATED_TOPICS 的 stellar_town_recall + RULE_TOPICS 的 town',
   'plugins/stellar/lib/scheduler.js：删 import + const town = createTownJobs({...}) + 三个 setTimeout + timerTown + stop() 里的 town.stop() + retire 里的 town.sessionId',
   'plugins/stellar/lib/run-mode.js：idle 白名单去掉 town',
   'src/capabilities.js：删 town 能力项',

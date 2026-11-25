@@ -315,6 +315,33 @@ export function topicsForPerson(qq, { limit = 8, db: conn } = {}) {
 }
 
 /**
+ * 最近几天聊过什么（跨人）：日报/说说要参考「今天跟她聊了哪些事」。
+ *
+ * 为什么不复用 catalog：catalog 是给「当前对话的主人」看的目录（titles/maxChars/facts 一套版面），
+ * 而日报/说说需要的是「不限 owner、按时间倒序、带参与者」的原始列表 —— 混用会让两个出口互相将就。
+ * 只读、不写、不抛：读库失败返回空数组（和 topicsForPerson 同一取舍），否则日报会因为记忆库坏掉而写不出来。
+ * 只返回元信息（标题/档位/参与者/消息数），正文仍由调用方决定要不要 readTopic ——
+ * 说说是公开发出去的，正文绝不能默认进上下文。
+ */
+export function recentTopics({ days = 3, limit = 12, ownerId = '', db: conn } = {}) {
+  const db = conn || openDb();
+  const n = Math.max(1, Math.min(50, Number(limit) || 12));
+  const d = Math.max(1, Math.min(30, Number(days) || 3));
+  const since = Date.now() - d * 24 * 60 * 60 * 1000;
+  const who = String(ownerId || '').trim();
+  try {
+    const sql = 'SELECT t.id, t.title, t.summary, t.tier, t.day_key, t.scope, t.owner_id, t.msg_count,'
+      + ' t.started_at, t.ended_at,'
+      + " (SELECT GROUP_CONCAT(p.name, '、') FROM topic_participant p"
+      + "   WHERE p.topic_id = t.id AND p.role <> 'self' AND p.name <> '') AS people"
+      + ' FROM topic t WHERE t.ended_at >= ?'
+      + (who ? ' AND t.owner_id = ?' : '')
+      + ' ORDER BY t.ended_at DESC LIMIT ?';
+    return who ? db.prepare(sql).all(since, who, n) : db.prepare(sql).all(since, n);
+  } catch { return []; }
+}
+
+/**
  * 建话题（含正文）。硬约束在这里落地：段内必须同时有 user 与 self，否则不建。
  * 返回 { ok:true, id } 或 { ok:false, reason }。
  */

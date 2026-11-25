@@ -69,7 +69,7 @@
 | 子目录 | 作用 |
 | --- | --- |
 | `lib/` | 定时器（生物钟、每日任务、记忆作业）、记忆引擎判定（`memory-engine.js`）、设置页 UI、路径解析 |
-| `tools/bili.mjs` | B站 CLI 入口（**60 条子命令**，命令表在 `tools/lib/cmd-map.mjs`，脚本在 `tools/commands/` + `tools/verify/`） |
+| `tools/bili.mjs` | B站 CLI 入口（**61 条子命令**，命令表在 `tools/lib/cmd-map.mjs`，脚本在 `tools/commands/` + `tools/verify/`） |
 | `tools/docs/` + `tools/rules/` | 给 agent 看的命令说明与行为规矩（运行时会被注入） |
 | `persona/` | 分层人格的默认片段 |
 | `presets/` | 由 `dsh/agent-presets/` 生成的 patch（**改源文件后要重跑 build**） |

@@ -168,7 +168,7 @@ node bili.mjs deps; node bili.mjs status
 | `prefs` / `quota` / `pool` / `cost` | 偏好、额度余量、素材池、花费 |
 | `my` / `whois` / `session` | 账号信息、认人、凭据状态 |
 
-全部子命令用 `node bili.mjs` 不带参数列出来（当前 60 条；命令表只有一份，在 `tools/lib/cmd-map.mjs`，`bili.mjs` 只是转发）。`deps` 会顺带打印**写类命令的参数摘要**（16 条，每条都带 `--dry|--go`），一般不用再单独跑 `--help`。
+全部子命令用 `node bili.mjs` 不带参数列出来（当前 61 条；命令表只有一份，在 `tools/lib/cmd-map.mjs`，`bili.mjs` 只是转发）。`deps` 会顺带打印**写类命令的参数摘要**（16 条，每条都带 `--dry|--go`），一般不用再单独跑 `--help`。
 
 ### 4.1 看视频：先看目录，再问细节
 

@@ -38,6 +38,8 @@ import { fileURLToPath } from 'node:url'
 import { ffmpegPath } from '../lib/ffmpeg.mjs'
 import { checkPrivacy, privacyRejectText } from '../lib/privacy-guard.mjs'
 import { feedCardText, mediaImageUrls, qzoneIdsFromUrl } from '../../../../src/qq-card.js'
+// 说说配图的来源分级（封面 6 : 相册 4 : 兜底 1）只认 material-kit 这一处，别在这边再写一遍路径判定
+import { albumRootFor, classifyImageSource } from '../lib/material-kit.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '../../../..')          // stellar 仓库根
@@ -1419,7 +1421,17 @@ async function main() {
     if (used >= limit) { console.error(`\n✗ 今日说说已达上限 ${limit} 条（qzone.dailyLimit）`); process.exit(6) }
     if (isDry) { console.log('\n[dry] 将要发送的请求：'); console.log(JSON.stringify(body, null, 2)); return }
     const data = await call('send_qzone_msg', body)
-    logWrite({ kind: 'post', tid: data?.tid, right, images: images.length, text: text.slice(0, 200) })
+    // 记下用了哪些图、分别来自哪一级：素材包靠这两列避开「上周配过的同一张」并统计兜底额度。
+    // 只记路径与来源，不记图片内容；路径只在本机 state/ 里，不进日志外发。
+    logWrite({
+      kind: 'post',
+      tid: data?.tid,
+      right,
+      images: images.length,
+      imagePaths: images.map((p) => path.resolve(p)),
+      imageSources: images.map((p) => classifyImageSource(p, { albumRoot: albumRootFor() })),
+      text: text.slice(0, 200),
+    })
     console.log(`\n✓ 已发布，tid=${data?.tid}  时间=${fmtTime(data?.time)}`)
     console.log(`  删除用: node bili.mjs qzone delete --tid ${data?.tid} --go`)
     return

@@ -15,6 +15,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { biliState, STELLAR_DIR } from '../lib/state-paths.mjs'
+// ⑦ 的素材（见闻 / 聊天 / 小镇）跟说说共用一份聚合，口径写在 lib/material-kit.mjs
+import { buildKit, renderMemoryLines } from '../lib/material-kit.mjs'
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
@@ -51,7 +53,7 @@ const readJson = (f, fallback) => { try { return JSON.parse(fs.readFileSync(f, '
 const readLines = (f) => { try { return fs.readFileSync(f, 'utf8').split('\n').filter(Boolean) } catch { return [] } }
 const hm = (iso) => String(iso ?? '').slice(11, 16)
 
-function digest(day) {
+async function digest(day) {
   const out = []
   out.push(`【素材 · ${day}】`)
 
@@ -112,6 +114,15 @@ function digest(day) {
       out.push(`    - ${hm(e.at)} ${e.kind}${e.target ? ' → ' + e.target : ''}${e.note ? '：' + String(e.note).replace(/\s+/g, ' ').slice(0, 90) : ''}`)
     }
   }
+  // ⑦ 记忆：B站见闻 / 好友爱看 / 聊天话题 / 小镇（2026-11-25 主人要的：日报要参考她记下的东西，不是只复述日志）
+  //    只给元信息，不给聊天正文 —— 日报虽然只给主人看，但「能复述原文」和「记着发生过什么」是两件事。
+  try {
+    const kit = await buildKit({ day, audience: 'report' })
+    out.push(...renderMemoryLines(kit, { audience: 'report' }))
+    if (kit.warnings.length) out.push('· 记忆读取有问题：' + kit.warnings.slice(0, 2).join('；') + '（照实说，别补）')
+  } catch (e) {
+    out.push('· 记忆读取失败：' + (e && e.message ? e.message : String(e)) + '（别编记忆，只写今天真做过的）')
+  }
   return out.join('\n')
 }
 
@@ -127,7 +138,7 @@ function readReports() {
 }
 
 if (cmd === 'digest' || !cmd) {
-  console.log(digest(opt.date ? String(opt.date) : today()))
+  console.log(await digest(opt.date ? String(opt.date) : today()))
   process.exit(0)
 }
 

@@ -41,6 +41,7 @@ export const CMD_MAP = {
   deps: ['commands/deps.mjs', '依赖体检（装完先跑它）：cookie / ffmpeg / Node / 数据目录；--json 给 agent 判断'],
   diary: ['commands/diary.mjs', '她的一天（可见性）：show 人读摘要 / log 记结构化事件 / tail 最近事件'],
   report: ['commands/report.mjs', '给主人的日报（每天一条，主人在控制台看）：digest 今天的素材 / write --text "…" / list / show'],
+  material: ['commands/material.mjs', '今天的素材包（只读，日报/说说共用）：B站见闻 + 好友爱看 + 聊天记忆 + 小镇 + 配图候选（封面 6 : 相册 4，兜底网图/AI 各 1）：[--for report|qzone] [--memory|--images] [--pick --kw 词] [--json]'],
   notify: ['commands/notify.mjs', '通知分发：把"自主发言后必须报备"落到代码里（后端 stdout/file/webhook/command，由 config.notify 决定）'],
   night: ['commands/whale-night.mjs', '生物钟：plan 掷骰子定今晚 / clock 到点退出叫醒她 / mark 兜底标记 / status 看计划'],
   score: ['commands/score.mjs', '记分（每天动态要用）：score <BV> --score 0-20 / --today / --best'],

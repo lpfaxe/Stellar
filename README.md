@@ -7,7 +7,7 @@
 
 | | |
 | --- | --- |
-| 版本 | `1.1.1` |
+| 版本 | `1.2.0` |
 | 目标 DSH | `0.2.1-rc.2 或更新`（本机长期跑在 `0.2.2-rc.1`；`node scripts/verify-dsh-020-adaptation.mjs` 可逐项复核） |
 | 平台 | Windows 10/11（沙箱 ACL、SnowLuma 接入与启动脚本都与它绑定） |
 | 许可 | MIT（SnowLuma 是第三方专有运行时，**不随本仓库分发**） |
@@ -348,7 +348,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 子系统 | 你能看到的能力 | 细节 |
 | --- | --- | --- |
 | **QQ** | 群 / 私聊收发、引用回复、分条、表情包、图片 / 动图、拍一拍、合并转发展开、上线补历史、提问 / 审批回传、四种桥接模式 | [ARCHITECTURE.md](docs/guides/architecture/ARCHITECTURE.md) |
-| **B站** | 扫码登录、看视频 / 打分 / 收藏、评论与回帖、发动态（含图文）、弹幕、私信、三连、直播间监听、每日 vlog、分享到 QQ；**60 条 CLI 命令** | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
+| **B站** | 扫码登录、看视频 / 打分 / 收藏、评论与回帖、发动态（含图文）、弹幕、私信、三连、直播间监听、每日 vlog、分享到 QQ；**61 条 CLI 命令** | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
 | **QQ空间** | 看自己的 / 好友的 / 通讯录里某个人的说说、点赞、评论与回复、删自己发的评论；「好友爱看」公开流（看 → 打分 → 点赞 → 评论） | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) |
 | **记忆** | 话题切分、重要事实（生日 / 忌口 / 过敏 / 地址 / 电话）、见闻区（B站 / 好友爱看）、人物侧写、风格参考库、三级隐私、按人查询 | [MEMORY.md](docs/guides/features/MEMORY.md) |
 | **人格** | 多角色整包切换、自动存档 / 回档、管理员双身份、跨平台身份对齐、风格参考片段注入 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) · [CROSS_PLATFORM_IDENTITY.md](docs/guides/features/CROSS_PLATFORM_IDENTITY.md) |
@@ -406,7 +406,7 @@ DSH 启动后会自动查一次，有更新时打开概览会弹窗，可勾「�
 | 3 | [BOUNDARIES.md](docs/guides/operations/BOUNDARIES.md) | 135 | 能做到什么、做不到什么、坏了怎么恢复 |
 | 4 | [MEMORY.md](docs/guides/features/MEMORY.md) | 169 | 记忆怎么切、怎么存、怎么注入、隐私三级 |
 | 5 | [UI-AND-CONSOLE.md](docs/guides/subsystems/UI-AND-CONSOLE.md) | 110 | 设置页 7 页签与面板 7 页签 / 38 张卡 |
-| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 311 | B站 60 条命令、空间功能、鱼群与弹幕 |
+| 6 | [SUBSYSTEM-BILI.md](docs/guides/subsystems/SUBSYSTEM-BILI.md) | 311 | B站 61 条命令、空间功能、鱼群与弹幕 |
 | 7 | [AGENT-TOOLS-AND-PRESETS.md](docs/guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) | 245 | 86 个工具、守卫、两代 preset |
 | 8 | [CHARACTER_PERSONA.md](docs/guides/features/CHARACTER_PERSONA.md) | 136 | 角色包怎么放、人格卡怎么起作用 |
 | 9 | [PURPOSE_OUTREACH.md](docs/guides/features/PURPOSE_OUTREACH.md) | 553 | 她为什么会主动找人说话 |
