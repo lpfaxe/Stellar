@@ -9,8 +9,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { AGENT_STATE_FILE, REPO, SURF } from './paths.js'
 import { readJson, readTail, todayKey } from './util.js'
+import { ratesAt } from '../../src/model-prices.js'
 
-const MISS_PRICE = 1 // ¥ / 百万 tokens（未命中输入，空闲时段官方价）
+// 未命中输入的单价**不写死**：从价目表按当前时刻取（高峰是空闲的 2 倍）。
+// 以前这里是常量 1，等于把所有重启成本都按谷价估，高峰时段少算一半。
+function missPriceNow(atMs = Date.now()) {
+  try {
+    return ratesAt('deepseek-flash', atMs).cacheMiss
+  } catch {
+    return null // 价目表读不出来就别编一个数（提示文案会写「单价未知」）
+  }
+}
 const COLD_START_TOKENS = 30000 // 新会话第一条请求的冷启动量（实测 30-35K）
 const TOKEN_USAGE = path.join(REPO, 'state', 'token-usage.jsonl')
 const SESSIONS_FILE = path.join(REPO, 'state', 'sessions.json')
@@ -51,6 +60,7 @@ function fmtK(n) {
 }
 
 function fmtYuan(n) {
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return '—（单价未知）'
   const v = Number(n) || 0
   return v >= 1 ? '¥' + v.toFixed(2) : '¥' + v.toFixed(3)
 }
@@ -82,17 +92,21 @@ export function buildRestartAdvice({ dshRunning = true, turns = null } = {}) {
   const unread = Array.isArray(sc.unread) ? sc.unread.length : 0
   const repoCfg = readJson(REPO_CFG, {}) || {}
   const rolloverTokens = Number(repoCfg?.socialV2?.context?.rolloverContextTokens) || 0
-  const costNow = (contextTokens / 1e6) * MISS_PRICE
-  const costAfterRoll = (COLD_START_TOKENS / 1e6) * MISS_PRICE
+  const missPrice = missPriceNow(now)
+  const costNow = missPrice === null ? null : (contextTokens / 1e6) * missPrice
+  const costAfterRoll = missPrice === null ? null : (COLD_START_TOKENS / 1e6) * missPrice
   const restarts = todayRestartCount()
 
-  // 遥测里还有回合没收尾的会话（lib/turns.js）：B站/小镇/开发会话它都看得见，
-  // 而下面的 herState 只反映 QQ 会话状态机——只看 herState 会给出「她空闲着，现在切最稳」。
-  const liveTurns = turns && Array.isArray(turns.sessions) ? turns.sessions.filter((x) => x && x.active) : []
+  // 她还有没有回合没收尾：来自 DSH 遥测（lib/turns.js）。这比 agent-state 的 ACTIVE 更硬——
+  // B站、小镇这些会话不走 QQ 那套状态机，agent-state 里看不见它们，
+  // 于是面板以前会在她正跑 B站 的时候说「她空闲着，现在切最稳」（2026-11-21 就是栽在这上面）。
+  const liveTurns = turns && turns.busy ? (turns.sessions || []).filter((x) => x.active) : []
+  // 先报「她」的会话（B站、小镇、QQ），没有才退到主人自己这台开发会话。
   const turnTop = liveTurns.find((x) => !x.mine) || liveTurns[0] || null
   let turnWaitSec = 0
   if (turnTop) {
-    turnWaitSec = turnTop.etaAt ? Math.max(0, Math.round((turnTop.etaAt - now) / 1000)) : Math.max(30, 120 - Math.round((turnTop.elapsedMs || 0) / 1000))
+    const eta = Number(turnTop.etaAt) || 0
+    turnWaitSec = eta ? Math.max(30, Math.round((eta - now) / 1000)) : Math.max(30, 120 - Math.round(turnTop.elapsedMs / 1000))
   }
 
   const reasons = []
@@ -135,7 +149,8 @@ export function buildRestartAdvice({ dshRunning = true, turns = null } = {}) {
 
   const label = STATE_LABEL[herState] || '状态未知'
   const ago = ageSec == null ? '' : ageSec < 60 ? '刚刚' : ageSec < 3600 ? Math.round(ageSec / 60) + ' 分钟前' : Math.round(ageSec / 3600) + ' 小时前'
-  // 有回合没收尾时正文第一句必须说那个回合，不能再说 herState（否则「现在别重启」配「她休眠」）
+  // 有回合没收尾时，正文第一句必须说「那个回合」，不能再拿 QQ 状态机的 herState 说话——
+  // 否则会出现「现在别重启」配「她休眠（2 小时前）」的自相矛盾（2026-11-21 截图里就是这句）。
   const turnPart = turnTop
     ? (turnTop.mine
         ? '你这边还有一轮没跑完（开发会话，已 ' + turnTop.elapsedText + (turnTop.etaText ? '，' + turnTop.etaText : '') + '）'
@@ -167,13 +182,14 @@ export function buildRestartAdvice({ dshRunning = true, turns = null } = {}) {
     bestText,
     contextTokens,
     contextText: contextTokens ? fmtK(contextTokens) : '—',
-    costYuan: Number(costNow.toFixed(3)),
-    cheapCostYuan: Number(costAfterRoll.toFixed(3)),
+    costYuan: costNow === null ? null : Number(costNow.toFixed(3)),
+    cheapCostYuan: costAfterRoll === null ? null : Number(costAfterRoll.toFixed(3)),
+    priceNote: '按价目表当前档位估算未命中输入成本',
     rolloverTokens,
     unread,
     todayRestarts: restarts,
-    turns: { busy: Boolean(turnTop), count: liveTurns.length, top: turnTop },
     her: { state: herState, label, ageSec, cooldownLeft },
+    turns: { busy: liveTurns.length > 0, count: liveTurns.length, top: turnTop },
     reasons,
   }
 }

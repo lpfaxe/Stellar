@@ -25,6 +25,7 @@ import { capabilitiesSnapshot, saveCapabilities } from './lib/capabilities.js'
 import { buildTown, townPluginStatus, setTownPluginEnabled, listTownAlbum, townAlbumFile, townAlbumThumb } from './lib/town.js'
 import { clearNamedTunnel, ensureTunnel, resumeTunnel, setNamedTunnel, startTunnel, stopTunnel } from './lib/tunnel.js'
 import { restartDsh, resumeRestartPolling, reconcileRestartState } from './lib/dsh.js'
+import { noteRemoteWrite, remoteWriteDecision } from './lib/remote-restart.js'
 import { ensureContacts, loadAllowPrivate, loadContacts, saveContacts, setContactAllow, syncContacts } from './lib/contacts.js'
 import { readChatAudit, readOutbox, seedOutboxFromToolCalls } from './lib/outbox.js'
 import { contactIndex, nameForKey, relationFor } from './lib/people.js'
@@ -32,8 +33,9 @@ import { readTaskState, sendOwnerCommand, setPaused, wakeOwner } from './lib/tas
 import { readRunMode, saveRunMode } from './lib/run-mode.js'
 import { buildWebImages, clearWebImages, deleteWebImage, webImageFile } from './lib/web-images.js'
 import { deleteFile as deleteCabinetFile, filePath as cabinetFilePath, listFiles as listCabinetFiles, saveFile as saveCabinetFile, saveStream as saveCabinetStream } from './lib/files.js'
-import { buildMemoryDb, clearZoneNotes, deleteFact, deleteZoneNote, forgetMemory, listFacts, listFragments, listProfiles, listStyleRefs, listTopics, listZoneNotes, readTopicDetail, requestMemoryJob, runMemoryJob, saveFact, saveProfile, setMemoryTier, setStyleRefEnabled } from './lib/memory-db.js'
 import { readVoicePanel, restoreVoicePanel, saveVoicePanel } from './lib/voice-style.js'
+import { readTypingWatch, typingHeadline } from './lib/typing-watch.js'
+import { buildMemoryDb, clearZoneNotes, deleteFact, deleteZoneNote, forgetMemory, listFacts, listFragments, listProfiles, listStyleRefs, listTopics, listZoneNotes, readTopicDetail, requestMemoryJob, runMemoryJob, saveFact, saveProfile, setMemoryTier, setStyleRefEnabled } from './lib/memory-db.js'
 import { MANIFEST, servePublic } from './lib/static.js'
 import { logEvent, metricsSnapshot, recordRequest } from './lib/metrics.js'
 
@@ -92,7 +94,16 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/status') {
       const s = await buildStatus()
       // 当前这次请求能不能写（公网 IPv6 默认只读，白名单命中才可写）
-      s.access = { ...s.access, scope: requestScope(req), remoteAllowed: isAllowedRemote(clientIp(req)) }
+      const scopeNow2 = requestScope(req)
+      s.access = {
+        ...s.access,
+        scope: scopeNow2,
+        remoteAllowed: isAllowedRemote(clientIp(req)),
+        // 「重启 DSH」是所有 scope 都能做的唯一写动作（lib/remote-restart.js）；
+        // 前端据此决定按钮是可用还是只留一句解释，而不是点了才发现 403。
+        canRestartDsh: true,
+        remoteActions: ['restart-dsh']
+      }
       if (s.access && !isLoopback(req)) {
         // 不能就地改缓存对象，否则下一个本机请求会拿到被打码的 token。
         const masked = s.access.token ? String(s.access.token).slice(0, 2) + '••••' + String(s.access.token).slice(-2) : ''
@@ -144,7 +155,7 @@ const server = http.createServer(async (req, res) => {
         ...metricsSnapshot(),
         statusCache: statusCacheStats(),
         sessions: sessionInfo(),
-        tunnel: process.env.STELLAR_NO_TUNNEL !== '1',
+        tunnel: process.env.STELLAR_NO_TUNNEL !== '1' && process.env.SURFCORE_NO_TUNNEL !== '1',
       })
     }
     if (url.pathname === '/api/cost') {
@@ -189,6 +200,16 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/memory') return sendJson(res, 200, buildMemory())
     if (url.pathname === '/api/reports') return sendJson(res, 200, { items: readReports(clampNum(url.searchParams.get('days'), 1, 365, 30)) })
     if (url.pathname === '/api/todos') return sendJson(res, 200, { ...readTodos(), canWrite: requestScope(req) !== 'public' })
+    // 「对方正在输入」观测（2026-11-25）：只读桥接写的 state/typing-log.jsonl，7 天滚动。
+    // 她没有任何工具能写这个文件；面板也不写，因此没有第二份真相。
+    if (url.pathname === '/api/typing-watch') {
+      try {
+        const data = await readTypingWatch()
+        return sendJson(res, 200, { ...data, headline: typingHeadline(data) })
+      } catch (e) {
+        return sendJson(res, 200, { ok: false, message: '读观测日志失败：' + (e && e.message ? e.message : String(e)) })
+      }
+    }
     // 控制台代她加 / 删待办：写的是她调度器正在读的那份 todos.json，下一分钟就按新表跑
     if (url.pathname === '/api/todo-add' && req.method === 'POST') {
       if (!requireWrite(req, res)) return
@@ -347,26 +368,30 @@ const server = http.createServer(async (req, res) => {
       logLine('voice-style restore ' + (r.ok ? 'ok' : 'rejected'))
       return sendJson(res, r.ok ? 200 : 400, r)
     }
-    // ── 鱼缸小镇：她自己的日子（只读快照 + 3 天记忆；开关走 /api/capabilities 的 town）──
+    // ── 鱼缸小镇：只读看她的日子（在线状态/三天事件/印象/每天一句/今天动过几次）──
+    //    写操作不在这里：进不进镇是能力开关 town.enabled，走 /api/capabilities。
     if (url.pathname === '/api/town' && req.method === 'GET') {
       const scope = requestScope(req)
-      const snap = capabilitiesSnapshot()
-      const item = (snap.items || []).find((x) => x && x.id === 'town') || null
-      const ours = !!(item && item.enabled)
+      // 「进不进镇」就是能力开关 town.enabled：这里只把它的当前值和 mtime 带回去，
+      // 真正写盘仍走 /api/capabilities（那边有 baseMtime 冲突检测与审计）。
+      const caps = capabilitiesSnapshot()
+      let townCap = null
+      for (const g of caps.groups || []) for (const it of g.items || []) if (it.id === 'town') townCap = it
       const data = buildTown()
-      // 快照里那份是「调度器上次采集时看到的」，插件刚装/刚关时不新鲜，所以先问文件。
+      // 现场探一次（读文件，几毫秒）：快照里的那份是采集那会儿的，可能已经过时。
       const plugin = (await townPluginStatus()) || (data.snapshot && data.snapshot.plugin) || null
       return sendJson(res, 200, {
         ...data,
         plugin,
+        // 开关显示的是「她到底进不进镇」：我们这一半开着，或者插件那条鱼正挂着长轮询，都算进。
         cap: {
-          enabled: ours || Boolean(plugin && plugin.takesTurns),
-          mtime: (item && item.mtime) ?? snap.mtime,
-          ours,
+          enabled: (townCap ? townCap.enabled !== false : false) || Boolean(plugin && plugin.takesTurns),
+          mtime: caps.mtime,
+          ours: townCap ? townCap.enabled !== false : false,
           plugin: Boolean(plugin && plugin.takesTurns),
         },
         scope,
-        canWrite: scope !== 'public'
+        canWrite: scope !== 'public',
       })
     }
 
@@ -425,7 +450,7 @@ const server = http.createServer(async (req, res) => {
         logEvent('capability-save', { by: clientIp(req), count: r.updated.length })
         logLine('capabilities updated: ' + r.updated.map((x) => x.id + '=' + x.enabled).join(','))
         // 「进镇」这个开关要写两处：我们的 town.enabled + 官方插件那条鱼的 enabled。
-        // 只写一边的后果是「面板关了但它还在镇里」。
+        // 只写一半没用 —— 插件开着就会自己进镇，我们的关着它照样在里头。
         let plugin = null
         if (body && body.updates && Object.prototype.hasOwnProperty.call(body.updates, 'town')) {
           plugin = await setTownPluginEnabled(Boolean(body.updates.town))
@@ -594,84 +619,84 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ── 主人的文件柜：她和我聊天要用的文档/图片放一处（owner 2026-11-20）──
-// 目录 ~/.dsh/stellar/files/，跨天保留。她不主动读；需要时用 stellar_file_list 现查、
-// 用 stellar_file_read(path=...) 读单个文件，所以这里不需要往提示词里灌清单。
-if (url.pathname === '/api/files' && req.method === 'GET') {
-  const scope = requestScope(req)
-  try {
-    return sendJson(res, 200, { ...listCabinetFiles(), canWrite: scope !== 'public' })
-  } catch (e) {
-    return sendJson(res, 500, { ok: false, message: '读取文件柜失败：' + String(e && e.message || e) })
-  }
-}
-if (url.pathname === '/api/files/download') {
-  const file = cabinetFilePath(url.searchParams.get('name') || '')
-  if (!file) return sendJson(res, 404, { ok: false, message: '这个文件已经不在了' })
-  const ext = path.extname(file).toLowerCase()
-  const TYPE = {
-    '.pdf': 'application/pdf',
-    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
-    '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8',
-    '.zip': 'application/zip',
-  }
-  const type = TYPE[ext] || 'application/octet-stream'
-  const stat = fs.statSync(file)
-  const inline = /^image\//.test(type) || /^text\//.test(type) || type === 'application/pdf'
-  res.writeHead(200, {
-    'content-type': type,
-    'content-length': stat.size,
-    'cache-control': 'no-store',
-    'content-disposition': (inline ? 'inline' : 'attachment') + "; filename*=UTF-8''" + encodeURIComponent(path.basename(file)),
-  })
-  return fs.createReadStream(file).pipe(res)
-}
-if (url.pathname === '/api/files/upload' && req.method === 'POST') {
-  if (!requireWrite(req, res)) return
-  const by = 'panel:' + clientIp(req)
-  // 大文件走原始字节体（2026-11-20，上限 512 MB）：base64 JSON 会把内存翻一倍多，
-  // 几百 MB 的文件在面板进程里直接吃满。非 JSON 请求一律按流式收。
-  const isJson = /application\/json/i.test(String(req.headers['content-type'] || ''))
-  if (!isJson) {
-    const name = String(url.searchParams.get('name') || req.headers['x-file-name'] || '')
-    try {
-      const r = await saveCabinetStream(name, req, { by })
-      if (!r.ok) return sendJson(res, 400, r)
-      appendAudit('file-upload', { name: r.name, bytes: r.bytes, by })
-      logLine('file upload ' + r.name + ' (' + r.bytes + ' B)')
-      return sendJson(res, 200, r)
-    } catch (e) {
-      return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+    // 目录 ~/.dsh/stellar/files/，跨天保留。她不主动读；需要时用 stellar_file_list 现查、
+    // 用 stellar_file_read(path=...) 读单个文件，所以这里不需要往提示词里灌清单。
+    if (url.pathname === '/api/files' && req.method === 'GET') {
+      const scope = requestScope(req)
+      try {
+        return sendJson(res, 200, { ...listCabinetFiles(), canWrite: scope !== 'public' })
+      } catch (e) {
+        return sendJson(res, 500, { ok: false, message: '读取文件柜失败：' + String(e && e.message || e) })
+      }
     }
-  }
-  const body = await readJsonBody(req)
-  try {
-    const r = saveCabinetFile(String(body.name || ''), String(body.base64 || ''), { by })
-    if (!r.ok) return sendJson(res, 400, r)
-    appendAudit('file-upload', { name: r.name, bytes: r.bytes, by })
-    logLine('file upload ' + r.name + ' (' + r.bytes + ' B)')
-    return sendJson(res, 200, r)
-  } catch (e) {
-    return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
-  }
-}
-if (url.pathname === '/api/files/delete' && req.method === 'POST') {
-  if (!requireWrite(req, res)) return
-  const by = 'panel:' + clientIp(req)
-  const body = await readBody(req)
-  try {
-    const r = deleteCabinetFile(String(body.name || ''), { by })
-    if (!r.ok) return sendJson(res, 404, r)
-    appendAudit('file-delete', { name: r.name, by })
-    logLine('file delete ' + r.name)
-    return sendJson(res, 200, r)
-  } catch (e) {
-    return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
-  }
-}
-// ── 新记忆库（SQLite）：概览 / 话题 / 零碎 / 侧写 / 参考库（owner 2026-11-13）──
+    if (url.pathname === '/api/files/download') {
+      const file = cabinetFilePath(url.searchParams.get('name') || '')
+      if (!file) return sendJson(res, 404, { ok: false, message: '这个文件已经不在了' })
+      const ext = path.extname(file).toLowerCase()
+      const TYPE = {
+        '.pdf': 'application/pdf',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
+        '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8',
+        '.zip': 'application/zip',
+      }
+      const type = TYPE[ext] || 'application/octet-stream'
+      const stat = fs.statSync(file)
+      const inline = /^image\//.test(type) || /^text\//.test(type) || type === 'application/pdf'
+      res.writeHead(200, {
+        'content-type': type,
+        'content-length': stat.size,
+        'cache-control': 'no-store',
+        'content-disposition': (inline ? 'inline' : 'attachment') + '; filename*=UTF-8\'\'' + encodeURIComponent(path.basename(file)),
+      })
+      return fs.createReadStream(file).pipe(res)
+    }
+    if (url.pathname === '/api/files/upload' && req.method === 'POST') {
+      if (!requireWrite(req, res)) return
+      const by = 'panel:' + clientIp(req)
+      // 大文件走原始字节体（2026-11-20，上限提到 512 MB）：base64 JSON 会把内存翻一倍多，
+      // 几百 MB 的文件在面板进程里直接吃满。非 JSON 请求一律按流式收。
+      const isJson = /application\/json/i.test(String(req.headers['content-type'] || ''))
+      if (!isJson) {
+        const name = String(url.searchParams.get('name') || req.headers['x-file-name'] || '')
+        try {
+          const r = await saveCabinetStream(name, req, { by })
+          if (!r.ok) return sendJson(res, 400, r)
+          appendAudit('file-upload', { name: r.name, bytes: r.bytes, by })
+          logLine('file upload ' + r.name + ' (' + r.bytes + ' B)')
+          return sendJson(res, 200, r)
+        } catch (e) {
+          return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+        }
+      }
+      const body = await readJsonBody(req)
+      try {
+        const r = saveCabinetFile(String(body.name || ''), String(body.base64 || ''), { by })
+        if (!r.ok) return sendJson(res, 400, r)
+        appendAudit('file-upload', { name: r.name, bytes: r.bytes, by })
+        logLine('file upload ' + r.name + ' (' + r.bytes + ' B)')
+        return sendJson(res, 200, r)
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+      }
+    }
+    if (url.pathname === '/api/files/delete' && req.method === 'POST') {
+      if (!requireWrite(req, res)) return
+      const by = 'panel:' + clientIp(req)
+      const body = await readBody(req)
+      try {
+        const r = deleteCabinetFile(String(body.name || ''), { by })
+        if (!r.ok) return sendJson(res, 404, r)
+        appendAudit('file-delete', { name: r.name, by })
+        logLine('file delete ' + r.name)
+        return sendJson(res, 200, r)
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+      }
+    }
+    // ── 新记忆库（SQLite）：概览 / 话题 / 零碎 / 侧写 / 参考库（owner 2026-11-13）──
     // 库文件与桥接共用一份（characters/<角色>/memory/memory.db）；这里只读 + 三个写操作，
     // 判定逻辑全在 stellar/src/memory-db.js 与 memory-worker.js，面板不重写规则。
     if (url.pathname === '/api/memory-db' && req.method === 'GET') {
@@ -993,9 +1018,18 @@ if (url.pathname === '/api/files/delete' && req.method === 'POST') {
       }
     }
     if (url.pathname === '/api/action' && req.method === 'POST') {
-      // 快捷操作会重启 DSH、停机器人、改写生物钟计划 —— 公网隧道只读，审批请走 /api/approvals/action
-      if (!requireWrite(req, res)) return
+      // 快捷操作会重启 DSH、停机器人、改写生物钟计划 —— 公网隧道只读，审批请走 /api/approvals/action。
+      // 唯一的例外是「重启 DSH」：人在外面时它是唯一必须立刻能做的操作，而且不读写任何用户数据
+      // （见 lib/remote-restart.js）。先读 body 再判定，是因为放行与否取决于 action 本身。
       const body = await readBody(req)
+      const scopeNow = requestScope(req)
+      if (scopeNow === 'public') {
+        const decision = remoteWriteDecision({ action: String(body.action || ''), scope: scopeNow, ip: clientIp(req) })
+        if (!decision.ok) {
+          appendAudit('action-rejected', { action: String(body.action || ''), code: decision.code, scope: scopeNow, ip: clientIp(req) })
+          return sendJson(res, 403, { ok: false, code: decision.code, message: decision.message })
+        }
+      }
       const action = String(body.action || '')
       appendAudit('action', { action, text: maskText(body.text || '', 60) })
       logEvent('action', { action, by: clientIp(req) })
@@ -1005,6 +1039,8 @@ if (url.pathname === '/api/files/delete' && req.method === 'POST') {
       if (action === 'start-bridge') return sendJson(res, 200, await actionStartBridge())
       if (action === 'restart-dsh') {
         const result = await restartDsh('panel:' + clientIp(req), { delayMs: Number(body.delaySeconds || 0) * 1000 })
+        // 公网来源的重启单独留痕：谁在什么 scope 下点过、成没成（成功才计入下一次冷却）
+        noteRemoteWrite({ action, scope: scopeNow, ip: clientIp(req), by: 'panel', ok: Boolean(result && result.ok) })
         return sendJson(res, result.ok ? 200 : 400, result)
       }
       if (action === 'qzone') return sendJson(res, 200, await actionQzone(body))
@@ -1069,19 +1105,13 @@ server.listen(PORT, HOST, () => {
   // 口令一律不打印（2026-11-21 安全审计 S10）：console 会被重定向进 panel.log，
   // 而 panel.log 的 ACL 不由本程序控制，同机别的账户可能读得到（PITFALLS #208）。
   // 需要口令时读 panel-token.txt，或在面板「手机访问」里点复制链接生成一次性登录码。
-  // 只听本机时，局域网地址没意义（别的设备连不上），所以不打印。
-  const loopbackOnly = ['127.0.0.1', 'localhost', '::1'].includes(String(HOST))
-  if (!loopbackOnly) {
-    for (const u of lan) console.log('手机访问: ' + u + '（口令见 panel-token.txt，或在面板里点复制登录链接）')
-  } else {
-    console.log('只监听本机（127.0.0.1）。想让同一 WiFi 的手机连，设 STELLAR_PANEL_HOST=0.0.0.0 再启动。')
-  }
+  for (const u of lan) console.log('手机访问: ' + u + '（口令见 panel-token.txt，或在面板里点复制登录链接）')
   console.log('本机入口: ' + local + '（快捷方式里带 ?code=<panel-token.txt 里的口令>）')
   // 不要把口令写进日志：panel.log 的 ACL 不受这里控制，同机别的账户可能读得到（PITFALLS #208）
   logLine('panel started on ' + PORT + ' host=' + HOST + ' lan=' + lan.join(','))
   resumeRestartPolling()
   reconcileRestartState()
-  if (process.env.STELLAR_NO_TUNNEL !== '1') {
+  if (process.env.STELLAR_NO_TUNNEL !== '1' && process.env.SURFCORE_NO_TUNNEL !== '1') {
     resumeTunnel()
     setInterval(ensureTunnel, 20000).unref()
   } else {

@@ -1,0 +1,4 @@
+# 文档锚点白名单：这些路径本来就不入库，不算「文档引用失效」。
+# 判定见 scripts/check-doc-anchors.mjs；只豁免「路径不存在」，行号锚点照样报。
+# 本地隐私规则文件（用户自建，gitignored；示例文件 scripts/privacy-rules.example.json 入库）
+scripts/privacy-rules.json

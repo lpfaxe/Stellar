@@ -178,7 +178,14 @@ CORE_TOWN_ALLOW['stellar-manager/server.mjs'] = [
   '「进镇」这个开关要写两处',
   "鱼缸小镇：她自己的日子（只读快照",
   "'/api/town'",
-  "x.id === 'town'"
+  "x.id === 'town'",
+  // 2026-11-25 publish 面板「进不进镇」改成读能力快照（不再自己读配置）：注释两行 + 取 townCap 的五行。
+  // 这里只读开关值，写盘仍走 /api/capabilities。
+  '进不进镇是能力开关 town.enabled',
+  '这里只把它的当前值和 mtime 带回去',
+  'let townCap = null',
+  'caps.groups',
+  'townCap ?'
 ];
 CORE_TOWN_ALLOW['stellar-manager/public/js/core.js'] = ["'town'", 'memory', 'TABS'];
 CORE_TOWN_ALLOW['stellar-manager/public/js/boot.js'] = ["state.tab === 'town'", 'loadTown'];
@@ -213,6 +220,11 @@ export const CORE_TOWN_ALLOW_ANY = [
   'plugins/stellar/lib/token-usage-pure.js',
   'src/token-budget.js',
   'src/cost-estimate.js',
+  // 2026-11-25 面板「今天花费」按类目拆：cost.js 多了「鱼缸小镇」这一类（key / label / hint / 金额），
+  // public/js/cost.js 多一格条形配色。这两处是账目分类的枚举，不是小镇业务逻辑 ——
+  // 整块拆小镇时它们跟着类目表一起删，所以按「任一行都算接线」处理。
+  'stellar-manager/lib/cost.js',
+  'stellar-manager/public/js/cost.js',
   'scripts/build-agent-preset-patches.mjs',
   'scripts/test-agent-preset-patches.mjs',
   'scripts/test-token-budget.mjs',

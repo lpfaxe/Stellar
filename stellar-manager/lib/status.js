@@ -2,12 +2,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { AUDIT_FILE, BILI, BRIDGE, CFG_FILE, DSH_EXE, KEEPALIVE, LOGS, NODE, PORT, REPO, REPORT_REQ, SNOW, SURF } from './paths.js'
+import { AUDIT_FILE, BILI, BRIDGE, BRIDGE_CFG, CFG_FILE, KEEPALIVE, LOGS, NODE, PORT, REPO, REPORT_REQ, SNOW, SURF } from './paths.js'
 import { clampNum, findWhale, logLine, maskText, portOpen, readJson, readTail, run, todayKey } from './util.js'
 import { qzoneStats, readReports } from './report.js'
 import { buildHerStatus } from './her.js'
 import { buildActivity } from './activity.js'
-import { buildTurns } from './turns.js'
 import { readTownPresence } from './town.js'
 import { currentToken, lanAddresses, publicV6Addresses, tailnetAddresses } from './auth.js'
 import { HOST } from './paths.js'
@@ -20,9 +19,10 @@ function hostIsLoopback() {
 import { readAllow } from './remote-allow.js'
 import { dshAvailable, readRestartState } from './dsh.js'
 import { buildRestartAdvice } from './restart-advice.js'
+import { buildTurns } from './turns.js'
 import { readState as readCookieGuardState } from './cookie-guard.js'
 import { ensureTunnel } from './tunnel.js'
-import { isPeakAt } from '../../src/model-prices.js'
+import { isPeakAt, resolvePriceTable } from '../../src/model-prices.js'
 import { approvalStatus } from '../../plugins/stellar/lib/image-budget.js'
 import { readStop, setStop } from '../../plugins/stellar/lib/emergency-stop.js'
 
@@ -114,19 +114,19 @@ async function collectStatus() {
   const task = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', taskCmd], { timeoutMs: 8000 })
   const taskParts = String(task.out || '').trim().split('|')
   const dshUp = /DeepSeek Harness/i.test(dsh.out || '')
-  const lastRun = taskParts[0] || ''
-  const lastResult = taskParts[1] || ''
-  // 遥测里「回合没收尾」= 她真的还在跑（lib/turns.js，读 context-telemetry-plugin.jsonl）
+  // 她还有没有回合没收尾（真在跑什么、大概什么时候结束）：从 DSH 遥测尾部现算，读一次给两处用。
   const turns = buildTurns()
   // 她人在不在小镇：只读 status.json（调度器 10 分钟写一次），面板自己绝不联网。
   const town = readTownPresence()
+  const lastRun = taskParts[0] || ''
+  const lastResult = taskParts[1] || ''
   return {
     now: new Date().toISOString(),
     panelPort: PORT,
     ports,
     snowluma: ports[5099], bridge: ports[3100], onebot: ports[3000] || ports[3001],
     dshRunning: dshUp,
-    dsh: { running: dshUp, supported: dshAvailable(), exe: DSH_EXE, restart: readRestartState() },
+    dsh: { running: dshUp, supported: dshAvailable(), exe: 'D:/dsh/DeepSeek Harness.exe', restart: readRestartState() },
     // 重启时机建议：重启 DSH = 会话重新 seed，整段上下文按未命中重算（见 lib/restart-advice.js）
     restartAdvice: buildRestartAdvice({ dshRunning: dshUp, turns }),
     keepalive: { configured: fs.existsSync(KEEPALIVE), lastRun: lastRun.trim(), lastResult: lastResult.trim() },
@@ -156,7 +156,13 @@ async function collectStatus() {
       perWake: slots.filter((s) => s.action === 'wake').length ? Math.max(1, Math.round((cfg.night?.videoTargetPerDay || 40) / slots.filter((s) => s.action === 'wake').length)) : 0,
     },
     // 现在是不是价格谷期（生物钟只在谷期叫醒）
-    pricing: { peak: peakAt(Date.now()), label: peakAt(Date.now()) ? '峰时 ×2' : '谷期 ×1' },
+    // 倍数从价目表取（内置 2，但 config.json 的 pricing.peakMultiplier 可以改）
+    pricing: (() => {
+      const peak = peakAt(Date.now())
+      let mult = 1
+      try { mult = Number(resolvePriceTable(readJson(BRIDGE_CFG, {})?.pricing).peakMultiplier) || 1 } catch { mult = 1 }
+      return { peak, multiplier: mult, label: peak ? '峰时 ×' + mult : '谷期 ×1' }
+    })(),
     her: buildHerStatus(),
     activity: buildActivity({ turns, town }),
     // 在场快照（inTown / ageMs / detail）：面板与「重启时机」都能直接读，不用再拼一次

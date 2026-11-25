@@ -195,11 +195,34 @@ export function ratesAt(model, atMs, table = DEFAULT_PRICE_TABLE) {
     symbol: table.symbol,
     unit: table.unit,
     estimated: !entry,
+    peakMultiplier: factor,
     cacheHit: off.cacheHit * factor,
     cacheMiss: off.cacheMiss * factor,
     cacheWrite: (Number.isFinite(off.cacheWrite) ? off.cacheWrite : off.cacheMiss) * factor,
     output: off.output * factor
   };
+}
+
+const WEEKDAY_LABEL = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/**
+ * 峰谷规则的一句话说明。**所有界面都从这一处取**（控制台 / 面板 / MCP 工具）——
+ * 「高峰 ×2」「9:00–12:00」这种字面量散在三处时，改一次价就会有一处说错。
+ */
+export function peakNote(table = DEFAULT_PRICE_TABLE) {
+  const mult = Number(table.peakMultiplier) > 0 ? Number(table.peakMultiplier) : 1;
+  const windows = (table.peakWindows ?? [])
+    .filter((w) => Array.isArray(w) && w.length >= 2)
+    .map(([a, b]) => `${a}:00–${b}:00`)
+    .join(' / ');
+  const days = Array.isArray(table.peakWeekdays) && table.peakWeekdays.length > 0
+    ? (table.peakWeekdays.length === 5 && [1, 2, 3, 4, 5].every((d) => table.peakWeekdays.includes(d))
+      ? '周一至周五'
+      : table.peakWeekdays.slice().sort((a, b) => a - b).map((d) => WEEKDAY_LABEL[d] ?? '').filter(Boolean).join('、'))
+    : '每天';
+  const holidays = (table.holidays instanceof Set ? table.holidays.size : (table.holidays ?? []).length) || 0;
+  const holidayPart = holidays > 0 ? '，法定节假日除外' : '';
+  return `高峰 ×${mult}（北京时间 ${days} ${windows || '—'}${holidayPart}）`;
 }
 
 /**

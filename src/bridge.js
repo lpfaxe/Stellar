@@ -79,7 +79,11 @@ import { addTurnCost, spentToday, quotaFlags, markQuotaFlag } from './user-spend
 import {
   buildHandoffBlock, handoffIsUseful, normalizeRolloverConfig, shouldRollSession,
 } from './session-rollover.js';
-import { batchWindowFor, normalizeBatchWindows } from './wake-batch.js';
+import { batchWindowFor, isDirectReason, isPrivateKey, normalizeBatchWindows } from './wake-batch.js';
+import {
+  INPUT_STATE, nextWindowDelay, normalizeTypingConfig, pruneTypingLog,
+  summarizeTypingLog, typingEventOf, typingLogLine
+} from './typing-watch.js';
 import { shouldFollowupWake, shouldChimeIn } from './wake-followup.js';
 import { evaluateLocalFilter, normalizeLocalFilter, FILTER_LABELS } from './wake-filter.js';
 import { createTurnGuard } from './turn-guard.js';
@@ -1309,8 +1313,18 @@ function loadConfig() {
         recommendedPoke: true,
         recommendedHint: '如果你要潜水，推荐先调用 qq_wait_for_messages(timeoutMs=300000) 完成一次沉睡前观察：5 分钟内没人说话就可以设置下一次唤醒并沉睡；若期间有人发新消息，先查看 newMessages，判断不需要你参与可直接沉睡，若参与了则下次想睡需再等观察窗口。潜水时长推荐 5~120 分钟，普通消息概率 0.05；@/名字/关键词/提问唤醒建议保持开启。需要等特定某人/某几人时，可额外设置 triggers.speakerIds。',
         batchWindowMs: 6000,             // 群聊合并窗口（2026-11-04 用户定 6 秒；原 8 秒）
-        batchWindowPrivateMs: 4000,      // 私聊合并窗口（私聊节奏快，8 秒太慢）
+        batchWindowPrivateMs: 2000,      // 私聊合并窗口（2026-11-25 用户定 2 秒；滑动窗口的基准值）
         batchWindowDirectMs: 3000,       // @/叫名字/拍一拍：被点名就立刻应
+        // 私聊滑动窗口 + 「对方正在输入」（2026-11-25）：逻辑在 src/typing-watch.js。
+        // enabled=false 就退回固定窗口；logEnabled=false 就不再记账（控制台那张卡会空）。
+        typing: {
+          enabled: true,
+          logEnabled: true,
+          logKeepDays: 7,
+          extendMs: 2000,                // 对方还在打字时，每次再等 2 秒
+          maxWindowMs: 15000,            // 普通连发的绝对上限（从第一条算起）
+          maxTypingMs: 60000             // 对方一直在打字时的绝对上限
+        },
         // ── 本地判断（免费漏斗，2026-11-04）────────────────────────────────
         // 默认关闭；打开后先 dry-run 统计，看见效果再切真拦。硬触发（@/名字/拍一拍/私聊）永不拦。
         localFilterEnabled: false,
@@ -5253,6 +5267,8 @@ function maybeApproveImageRequest(text, key) {
             wakeGuard: wakeGuardSnapshot(),
             // 状态机（LISTEN/ACTIVE/COOLDOWN/SLEEP）与幂等表大小，只读。
             agent: agentState.status(),
+            // 「正在输入」观测（2026-11-25）：控制台「她」页一张只读卡，7 天滚动。
+            typing: typingSummaryV2(),
             activity: readActivityTail(100)
           });
           return;
@@ -11515,6 +11531,12 @@ function maybeApproveImageRequest(text, key) {
         sendTimes: [],
         stickerCollectTimes: [],
         pendingWakeTimer: null,
+        // 合并窗口的滑动状态（2026-11-25）：第一次排窗口的时间、最后一条消息的时间、
+        // 最后一次「对方还在打字」的时间，以及此刻是否仍在打字。
+        pendingWakeFirstAt: 0,
+        pendingWakeLastAt: 0,
+        pendingWakeTypingAt: 0,
+        pendingWakeTypingNow: false,
         sleepTimer: null,
         replyCheckTimer: null,
         proactiveTimer: null,
@@ -16826,6 +16848,126 @@ function saveSocialV2State() {
     return TIMER_WAKE_REASONS.has(String(reason ?? '').split(':')[0]);
   }
 
+  // ── 「正在输入」观测 + 滑动合并窗口（2026-11-25，主人 m08651）────────────────
+  // 纯逻辑在 src/typing-watch.js；这里只做三件事：读配置、记账、重排定时器。
+  // 关掉的方式：config.json 的 socialV2.wake.typing.enabled=false（改完要重开 DSH）。
+  let typingCfgCache = null;
+  function typingConfigV2() {
+    if (typingCfgCache) return typingCfgCache;
+    typingCfgCache = normalizeTypingConfig(cfg.socialV2?.wake?.typing ?? {});
+    return typingCfgCache;
+  }
+
+  const TYPING_LOG = path.join(STATE_DIR, 'typing-log.jsonl');
+  let typingLogPrunedAt = 0;
+
+  /** 追加一行「正在输入」记录（只写 QQ 号/时间/状态，不写正文、不写 token）。 */
+  function appendTypingLogV2(evt, now = Date.now()) {
+    try {
+      const cfgT = typingConfigV2();
+      if (!cfgT.logEnabled) return;
+      const line = typingLogLine(evt, now);
+      if (!line) return;
+      fs.appendFileSync(TYPING_LOG, line + '\n');
+      // 滚动：最多每 6 小时整理一次，留最近 logKeepDays 天（默认 7 天）。
+      if (now - typingLogPrunedAt < 6 * 60 * 60 * 1000) return;
+      typingLogPrunedAt = now;
+      const text = fs.readFileSync(TYPING_LOG, 'utf8');
+      const pruned = pruneTypingLog(text, { now, keepDays: cfgT.logKeepDays });
+      if (pruned.dropped > 0) {
+        fs.writeFileSync(TYPING_LOG, pruned.lines.length ? pruned.lines.join('\n') + '\n' : '');
+        log(`[input-status] 观测日志滚动：丢弃 ${pruned.dropped} 条超过 ${cfgT.logKeepDays} 天的记录`);
+      }
+    } catch (error) {
+      // 记账失败绝不影响主链路：吞掉，只在日志里提一句（限流，避免刷屏）。
+      logThrottled('typing-log-write', 60_000, `[input-status] 写观测日志失败：${error?.message ?? error}`);
+    }
+  }
+
+  /** 控制台「她」页读这张卡：今天几次、最近一次多久前、按会话分。 */
+  function typingSummaryV2({ now = Date.now() } = {}) {
+    const cfgT = typingConfigV2();
+    const out = {
+      enabled: cfgT.enabled,
+      logEnabled: cfgT.logEnabled,
+      keepDays: cfgT.logKeepDays,
+      privateMs: cfgT.privateMs,
+      maxWindowMs: cfgT.maxWindowMs,
+      maxTypingMs: cfgT.maxTypingMs,
+      file: TYPING_LOG,
+      sizeBytes: 0,
+      summary: { total: 0, today: 0, typing: 0, stop: 0, lastAt: 0, lastAgoMs: 0, conversations: [] }
+    };
+    try {
+      const stat = fs.statSync(TYPING_LOG);
+      out.sizeBytes = stat.size;
+      const text = fs.readFileSync(TYPING_LOG, 'utf8');
+      const pruned = pruneTypingLog(text, { now, keepDays: cfgT.logKeepDays });
+      out.summary = summarizeTypingLog(pruned.entries, { now });
+    } catch {}
+    return out;
+  }
+
+  /** 重排待唤醒定时器（滑动窗口专用：先清旧的，再按新到期时间排）。 */
+  function rearmPendingWakeV2(key, st, delayMs, why) {
+    if (st.pendingWakeTimer) {
+      clearTimeout(st.pendingWakeTimer);
+      st.pendingWakeTimer = null;
+    }
+    const wait = Math.max(0, Math.round(delayMs));
+    st.pendingWakeTimer = setTimeout(() => {
+      st.pendingWakeTimer = null;
+      const finalReason = st.pendingWakeReason || 'private';
+      st.pendingWakeReason = null;
+      st.pendingWakeFirstAt = 0;
+      st.pendingWakeLastAt = 0;
+      st.pendingWakeTypingAt = 0;
+      st.pendingWakeTypingNow = false;
+      void sendWakePromptV2(key, finalReason).catch((error) => log(`[reserved2] 计划唤醒异常 ${key}:`, error?.message ?? error));
+    }, wait);
+    st.pendingWakeTimer.unref?.();
+    log(`[reserved2] 计划唤醒 ${key}（${st.pendingWakeReason || ''}），${(wait / 1000).toFixed(1)}s 后发送（${why}）`);
+  }
+
+  /** 按当前状态算这一次该等多久。群聊与「被点名」保持老语义（不受滑动窗口影响）。 */
+  function pendingWakeDelayV2(key, st, reason, now = Date.now()) {
+    const cfgT = typingConfigV2();
+    if (!cfgT.enabled || isDirectReason(reason) || !isPrivateKey(key)) {
+      return { delayMs: batchWindowFor(key, reason, st.wakeConfig ?? {}), why: 'static' };
+    }
+    const baseMs = batchWindowFor(key, reason, st.wakeConfig ?? {});
+    const merged = { ...cfgT, privateMs: baseMs };
+    const plan = nextWindowDelay({
+      firstAt: st.pendingWakeFirstAt || now,
+      lastAt: st.pendingWakeLastAt || now,
+      lastTypingAt: st.pendingWakeTypingAt || 0,
+      typingNow: st.pendingWakeTypingNow === true,
+      now,
+      cfg: merged
+    });
+    return { delayMs: plan.delayMs, why: plan.reason };
+  }
+
+  /**
+   * 收到一条 QQ 输入状态通知：记账 + （如果这个会话正在等）顺延窗口。
+   * 只「看」，不进 unread、不升级唤醒原因、不产生额外计费。
+   */
+  function handleInputStatusNoticeV2(event, now = Date.now()) {
+    const cfgT = typingConfigV2();
+    if (!cfgT.enabled && !cfgT.logEnabled) return;
+    const evt = typingEventOf(event, { ownerQQ: cfg.ownerQQ });
+    if (!evt) return;
+    if (cfgT.logEnabled) appendTypingLogV2(evt, now);
+    if (!cfgT.enabled) return;
+    let st;
+    try { st = getSocialV2State(evt.key); } catch { return; }
+    if (!st.pendingWakeTimer) return; // 没在等就别动：她要么已经在回，要么在睡
+    st.pendingWakeTypingAt = evt.typing ? now : 0;
+    st.pendingWakeTypingNow = evt.typing;
+    const plan = pendingWakeDelayV2(evt.key, st, st.pendingWakeReason || 'private', now);
+    rearmPendingWakeV2(evt.key, st, plan.delayMs, evt.typing ? '对方在打字' : `对方停手（${plan.why}）`);
+  }
+
   function scheduleWakeV2(key, reason) {
     if (cfg.socialV2?.enabled === false) return;
     if (socialV2.paused) return;
@@ -16841,6 +16983,11 @@ function saveSocialV2State() {
         st.pendingWakeReason = reason;
         log(`[reserved2] 合并窗口内升级唤醒原因 ${key}: ${cur} -> ${reason}`);
       }
+      // 2026-11-25 起这里不再「直接返回」：私聊改成滑动窗口 —— 又来一条就把到期时间往后推，
+      // 否则第 3.9 秒补的那句要么挤进这一轮、要么白烧一次唤醒（见设计文档 §1.2）。
+      st.pendingWakeLastAt = Date.now();
+      const plan = pendingWakeDelayV2(key, st, st.pendingWakeReason || reason);
+      rearmPendingWakeV2(key, st, plan.delayMs, plan.why);
       return;
     }
     if (isConversationBusyV2(key, st)) {
@@ -16870,16 +17017,14 @@ function saveSocialV2State() {
     } catch {}
     // 合并窗口分场景（2026-11-04）：@/叫名字/拍一拍 3 秒、私聊 4 秒、群聊 6 秒。
     // 原来一律 8 秒 —— 被点名也要干等 8 秒，体感上就是"明明在线却装死"。
-    const batchMs = batchWindowFor(key, reason, st.wakeConfig ?? {});
-    st.pendingWakeTimer = setTimeout(() => {
-      st.pendingWakeTimer = null;
-      const finalReason = st.pendingWakeReason || reason;
-      st.pendingWakeReason = null;
-      void sendWakePromptV2(key, finalReason).catch((error) => log(`[reserved2] 计划唤醒异常 ${key}:`, error?.message ?? error));
-    }, batchMs);
-    // 与其它 per-conversation 定时器保持一致：别让一个待唤醒定时器把进程钉住不退出。
-    st.pendingWakeTimer.unref?.();
-    log(`[reserved2] 计划唤醒 ${key}（${reason}），${Math.round(batchMs / 1000)}s 后发送`);
+    // 滑动窗口的起点与「最后一条消息」：两者相同，之后由新消息/打字事件往后推。
+    const nowMs = Date.now();
+    st.pendingWakeFirstAt = nowMs;
+    st.pendingWakeLastAt = nowMs;
+    st.pendingWakeTypingAt = 0;
+    st.pendingWakeTypingNow = false;
+    const plan = pendingWakeDelayV2(key, st, reason, nowMs);
+    rearmPendingWakeV2(key, st, plan.delayMs, plan.why);
   }
 
   /**
@@ -18960,6 +19105,10 @@ function saveSocialV2State() {
     try { await handleIncoming('group', event.group_id, event, cfg); } catch (error) { log('处理群消息出错:', error?.message ?? error); }
   });
   bot.onNotice('notify', async (event) => {
+    // 2026-11-25：notify 下面不止「拍一拍」，还有 QQ 的「对方正在输入」
+    // （sub_type=input_status，见 src/typing-watch.js）。后者只用于顺延合并窗口 + 记账，
+    // 不产生消息、不进 unread、不算一次唤醒。
+    try { handleInputStatusNoticeV2(event); } catch (error) { log('处理正在输入事件出错:', error?.message ?? error); }
     try { await handlePokeNotice(event); } catch (error) { log('处理拍一拍事件出错:', error?.message ?? error); }
   });
 

@@ -75,6 +75,9 @@
       <button id="actReplan" class="act"><b>重排计划</b><small>按新生物钟</small></button>
       <button id="actRestartDsh" class="act danger"><b>重启 DSH</b><small>先看上面的建议</small></button>
     </div>
+    <!-- 别的快捷操作在公网来源下都会 403（只读）；只有「重启 DSH」是故意放行的，
+         所以这里要写清楚，别让人点了别的一头雾水。文案由 status.js 按 scope 填。 -->
+    <p class="muted" id="actScopeNote"></p>
     <div class="act-danger">
       <div class="act-danger-head"><b>运行模式</b><span class="rw">选一档，立刻生效</span></div>
       <div class="mode-row" id="modeRow">
@@ -150,6 +153,19 @@
     <div class="row"><button id="herRefresh" class="ghost">刷新</button><span class="msg" id="herMsg"></span></div>
   </section>
 
+  <section class="card" id="typingCard" data-tab="her">
+    <h2>对方正在输入 <span class="hint">她等了几次 · 7 天滚动 · 只读</span></h2>
+    <div class="row wrap">
+      <span id="twSummary" class="pill">读取中…</span>
+      <button id="twRefresh" class="ghost small">刷新</button>
+    </div>
+    <div id="twDays" class="row wrap tw-days"></div>
+    <div id="twList" class="wi-log typing-log"><p class="muted">加载中…</p></div>
+    <p class="muted small" id="twFoot"></p>
+    <p class="muted small">她收到私聊先等 2 秒再回；这 2 秒里你要是还在打字，窗口就往后顺延（普通连发最多 15 秒、一直在打字最多 60 秒），
+      最后把这几条合成一次回复。这张表只记「谁在什么时候开始/停止输入」，不记聊天内容；
+      日志保留 7 天，桥接每 6 小时自己裁一次。</p>
+  </section>
   <section class="card" id="dailyCard" data-tab="her">
     <h2>她今天的任务清单 <span class="hint">看视频 / 刷动态 / 说说 / 三连 / 日报 / 搭话 / 记忆 / 主动找你</span></h2>
     <div id="dlRings" class="ring-rings"></div>
@@ -248,7 +264,7 @@
       文件<b>不会被自动塞进她的上下文</b>——你用不着担心白花 token；只有你提到某个文件、或她要答复时，
       她自己用 <code>stellar_file_list</code> 查名字、<code>stellar_file_read</code> 读那一份。单个文件最大 512 MB。</p>
   </section>
-<section class="card" id="bvCard" data-tab="her">
+  <section class="card" id="bvCard" data-tab="her">
     <h2>今天刷的 B站视频 <span class="hint">她看了什么 · 封面和标题原样留在这里</span></h2>
     <div class="row wrap">
       <b id="bvSummary" class="dyn-summary">读取中…</b>
@@ -622,7 +638,7 @@
       </div>
       <div id="v6Box" class="hide">
         <div id="v6Urls"></div>
-        <p class="muted" id="v6OffNote">公网 IPv6 直连已经关了：面板现在只听本机（127.0.0.1），对外只走下面那条 Cloudflare 隧道。想让手机在同一个 WiFi 里直连，得先把面板启动参数改成 <code>STELLAR_PANEL_HOST=0.0.0.0</code> 再开。</p>
+        <p class="muted" id="v6OffNote">公网 IPv6 直连是关着的（面板只绑 IPv4，不挂 IPv6）。同一 WiFi 的手机用上面那条局域网地址直连就行；人在外面就用下面那条 Cloudflare 隧道，或者设 <code>STELLAR_PANEL_HOST=::</code> 再开 IPv6。</p>
         <p class="muted">手机别手打地址：IPv6 的方括号 <code>[ ]</code> 用中文输入法会变成全角，浏览器会当成搜索词。点「复制」或直接点开链接。</p>
         <div id="v6AllowBox">
           <p class="muted" id="v6AllowState"></p>
@@ -801,6 +817,7 @@
 <script src="/js/capabilities.js"></script>
 <script src="/js/town.js"></script>
 <script src="/js/voice.js"></script>
+<script src="/js/typing.js"></script>
 <script src="/js/layout.js"></script>
 <script src="/js/clock.js"></script>
 <script src="/js/log.js"></script>

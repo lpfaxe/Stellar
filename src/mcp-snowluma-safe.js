@@ -4378,7 +4378,7 @@ server.tool(
           // 2026-11-22 之前「小镇」这一栏压根不打印，所以主人一直以为小镇没花钱。
           '小镇那栏是模型 token 的钱（官方插件自己开的回合也算进来）；游戏里的钱另记，看 stellar_town_status 的 spending。',
           '',
-          '常见任务的估价（' + snap.rates.tierLabel + '，单价' + (snap.rates.tier === 'peak' ? '×2' : '正常') + '）：',
+          '常见任务的估价（' + snap.rates.tierLabel + '，' + (snap.priceNote || '峰谷规则见价目表') + '）：',
           table,
           '',
           '要估具体任务就再调一次，带 preset 或 tokens/outputTokens/chars。'

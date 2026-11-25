@@ -12,6 +12,7 @@ loadStatus().then(loadCapabilities).then(loadLog).then(loadReports).then(loadTod
   .then(function () { return window.loadTown ? loadTown() : null; })
   .then(function () { return window.loadProfiles ? loadProfiles() : null; })
   .then(function () { return window.loadVoiceCard ? loadVoiceCard() : null; })
+  .then(function () { return window.loadTypingWatch ? loadTypingWatch() : null; })
   // 参考库已停用（2026-11-22）：不再拉 /api/style-refs，少一个开局请求。要恢复就把这行换回 loadStyleRefs()
   .then(function () { return null; })
   .then(function () { return window.loadTopics ? loadTopics(0) : null; })
@@ -33,7 +34,6 @@ function every(ms, fn) {
   return p;
 }
 
-every(45000, function () { if (state.tab === 'town' && window.loadTown) loadTown(); });
 every(15000, loadApprovals);
 every(60000, loadCost);
 every(15000, function () { loadStatus(); });
@@ -52,6 +52,7 @@ every(120000, loadContacts);
 every(30000, loadOutbox);
 every(20000, loadTask);
 every(60000, function () { if (window.loadProfiles) loadProfiles(); });
+every(45000, function () { if (window.loadTown && state.tab === 'town') loadTown(); });
 
 document.addEventListener('visibilitychange', function () {
   if (document.hidden) return;

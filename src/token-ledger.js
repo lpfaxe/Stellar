@@ -31,6 +31,7 @@ import {
   addBuckets,
   isPeakAt,
   normalizeUsage,
+  peakNote,
   priceUsage,
   ratesAt,
   totalTokensOf
@@ -833,6 +834,8 @@ export function createTokenLedger({
         peakWindows: priceTable.peakWindows,
         peakWeekdays: priceTable.peakWeekdays,
         holidayCount: (priceTable.holidays ?? []).length,
+        // 一句话峰谷说明：控制台 / 面板 / MCP 都印这一句，别各自拼字面量。
+        note: peakNote(priceTable),
         models: Object.fromEntries(Object.entries(priceTable.models).map(([name, m]) => [name, { label: m.label, off: m.off }]))
       },
       totals: {

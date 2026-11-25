@@ -51,7 +51,8 @@ const limits = {
   // 面板 server 多 5 行（插件状态查询 + 开关双写）——都是接线，不是逻辑。
   // 2026-11-22 两边互通：audit 多两行（test-town-chat-sync / test-town-prompt-digest）
   'scripts/test-audit.mjs': 15,
-  'stellar-manager/server.mjs': 14,
+  // 2026-11-25 发布树面板把「进不进镇」改成读能力快照（多 4 行：注释 + townCap 取值链）。
+  'stellar-manager/server.mjs': 18,
   'stellar-manager/public/js/core.js': 1,
   'stellar-manager/public/js/boot.js': 1,
   // 小镇在场态（2026-11-22）：activity 认 kind='town'，status 透传 presence，图标加一格。

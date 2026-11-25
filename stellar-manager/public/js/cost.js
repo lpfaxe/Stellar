@@ -1,6 +1,8 @@
 /* // 今天的花费：金额、分类、分时柱状图 */
 // ── 今天的花费 ──────────────────────────────────────────────────────────────
 function fmtMoney(v, symbol) {
+  // null / undefined = 没有价目表（桥接没回 nowTier），不能显示成 ¥0.00 假装免费
+  if (v === null || v === undefined || !isFinite(Number(v))) return '—';
   var n = Number(v) || 0;
   var s = symbol || '¥';
   if (n >= 1) return s + n.toFixed(2);
@@ -68,6 +70,7 @@ function renderCost(c) {
     qq: 'linear-gradient(90deg,#7aa2ff,#4f7cff)',
     bili: 'linear-gradient(90deg,#48d18a,#2fae74)',
     feed: 'linear-gradient(90deg,#f0b24a,#e0952f)',
+    town: 'linear-gradient(90deg,#69c7d6,#3f9fb3)',
     other: 'linear-gradient(90deg,#8b93a5,#6c7489)'
   };
   var catBox = el('costCats');
@@ -150,8 +153,12 @@ function renderCost(c) {
   });
 
   var cache = c.cache || {};
+  var missPrice = c.prices && c.prices.rates && c.prices.rates.cacheMiss;
+  var missLabel = (missPrice === null || missPrice === undefined || !isFinite(Number(missPrice)))
+    ? '未命中价'
+    : '未命中价（每百万 ' + sym + Number(missPrice) + '）';
   el('costCache').textContent = cache.hitTokens
-    ? '缓存命中率 ' + fmtPct(cache.hitRate) + '：' + fmtTokens(cache.hitTokens) + ' tokens 只花了 ' + fmtMoney(cache.actualCost, sym) + '；这些量如果全按未命中价（每百万 ¥1）要 ' + fmtMoney(cache.missCost, sym) + '，等于省下 ' + fmtMoney(cache.saved, sym) + '。'
+    ? '缓存命中率 ' + fmtPct(cache.hitRate) + '：' + fmtTokens(cache.hitTokens) + ' tokens 只花了 ' + fmtMoney(cache.actualCost, sym) + '；这些量如果全按' + missLabel + '要 ' + fmtMoney(cache.missCost, sym) + '，等于省下 ' + fmtMoney(cache.saved, sym) + '。'
     : '今天还没有缓存命中记录。';
 
   var chart = el('costChart');
@@ -174,7 +181,13 @@ function renderCost(c) {
   });
   var seriesHint = el('costSeriesHint');
   seriesHint.textContent = 'QQ 聊天分时（桥接账本，30 分钟一格）；B站 / 好友爱看花费没有分时明细';
-  var note = '账本 ' + (c.ledger && c.ledger.at ? fmtTime(c.ledger.at) : '未更新') + ' 更新 · 价目表 ' + ((c.prices && c.prices.version) || '—') + ' · 现在' + ((c.prices && c.prices.tierLabel) || '空闲时段') + '（高峰周一至周五 9:00–12:00 / 14:00–18:00 单价 ×2）';
+  var p = c.prices || {};
+  // 峰谷说明由桥接给出（src/model-prices.js 的 peakNote），前端不再自带一份窗口字面量；
+  // 价目表缺失时把原因说出来，而不是印一个像真的的「空闲时段 ×1」。
+  var pricingPart = p.priced
+    ? ('价目表 ' + (p.version || '—') + ' · 现在' + (p.tierLabel || '—') + (p.note ? '（' + p.note + '）' : ''))
+    : ('价目表未取到：' + (p.reason || '桥接没有返回 nowTier') + '（金额按「—」显示）');
+  var note = '账本 ' + (c.ledger && c.ledger.at ? fmtTime(c.ledger.at) : '未更新') + ' 更新 · ' + pricingPart;
   if (c.busiest) note += ' · 最贵的一小时 ' + ('0' + c.busiest.h).slice(-2) + ':00，' + fmtMoney(c.busiest.cost, sym);
   el('costNote').textContent = note;
 

@@ -17,6 +17,9 @@ export const COST_CATEGORIES = [
   // 2026-11-20：好友爱看（QQ 空间公开推荐流）以前跑在 B站 会话里，花费混进 bili，
   // 控制台上等于看不见。现在它有自己的会话（feed-whale-*）和自己的账。
   { key: 'feed', label: '好友爱看', hint: '刷 QQ 空间公开动态、点赞评论' },
+  // 2026-11-21：鱼缸小镇有自己的影子会话（town-whale-*），每天 3 次只读观察，
+  // 花费必须单独可见——否则会混进 other，等于看不见。
+  { key: 'town', label: '鱼缸小镇', hint: '影子会话看看自己的日子（只读）' },
   { key: 'other', label: '其他', hint: '人格卡拆分等杂项' }
 ]
 
@@ -96,6 +99,7 @@ export async function buildCost() {
     qq: { cost: costAmount(usageSrc.qq && usageSrc.qq.cost), tokens: Number(usageSrc.qq && usageSrc.qq.tokens) || 0 },
     bili: { cost: costAmount(usageSrc.bili && usageSrc.bili.cost), tokens: Number(usageSrc.bili && usageSrc.bili.tokens) || 0 },
     feed: { cost: costAmount(usageSrc.feed && usageSrc.feed.cost), tokens: Number(usageSrc.feed && usageSrc.feed.tokens) || 0 },
+    town: { cost: costAmount(usageSrc.town && usageSrc.town.cost), tokens: Number(usageSrc.town && usageSrc.town.tokens) || 0 },
     other: { cost: costAmount(usageSrc.other && usageSrc.other.cost), tokens: Number(usageSrc.other && usageSrc.other.tokens) || 0 }
   } : null
 
@@ -146,16 +150,17 @@ export async function buildCost() {
     const cat = COST_CATEGORIES.some((c) => c.key === s.category) ? s.category : 'other'
     const isBili = cat === 'bili'
     const isFeed = cat === 'feed'
+    const isTown = cat === 'town'
     sessions.push({
       id: sid,
       kind: cat,
       category: cat,
       label: isBili
         ? 'B站 · ' + (s.preset || '鲸鱼会话')
-        : (isFeed ? '好友爱看 · ' + (s.title || '刷空间动态') : (s.title || sid)),
+        : (isFeed ? '好友爱看 · ' + (s.title || '刷空间动态') : (isTown ? '鱼缸小镇 · 影子观察' : (s.title || sid))),
       hint: isBili
         ? '看视频、发动态、写日报都在这个会话里'
-        : (isFeed ? '刷 QQ 空间公开推荐流、点赞评论' : '人格卡拆分等后台任务'),
+        : (isFeed ? '刷 QQ 空间公开推荐流、点赞评论' : (isTown ? '每天 3 次只读看看自己的日子，不花钱' : '人格卡拆分等后台任务')),
       cost: costAmount(s.dayCost),
       tokens: Number(s.dayTokens) || bucketsTotal(s.seen),
       turns: 0,
@@ -205,29 +210,34 @@ export async function buildCost() {
     if (!s || s.category === 'qq') continue
     buckets = bucketsSum(buckets, s.seen || {})
   }
-  const rates = (summary && summary.nowTier) || { unit: 1000000, cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4, tierLabel: '空闲时段', symbol: '¥' }
-  const unit = Number(rates.unit) || 1000000
+  // 价目表**只有**一个来源：桥接 /api/tokens/summary 的 nowTier（由 src/model-prices.js 算）。
+  // 拿不到就不猜：金额留 null，前端显示「—」。以前这里抄了一份 flash 价当兜底，桥接没起来时
+  // 面板会拿旧价算出一个「看着合理」的错数（2026-11-25 规整价目表时删掉）。
+  const rates = (summary && summary.nowTier) || null
+  const priced = !!(rates && Number.isFinite(Number(rates.cacheMiss)))
+  const unit = Number(rates && rates.unit) || 1000000
+  const money = (tokens, price) => (priced && Number.isFinite(Number(price)) ? (tokens / unit) * Number(price) : null)
   const bucketRows = [
-    { key: 'cacheHit', label: '输入 · 缓存命中', tokens: buckets.cacheHit, cost: (buckets.cacheHit / unit) * rates.cacheHit },
-    { key: 'cacheMiss', label: '输入 · 缓存未命中', tokens: buckets.cacheMiss, cost: (buckets.cacheMiss / unit) * rates.cacheMiss }
+    { key: 'cacheHit', label: '输入 · 缓存命中', tokens: buckets.cacheHit, cost: money(buckets.cacheHit, rates && rates.cacheHit) },
+    { key: 'cacheMiss', label: '输入 · 缓存未命中', tokens: buckets.cacheMiss, cost: money(buckets.cacheMiss, rates && rates.cacheMiss) }
   ]
-  if (buckets.cacheWrite > 0) bucketRows.push({ key: 'cacheWrite', label: '输入 · 缓存写入', tokens: buckets.cacheWrite, cost: (buckets.cacheWrite / unit) * rates.cacheWrite })
-  bucketRows.push({ key: 'output', label: '输出 · 她打的字', tokens: buckets.output, cost: (buckets.output / unit) * rates.output })
-  const pricedSum = bucketRows.reduce((sum, r) => sum + r.cost, 0)
+  if (buckets.cacheWrite > 0) bucketRows.push({ key: 'cacheWrite', label: '输入 · 缓存写入', tokens: buckets.cacheWrite, cost: money(buckets.cacheWrite, rates && rates.cacheWrite) })
+  bucketRows.push({ key: 'output', label: '输出 · 她打的字', tokens: buckets.output, cost: money(buckets.output, rates && rates.output) })
+  const pricedSum = bucketRows.reduce((sum, r) => sum + (Number(r.cost) || 0), 0)
   const scale = pricedSum > 0 && totalCost > 0 ? totalCost / pricedSum : 1
   const tokenSum = bucketsTotal(buckets)
   for (const r of bucketRows) {
-    r.cost = r.cost * scale
-    r.share = totalCost > 0 ? r.cost / totalCost : (tokenSum > 0 ? r.tokens / tokenSum : 0)
+    if (r.cost !== null) r.cost = r.cost * scale
+    r.share = totalCost > 0 && r.cost !== null ? r.cost / totalCost : (tokenSum > 0 ? r.tokens / tokenSum : 0)
   }
   const hitRow = bucketRows[0]
   const cache = {
     hitTokens: buckets.cacheHit || 0,
     hitRate: bucketHitRate(buckets),
     actualCost: hitRow.cost,
-    missCost: ((buckets.cacheHit || 0) / unit) * rates.cacheMiss
+    missCost: money(buckets.cacheHit || 0, rates && rates.cacheMiss)
   }
-  cache.saved = Math.max(0, cache.missCost - cache.actualCost)
+  cache.saved = (cache.missCost !== null && cache.actualCost !== null) ? Math.max(0, cache.missCost - cache.actualCost) : null
 
   // 分时：桥接账本按 30 分钟一格，只覆盖 QQ 会话；B站花费没有分时明细。
   const hourly = Array.from({ length: 24 }, (_, h) => ({ h, cost: 0, tokens: 0 }))
@@ -276,11 +286,15 @@ export async function buildCost() {
       avgCostPerStep: costAmount(totals.avgCostPerStep)
     } : null,
     prices: {
+      // 拿不到就明说「未计价」，不做任何默认值推断（旧版在这里默认 2 倍 + 默认窗口）
+      priced,
+      reason: priced ? '' : '桥接没有返回价目表（/api/tokens/summary 缺 nowTier）',
       version: (summary && summary.priceVersion) || '',
-      tierLabel: rates.tierLabel || '',
-      symbol: rates.symbol || '¥',
-      peakMultiplier: (summary && summary.priceTable && summary.priceTable.peakMultiplier) || 2,
-      peakWindows: (summary && summary.priceTable && summary.priceTable.peakWindows) || [[9, 12], [14, 18]],
+      tierLabel: (rates && rates.tierLabel) || '',
+      symbol: (rates && rates.symbol) || '¥',
+      note: (summary && summary.priceTable && summary.priceTable.note) || '',
+      peakMultiplier: (summary && summary.priceTable && Number(summary.priceTable.peakMultiplier)) || null,
+      peakWindows: (summary && summary.priceTable && summary.priceTable.peakWindows) || null,
       rates
     },
     errors

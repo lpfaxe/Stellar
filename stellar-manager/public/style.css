@@ -66,10 +66,7 @@ h3 { font-size:13px; color:var(--text-2); margin:20px 0 8px; font-weight:500; le
 b, strong { font-weight:500; }
 
 /* ── 页面骨架 ─────────────────────────────────────────────────────────── */
-main { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:var(--gap); padding:18px 22px 40px; align-items:start;
-  /* 卡片按内容高度排，不要被 #app 的 grid-template-rows:minmax(0,1fr) 拉满一屏后把空轨道摊开
-     （否则卡片之间会出现几百像素的空洞）。 */
-  align-content:start; }
+main { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:var(--gap); padding:18px 22px 40px; align-items:start; }
 .card {
   position:relative;
   background:var(--card);
@@ -1090,6 +1087,11 @@ section.card.is-mini { min-height:0; }
 .wi-log-name { flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-2, var(--muted)); }
 .wi-log-by { flex:0 0 auto; color:var(--muted); }
 .wi-log-at { flex:0 0 auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+/* 「对方正在输入」观测（2026-11-25）：标签用绿色系区分「打字中」，停手那条保持灰。 */
+.typing-log { max-height: 320px; overflow: auto; }
+.wi-log-tag.typ { color:#86efac; }
+.tw-days { gap:6px; margin:6px 0 2px; }
+
 .ring-row { display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin:8px 0 2px; }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1173,6 +1175,10 @@ section.card.is-mini { min-height:0; }
   main {
     display:grid; grid-template-columns:repeat(12, minmax(0,1fr));
     grid-auto-flow:row dense; gap:16px; align-items:start;
+    /* align-content:start 不能少：main 被外层 #app 的 minmax(0,1fr) 拉满一屏，
+       默认 normal 会把空的 auto 行拉高，一页内容不满屏时卡片之间就出现几百 px 的空洞
+       （2026-11-21 加「小镇」页时发现，记忆页那两张长卡同样在撑）。 */
+    align-content:start;
     padding:22px 24px 40px; max-width:1560px;
   }
   main > section.card { display:none; margin:0; }
@@ -1299,20 +1305,34 @@ button.ghost.on { border-color:var(--accent); color:var(--accent-ink); }
 .v6-url a { font-size: 12px; word-break: break-all; }
 .v6-url .v6-copy { flex: 0 0 auto; }
 
-/* 文件柜列表（2026-11-20）*/
+/* 主人的文件柜（2026-11-20） */
 .fc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line,rgba(255,255,255,.07))}
 .fc-row:last-child{border-bottom:0}
 .fc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg,#e6e9f0);text-decoration:none}
 .fc-name:hover{text-decoration:underline}
 .fc-meta{white-space:nowrap}
-
-/* ── 鱼缸小镇 ────────────────────────────────────────────────────────────
-   开关单独一行展示：label.switch 靠 .switches 容器成列，不单独带 display:flex，
-   所以这里给它自己一个框，别让「进小镇」两个字掉到开关下面去。 */
+#fcList{max-height:min(52vh,420px);overflow:auto}
+/* ── 鱼缸小镇（2026-11-21）─────────────────────────────────────────────────
+   开关单独一行展示：label.switch 本身没有 display:flex（能力页里靠 .switches 容器成列），
+   这里给它自己一个框，别让「进小镇」两个字掉到开关下面去。 */
 #townHeadCard label.switch {
   display:flex; align-items:flex-start; gap:10px;
-  border:1px solid var(--line); border-radius:10px; margin:0 0 12px;
+  border:1px solid var(--line-soft); border-radius:10px; margin:0 0 12px;
   background:var(--card-2);
+}
+#townHeadCard label.switch:last-child { border-bottom:1px solid var(--line-soft); }
+#townHeadCard .cap-name { font-size:13.5px; font-weight:500; }
+
+/* 小镇超支熔断的横幅（2026-11-21）：一条就够，别做成红色大报错 */
+.town-guard {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn, #a8702a);
+  border-radius: 10px;
+  background: rgba(168, 112, 42, 0.12);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 /* 那行「两本账分开」的说明要占满整行：它是 .memdb-stats 的最后一个网格项 */
@@ -1337,5 +1357,3 @@ button.ghost.on { border-color:var(--accent); color:var(--accent-ink); }
 .voice-meter.over > i { background: #d08a3e; }
 .voice-preview { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.6; padding: 10px; border-radius: 8px; background: rgba(255,255,255,.04); max-height: 260px; overflow: auto; }
 .voice-preview-wrap { margin: 10px 0 4px; }
-
-

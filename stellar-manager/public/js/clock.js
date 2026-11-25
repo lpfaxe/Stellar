@@ -82,12 +82,21 @@ if (passSave) passSave.onclick = function () {
     .then(function () { passSave.disabled = false; });
 };
 el('actRestartDsh').onclick = function () {
+  // 她还在跑就把「跑什么、还有多久」写进确认框：以前这里只说「正在进行的对话会中断」，
+  // 主人看不到 B站/小镇那些不在 QQ 状态机里的会话，只能靠猜（2026-11-21 就这么误判过一次）。
   var t = state.status && state.status.turns;
   var warn = '';
   if (t && t.busy && t.top) {
-    warn = '\n⚠ 她还在跑：' + t.top.label + ' · ' + t.top.action + '（已 ' + t.top.elapsedText + (t.top.etaText ? '，' + t.top.etaText : '') + '）'
-      + (t.count > 1 ? '，另有 ' + (t.count - 1) + ' 个会话没收尾' : '') + '。\n现在重启会打断这一轮。';
+    warn = '\n⚠ 她还在跑：' + t.top.label + ' · ' + t.top.action
+      + '（已 ' + t.top.elapsedText + (t.top.etaText ? '，' + t.top.etaText : '') + '）'
+      + (t.count > 1 ? '，另有 ' + (t.count - 1) + ' 个会话没收尾' : '')
+      + '。\n现在重启会打断这一轮。';
   }
-  if (!confirm('重启 DSH？正在进行的对话会中断，约 20–40 秒回来。\n面板、SnowLuma、桥接不受影响，手机上的这个页面也不会断。' + warn)) return;
+  // 公网访问时这一条是唯一放行的写操作（lib/remote-restart.js），确认框里要说明白，
+  // 否则会让人以为点了也会被 403。
+  var remote = state.status && state.status.access && state.status.access.scope === 'public'
+    ? '\n（你正从公网操作：这条是故意放行的，60 秒内只能点一次。）'
+    : '';
+  if (!confirm('重启 DSH？正在进行的对话会中断，约 20–40 秒回来。' + warn + '\n面板、SnowLuma、桥接不受影响，手机上的这个页面也不会断。' + remote)) return;
   act('restart-dsh', this);
 };

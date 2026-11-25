@@ -78,6 +78,12 @@ const tests = [
   'test-subs-digest.mjs',
   'test-reply-and-finish-send.mjs',
   'test-qq-card.mjs',
+  // 等 2 秒 + 盯「正在输入」（2026-11-25）：只认私聊 input_status，窗口滑动但不越硬上限
+  // （普通 15 秒 / 打字中 60 秒），日志按天滚动且只写枚举。群聊与点名保持固定窗口。
+  'test-typing-watch.mjs',
+  // 文档锚点门禁（2026-11-25）：行号锚点会随 bridge.js 变长而整体漂移（实测只有 17% 仍准确），
+  // 所以锚点改成「文件 + 符号名」；这个自测同时钉住门禁本身（干净通过/strict 拦行号/越界拦/白名单豁免）。
+  'test-doc-anchors.mjs',
   // 参考引擎（方案 B）：参考角色名必须清洗（名字进提示词=模型扮演 TA）、PART1 角色档案不入库、
   // >800 字不索引、只挑命中情境的 2 片且总字符 ≤900、同一情境连续第 3 次跳过。
   // 待办「提醒谁」（2026-11-13）：targetKey/targetName 必须优先于会话 key 与 requester，
@@ -94,6 +100,9 @@ const tests = [
   // 只有登记过的前缀才可写，防爆破还要按 /64 归并（否则换地址就绕过阶梯锁）。
   'test-panel-remote-allow.mjs',
   'test-panel-local-auth.mjs',
+  // 公网来源也能重启 DSH（2026-11-25）：只开 restart-dsh 一个动作，60 秒冷却，
+  // 其余写动作仍必须被 requireWrite 拒。也钉住「没记录过」不等于「epoch 0 点过」。
+  'test-panel-remote-restart.mjs',
   'test-style-refs.mjs',
   // 记忆查询三工具（catalog / topic / search）：身份闸（无令牌+外来会话必须拒）、
   // ownerId 白名单、search 至少 2 字，以及「真的读得到库里的话题与双方原话」。

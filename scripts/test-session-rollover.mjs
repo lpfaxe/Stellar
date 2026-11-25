@@ -83,16 +83,17 @@ console.log('## 3. 交接块')
 console.log('## 4. 合并窗口分场景')
 {
   const w = DEFAULT_BATCH_WINDOWS
-  ok(w.groupMs === 6000 && w.privateMs === 4000 && w.directMs === 3000, '默认 群 6s / 私聊 4s / 点名 3s')
+  // 2026-11-25：私聊改成 2 秒（滑动窗口的基准值，见 src/typing-watch.js）
+  ok(w.groupMs === 6000 && w.privateMs === 2000 && w.directMs === 3000, '默认 群 6s / 私聊 2s / 点名 3s')
   ok(batchWindowFor('group:123', 'keyword:梗', {}) === 6000, '群聊普通触发 = 6s')
-  ok(batchWindowFor('private:456', 'private', {}) === 4000, '私聊 = 4s（不会被当成点名）')
+  ok(batchWindowFor('private:456', 'private', {}) === 2000, '私聊 = 2s（不会被当成点名）')
   ok(batchWindowFor('group:123', 'atMention', {}) === 3000, '@ = 3s')
   ok(batchWindowFor('group:123', 'nameMention', {}) === 3000, '叫名字 = 3s')
   ok(batchWindowFor('group:123', 'poke', {}) === 3000, '拍一拍 = 3s')
   ok(batchWindowFor('group:123', 'atMention', { batchWindowDirectMs: 1200 }) === 1200, '点名窗口可配')
   ok(batchWindowFor('group:1', 'x', { batchWindowMs: 100 }) === 1000, '低于 1s 收敛到 1s')
   const n = normalizeBatchWindows({ batchWindowMs: 8000 })
-  ok(n.groupMs === 8000 && n.privateMs === 4000 && n.directMs === 3000, '老配置只覆盖群聊窗口，其余用新默认')
+  ok(n.groupMs === 8000 && n.privateMs === 2000 && n.directMs === 3000, '老配置只覆盖群聊窗口，其余用新默认')
 }
 
 console.log('## 5. 账本：会话累计 token')
@@ -138,7 +139,11 @@ console.log('## 6. 接线钉子（防"写了模块但没接上"）')
   ok(rebuildIdx > 0 && handoffIdx > rebuildIdx, '交接块在正文重建之后才贴（不会被覆盖）')
   ok(!bridge.includes('const handoff = consumeHandoffV2(key);'), '唤醒路径不再重复消费交接（否则会被覆盖/丢）')
   ok(bridge.includes('await deliverPrompt(key, prompt)'), '目的机制走 deliverPrompt（因此共享换会话与交接）')
-  ok(/const batchMs = batchWindowFor\(key, reason/.test(bridge), '合并窗口走分场景函数（不再是写死的 8 秒）')
+  // 2026-11-25：合并窗口从「定一个数字 setTimeout」改成「算一次延迟再置 timer」，
+  // 因为对方还在打字时要能顺延（滑动窗口），见 src/typing-watch.js。
+  ok(/pendingWakeDelayV2\(key, st, reason/.test(bridge), '合并窗口走分场景函数（不再是写死的 8 秒）')
+  ok(bridge.includes('function rearmPendingWakeV2(') && bridge.includes('handleInputStatusNoticeV2(event'), '窗口可顺延，且接了「正在输入」通知')
+  ok(bridge.includes('typing: typingSummaryV2(),'), '/api/status 能报出观测摘要（控制台那张卡用它）')
   ok(!/batchWindowMs\) \|\| 8000/.test(bridge), '旧的写死 8000 已清除')
   ok(bridge.includes('st.sessionBaseTokens = tokenLedger.sessionTotal(sessionId)'), '新建会话会记基线')
 
@@ -157,7 +162,8 @@ console.log('## 6. 接线钉子（防"写了模块但没接上"）')
 
   const example = JSON.parse(read('config.example.json'))
   ok(example.socialV2?.wake?.batchWindowMs === 6000, '示例配置群聊窗口=6000')
-  ok(example.socialV2?.wake?.batchWindowPrivateMs === 4000, '示例配置私聊窗口=4000')
+  ok(example.socialV2?.wake?.batchWindowPrivateMs === 2000, '示例配置私聊窗口=2000')
+  ok(example.socialV2?.wake?.typing?.maxTypingMs === 60000, '示例配置带「正在输入」延长的硬上限')
   ok(example.socialV2?.wake?.batchWindowDirectMs === 3000, '示例配置点名窗口=3000')
   ok(example.socialV2?.context?.rolloverEnabled === false, '示例配置：会话滚动默认关闭')
   ok(example.socialV2?.context?.rolloverContextTokens === 500000, '示例配置换会话阈值=500000（当前上下文）')

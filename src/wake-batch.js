@@ -7,12 +7,15 @@
  *   · 私聊：4 秒（私聊节奏快，8 秒太慢）
  *   · 群聊：6 秒（群聊本来就不该秒回）
  *
+ * 2026-11-25 主人 m08651：私聊默认 2 秒，并改成**滑动窗口**（又来一条就顺延，
+ * 对方还在打字就继续等），上限与打字逻辑在 src/typing-watch.js 里，这里只放「基准值」。
+ *
  * 纯逻辑，零 I/O。
  */
 
 export const DEFAULT_BATCH_WINDOWS = Object.freeze({
   groupMs: 6000,
-  privateMs: 4000,
+  privateMs: 2000,
   directMs: 3000
 });
 
@@ -44,6 +47,16 @@ function reasonBase(reason) {
   return String(reason ?? '').split(':')[0];
 }
 
+/** 这条唤醒是不是「被点名」（走最短窗口，即使在大群里也立刻应）。 */
+export function isDirectReason(reason) {
+  return DIRECT_REASONS.has(reasonBase(reason));
+}
+
+/** 这个会话 key 是不是私聊（`private:<QQ号>`）。 */
+export function isPrivateKey(key) {
+  return String(key ?? '').startsWith('private:');
+}
+
 /**
  * 这条唤醒该等多久。
  *
@@ -52,7 +65,7 @@ function reasonBase(reason) {
  */
 export function batchWindowFor(key, reason, wake = {}) {
   const windows = normalizeBatchWindows(wake);
-  if (DIRECT_REASONS.has(reasonBase(reason))) return windows.directMs;
-  if (String(key ?? '').startsWith('private:')) return windows.privateMs;
+  if (isDirectReason(reason)) return windows.directMs;
+  if (isPrivateKey(key)) return windows.privateMs;
   return windows.groupMs;
 }

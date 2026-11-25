@@ -5,7 +5,7 @@
 //   2) 鲸鱼会话的命令行 node bili.mjs cost。
 // 口径必须和账本（token-budget.js）+ 价目表（model-prices.js）一致，
 // 否则她会报一个和结算对不上的数字。
-import { DEFAULT_PRICE_TABLE, priceUsage, ratesAt, totalTokensOf } from './model-prices.js';
+import { DEFAULT_PRICE_TABLE, peakNote, priceUsage, ratesAt, resolvePriceTable, totalTokensOf } from './model-prices.js';
 import { formatCny, readBudget, readDailyUsage, stellarDir } from './token-budget.js';
 
 export { formatCny } from './token-budget.js';
@@ -42,6 +42,7 @@ const clampRatio = (v, fallback) => {
  * @param {number} [opts.turns]         轮数（默认 1）
  * @param {number} [opts.cacheHitRatio] 上下文里缓存命中的比例（默认 0.85，多轮对话天然偏高）
  * @param {number} [opts.at]            计价时刻（默认现在，用来自动判峰谷）
+ * @param {object} [opts.priceTable]    价目表（默认内置；桥接/插件传 resolvePriceTable(cfg.pricing) 覆盖）
  */
 export function estimateTask(opts = {}) {
   const preset = opts.preset ? TASK_PRESETS[opts.preset] : null;
@@ -59,7 +60,8 @@ export function estimateTask(opts = {}) {
     output: outputTokens,
     reasoning: 0
   };
-  const { rates, cost } = priceUsage(buckets, { model, at, table: DEFAULT_PRICE_TABLE });
+  const table = opts.priceTable || DEFAULT_PRICE_TABLE;
+  const { rates, cost } = priceUsage(buckets, { model, at, table });
   return {
     label: preset?.label ?? (opts.label ? String(opts.label) : '自定义任务'),
     model: rates.model,
@@ -83,7 +85,7 @@ export function charsToTokens(chars, kind = 'zh') {
 }
 
 /** 今天的额度快照：已花多少、还剩多少、峰谷。 */
-export function budgetSnapshot({ dir = stellarDir(), at = Date.now() } = {}) {
+export function budgetSnapshot({ dir = stellarDir(), at = Date.now(), pricing = null, priceTable = null } = {}) {
   const limits = readBudget(dir);
   const usage = readDailyUsage(dir);
   const remaining = {};
@@ -97,8 +99,18 @@ export function budgetSnapshot({ dir = stellarDir(), at = Date.now() } = {}) {
       leftCny: hasLimit ? Math.max(0, limit - used) : null
     };
   }
-  const rates = ratesAt(COST_MODEL_DEFAULT, at);
-  return { day: usage.day, at, usage, limits, remaining, rates };
+  const table = priceTable || resolvePriceTable(pricing);
+  const rates = ratesAt(COST_MODEL_DEFAULT, at, table);
+  return {
+    day: usage.day,
+    at,
+    usage,
+    limits,
+    remaining,
+    rates,
+    peakMultiplier: rates.peakMultiplier,
+    priceNote: peakNote(table)
+  };
 }
 
 /** 「≈ 9.0 万 token ≈ ¥0.12（高峰时段）」 */
@@ -116,8 +128,9 @@ export function formatSnapshot(snap) {
   const head = t.limitCny == null
     ? '今天已花 ' + formatCny(t.usedCny) + '（没设上限）'
     : '今天已花 ' + formatCny(t.usedCny) + ' / 上限 ' + formatCny(t.limitCny) + '，还剩 ' + formatCny(t.leftCny);
-  const peakNote = snap.rates.tier === 'peak' ? '（单价 ×2）' : '';
-  return head + '；现在是' + snap.rates.tierLabel + peakNote;
+  // 倍数从价目表取（旧版写死 ×2，改倍率后这句话就说错了）
+  const peakLine = snap.rates.tier === 'peak' ? '（单价 ×' + (Number(snap.peakMultiplier) || 1) + '）' : '';
+  return head + '；现在是' + snap.rates.tierLabel + peakLine;
 }
 
 /**

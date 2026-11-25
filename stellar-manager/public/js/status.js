@@ -272,8 +272,10 @@ function renderActivity(s) {
   if (!el('nowLabel')) return;
   el('nowLabel').textContent = label;
   el('nowDetail').textContent = detail || '没什么动静';
+  // 回合还没收尾时，「最近动作 X 分钟前」是废话——要给的是「已经在里面多久 + 大概什么时候出来」，
+  // 主人就是靠这一行决定什么时候能安全重启 DSH。
   el('nowAgo').textContent = a.turn
-    ? ('已跑 ' + (a.turn.elapsedText || '') + (a.turn.etaText ? ' · ' + a.turn.etaText : ''))
+    ? ('已跑 ' + (a.turn.elapsedText || '—') + (a.turn.etaText ? ' · ' + a.turn.etaText : ''))
     : (a.ago ? ('最近动作 ' + a.ago) : '');
   el('nowIcon').textContent = NOW_ICON[a.kind] || '忙';
   el('nowIcon').className = 'now-icon kind-' + (a.kind || 'idle');
@@ -319,6 +321,27 @@ function renderCookieGuard(api) {
   el.textContent = text
 }
 
+// 公网来源能做什么：别的快捷操作都会 403，只有「重启 DSH」是故意放行的。
+// 这一句就是那件事的说明书，顺便把按钮的可点状态跟它对齐（别让人点了才发现被拒）。
+function renderScopeNote(s) {
+  var box = el('actScopeNote');
+  if (!box) return;
+  var scope = (s.access && s.access.scope) || 'local';
+  var btn = el('actRestartDsh');
+  if (scope !== 'public') {
+    box.textContent = '';
+    if (btn) btn.title = '';
+    return;
+  }
+  var canRestart = !s.access || s.access.canRestartDsh !== false;
+  var stop = s.stop && s.stop.active;
+  box.textContent = '你正从公网访问：除了「重启 DSH」，其他快捷操作在这里都会被拒（只读）。'
+    + (canRestart ? '' : '这个版本的控制台还没允许公网重启，需要在电脑上更新面板。')
+    + (stop ? '注意：现在处于紧急停止状态，重启不会解除它。' : '')
+    + ' 重启不会中断手机上的这个页面，进度会实时显示。'
+  if (btn) btn.title = canRestart ? '公网也允许：60 秒内只能重启一次' : '当前面板版本不允许公网重启';
+}
+
 function loadStatus() {
   return api('/api/status').then(function (s) {
     state.status = s;
@@ -334,6 +357,7 @@ function loadStatus() {
     if (!dirty.clock) renderQzone(s);
     renderPaths(s);
     renderAccess(s.access);
+    renderScopeNote(s);
     renderDshRestart(s);
     renderRestartAdvice(s);
   }).catch(function (e) { console.error(e); });
