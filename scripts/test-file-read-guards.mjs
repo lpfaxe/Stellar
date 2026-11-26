@@ -108,7 +108,8 @@ test('mcp-snowluma-safe.js 的 file_read 真的走了这两道闸', () => {
   assert.match(src, /import \{ assertReadableLocalPath, assertPublicHttpUrl \} from '\.\/file-read-guard\.js';/);
   assert.match(src, /const abs = assertReadableLocalPath\(wantedPath,/);
   assert.match(src, /if \(!allowPrivate\) await assertPublicHttpUrl\(url\);/);
-  assert.match(src, /fetchFileBuffer\(wantedUrl\)/, '模型传的 url 必须走默认（公网校验）分支');
+  // 2026-11-26：下载要按格式带上限（演示文稿 256MB），但仍是默认分支（allowPrivate 不传 → 走公网校验）。
+  assert.match(src, /fetchFileBuffer\(wantedUrl, \{ maxBytes: inputLimitForName\(fileName\) \}\)/, '模型传的 url 必须走默认（公网校验）分支');
   assert.match(src, /await fileDownloadUrl\(file, key, \{ allowOwnerFallback: isOwner \}\)/, 'OneBot 给的下载地址要能取到（群文件没有私聊取址接口）');
-  assert.match(src, /\{ allowPrivate: true \}/, 'OneBot 给的下载地址允许本机端口');
+  assert.match(src, /\{ allowPrivate: true, maxBytes: inputLimitForName\(fileName\) \}/, 'OneBot 给的下载地址允许本机端口');
 });

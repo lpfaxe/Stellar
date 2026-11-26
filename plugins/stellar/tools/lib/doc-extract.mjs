@@ -22,6 +22,10 @@ const PDFJS_CANDIDATES = [
 ];
 const PDFJS_PATH = PDFJS_CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || PDFJS_CANDIDATES[0];
 export const MAX_INPUT_BYTES = 60 * 1024 * 1024;
+// 演示文稿单独放宽到 256MB（2026-11-26 主人要求）：一整本宣讲/课件动辄 100MB+，体积基本都在图里，
+// 而 pptx 只解 slides/*.xml，不会把整包媒体读进内存。其它文档（PDF/Word/Excel）仍是 60MB。
+export const MAX_PRESENTATION_BYTES = 256 * 1024 * 1024;
+const PRESENTATION_KINDS = new Set(['pptx', 'ppt', 'dps', 'odp']);
 
 const KIND_LABEL = {
   pdf: 'PDF',
@@ -55,6 +59,31 @@ const EXT_KIND = {
   '.txt': 'text', '.md': 'text', '.json': 'text', '.log': 'text', '.yml': 'text', '.yaml': 'text', '.xml': 'text',
   '.html': 'html', '.htm': 'html'
 };
+
+/** 文件名能认出的格式（没有扩展名或扩展名不认识时返回空串）。 */
+export function kindFromName(fileName = '') {
+  return EXT_KIND[path.extname(String(fileName || '')).toLowerCase()] || '';
+}
+
+/** 某种格式最多允许多大：演示文稿 256MB，其余 60MB。 */
+export function inputLimitForKind(kind = '') {
+  return PRESENTATION_KINDS.has(String(kind || '')) ? MAX_PRESENTATION_BYTES : MAX_INPUT_BYTES;
+}
+
+/** 上手前按文件名估上限；认不出扩展名时按最大上限放行，读完再按真实格式判（QQ 里常有人把 pptx 改名 .bin）。 */
+export function inputLimitForName(fileName = '') {
+  const kind = kindFromName(fileName);
+  return kind ? inputLimitForKind(kind) : MAX_PRESENTATION_BYTES;
+}
+
+function tooBigError(bytes, limit, kind = '') {
+  const label = kind ? kindLabel(kind) + '最多 ' : '上限 ';
+  return {
+    ok: false,
+    kind: kind || 'unknown',
+    error: '文件太大（' + (Number(bytes) / 1048576).toFixed(1) + ' MB），' + label + (limit / 1048576) + ' MB'
+  };
+}
 
 /** 先看魔法字节再看扩展名：QQ 里传的文件经常没扩展名，或者扩展名被改成 .bin。 */
 export function detectKind(buffer, fileName = '') {
@@ -458,12 +487,18 @@ async function convertLegacyToOoxml(filePath, kind) {
 export async function extractDocument(opts = {}) {
   const fileName = String(opts.fileName || (opts.filePath ? path.basename(opts.filePath) : ''));
   let buffer = opts.buffer;
-  if (!buffer && opts.filePath) buffer = await fsp.readFile(opts.filePath);
-  if (!buffer || !buffer.length) return { ok: false, kind: 'unknown', error: '文件是空的（0 字节）' };
-  if (buffer.length > MAX_INPUT_BYTES) {
-    return { ok: false, kind: 'unknown', error: '文件太大（' + Math.round(buffer.length / 1048576) + ' MB，最多 60 MB）' };
+  if (!buffer && opts.filePath) {
+    const stat = await fsp.stat(opts.filePath);
+    const nameKind = kindFromName(fileName);
+    // 有扩展名就按格式先拦，不用把 200MB 先读进内存；没有扩展名的可能是被改名的 pptx，先按最大上限放行。
+    const earlyLimit = nameKind ? inputLimitForKind(nameKind) : MAX_PRESENTATION_BYTES;
+    if (stat.size > earlyLimit) return tooBigError(stat.size, earlyLimit, nameKind);
+    buffer = await fsp.readFile(opts.filePath);
   }
+  if (!buffer || !buffer.length) return { ok: false, kind: 'unknown', error: '文件是空的（0 字节）' };
   const kind = detectKind(buffer, fileName);
+  const limit = inputLimitForKind(kind);
+  if (buffer.length > limit) return tooBigError(buffer.length, limit, kind);
   // 上限从 40000 提到 400000：file_read 需要拿全文落盘（spill），只让模型看开头；
   // 400K 字约 1.2MB，短时内存可接受，超过就标记 clipped。
   const maxChars = Math.max(500, Math.min(Number(opts.maxChars) || 12000, 400000));

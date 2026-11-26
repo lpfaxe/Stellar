@@ -4439,6 +4439,7 @@ server.tool(
 // 解析器在 plugins/stellar/tools/lib/doc-extract.mjs（zip/PDF 纯 JS，老格式借本机 Office/WPS 转换）。
 // 允许用 STELLAR_SOCIAL_STATE 指向另一份状态文件：测试（离线夹具）时不必改动线上 state。
 const SOCIAL_STATE_FILE = process.env.STELLAR_SOCIAL_STATE || path.join(ROOT, 'state', 'social-v2.json');
+// 普通文档的兜底上限；具体读某份文件时按 doc-extract 的 inputLimitForName() 算（演示文稿 256MB）。
 const FILE_MAX_BYTES = 60 * 1024 * 1024;
 let docExtractPromise = null;
 
@@ -4536,7 +4537,9 @@ async function fileDownloadUrl(file, key, { allowOwnerFallback = true } = {}) {
 async function fetchFileBuffer(url, { allowPrivate = false, maxBytes = FILE_MAX_BYTES } = {}) {
   if (!allowPrivate) await assertPublicHttpUrl(url);
   const cap = Number(maxBytes) > 0 ? Number(maxBytes) : FILE_MAX_BYTES;
-  const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(90000) });
+  // 大文件（演示文稿）下载可能要好几分钟；普通文档仍按 90 秒收。
+  const timeoutMs = cap > 60 * 1024 * 1024 ? 300000 : 90000;
+  const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error('下载失败：HTTP ' + res.status);
   const declared = Number(res.headers.get('content-length') || 0);
   if (declared > cap) throw new Error('文件太大（' + (declared / 1048576).toFixed(1) + ' MB），上限 ' + (cap >= 1048576 ? (cap / 1048576) + ' MB' : (cap / 1024) + ' KB'));
@@ -4667,7 +4670,7 @@ server.tool(
 );
 server.tool(
   'stellar_file_read',
-  '读文档正文。支持 PDF / Word(doc/docx) / PPT(ppt/pptx) / Excel(xls/xlsx) / WPS(wps/et/dps)，以及 txt/csv/md/rtf/html。主人能用全部来源（messageId / name / path / url）；群聊或非主人会话只能用「这个会话里合并转发过来的文件」——传 forwardId + name（提示里【合并转发的聊天记录 id】那段会给）。用 messageId 或 name 定位刚发来的文件（消息提示里 files[].messageId）。返回提取出的文字；长文档只给开头并把全文存成 spill 文件，要通读就按返回里的路径用 stellar_spill_read 分段读（每次 8000 字），读完再总结，不许只凭开头下结论。扫描件 PDF 没有文字层会读不出来 —— 那就直说看不到，别编。',
+  '读文档正文。支持 PDF / Word(doc/docx) / PPT(ppt/pptx) / Excel(xls/xlsx) / WPS(wps/et/dps)，以及 txt/csv/md/rtf/html。主人能用全部来源（messageId / name / path / url）；群聊或非主人会话只能用「这个会话里合并转发过来的文件」——传 forwardId + name（提示里【合并转发的聊天记录 id】那段会给）。用 messageId 或 name 定位刚发来的文件（消息提示里 files[].messageId）。返回提取出的文字；长文档只给开头并把全文存成 spill 文件，要通读就按返回里的路径用 stellar_spill_read 分段读（每次 8000 字），读完再总结，不许只凭开头下结论。扫描件 PDF 没有文字层会读不出来 —— 那就直说看不到，别编。单文件上限：PPT/PPTX 等演示文稿 256MB，其它文档 60MB；超过就直说太大，别猜内容。',
   {
     key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
@@ -4713,19 +4716,22 @@ server.tool(
       let fileName = String(name || '').trim();
       const notes = [];
       let buffer = null;
+      // 上限按格式走（doc-extract 是唯一真相：演示文稿 256MB、其它 60MB），下载前就要知道能收多大。
+      const { extractDocument, inputLimitForName } = await loadDocExtract();
       if (!wantedPath && !wantedUrl && !String(messageId || '').trim() && !fileName) {
         return { content: [{ type: 'text', text: '要读哪个文件？传 messageId、name、path、url 之一（一般用消息提示里的 files[0].messageId）。' }], isError: true };
       }
       if (wantedUrl) {
-        buffer = await fetchFileBuffer(wantedUrl);
         if (!fileName) fileName = decodeURIComponent(wantedUrl.split('?')[0].split('/').pop() || '文件');
+        buffer = await fetchFileBuffer(wantedUrl, { maxBytes: inputLimitForName(fileName) });
       } else if (wantedPath) {
         const abs = assertReadableLocalPath(wantedPath, { workspaceRoot: WORKSPACE_ROOT, stellarRoot: ROOT, dshHome: dshHome() });
         const stat = fs.statSync(abs);
         if (!stat.isFile()) throw new Error('path 不是文件：' + wantedPath);
-        if (stat.size > FILE_MAX_BYTES) throw new Error('文件太大（' + (stat.size / 1048576).toFixed(1) + ' MB），上限 60 MB');
-        buffer = fs.readFileSync(abs);
         if (!fileName) fileName = path.basename(abs);
+        const cap = inputLimitForName(fileName);
+        if (stat.size > cap) throw new Error('文件太大（' + (stat.size / 1048576).toFixed(1) + ' MB），上限 ' + (cap / 1048576) + ' MB');
+        buffer = fs.readFileSync(abs);
       } else {
         const found = findFileEntry(key, { messageId, forwardId, fileId, name });
         if (found.error) return { content: [{ type: 'text', text: found.error }], isError: true };
@@ -4742,10 +4748,9 @@ server.tool(
         // 这个 URL 是 OneBot 自己给的（不是模型传的），可能指向本机端口 → 不再做公网校验
         buffer = await fetchFileBuffer(
           await fileDownloadUrl(file, key, { allowOwnerFallback: isOwner }),
-          { allowPrivate: true }
+          { allowPrivate: true, maxBytes: inputLimitForName(fileName) }
         );
       }
-      const { extractDocument } = await loadDocExtract();
       // 取全文（上限 40 万字）再决定给模型看多少：长文档整本落盘，模型只看开头 +
       // spill 路径，需要细节时用 stellar_spill_read 分段读。
       const FULL = 400000;
