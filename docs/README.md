@@ -16,6 +16,10 @@
 | 她为什么不是每条消息都秒回（唤醒合并窗口 / 正在输入） | [architecture/WAKE-BATCH.md](guides/architecture/WAKE-BATCH.md) |
 | 她的日报 / 说说参考什么、配图怎么挑 | [features/MATERIAL-KIT.md](guides/features/MATERIAL-KIT.md) |
 | 搞清楚记忆是怎么存的 | [features/MEMORY.md](guides/features/MEMORY.md) |
+| 记忆分区、主体页与「做梦」整理 | [features/MEMORY-REGIONS.md](guides/features/MEMORY-REGIONS.md) |
+| 让她画精确函数图 / 曲线 / 思维导图 | [features/DIAGRAM-TOOLS.md](guides/features/DIAGRAM-TOOLS.md) |
+| 按章读 PDF、截插图 | [features/PDF-TOOLS.md](guides/features/PDF-TOOLS.md) |
+| 上网找图怎么找得准（结构式 / 药品包装 / 预加载） | [features/WEB-IMAGE.md](guides/features/WEB-IMAGE.md) |
 | 她能读哪些文档（含扫描件 OCR） | [features/DOCUMENTS.md](guides/features/DOCUMENTS.md) |
 | 让它有脾气、有说话风格 | [features/CHARACTER_PERSONA.md](guides/features/CHARACTER_PERSONA.md) |
 | 为什么它会主动找人说话 | [features/PURPOSE_OUTREACH.md](guides/features/PURPOSE_OUTREACH.md) |
@@ -24,7 +28,7 @@
 | B站 那套（刷视频/发动态/评论） | [subsystems/SUBSYSTEM-BILI.md](guides/subsystems/SUBSYSTEM-BILI.md) |
 | 界面：插件设置页与浏览器面板 | [subsystems/UI-AND-CONSOLE.md](guides/subsystems/UI-AND-CONSOLE.md) |
 | 她说话的方式（鱼八股：原则 + 词条，面板可改） | [subsystems/SUBSYSTEM-VOICE-STYLE.md](guides/subsystems/SUBSYSTEM-VOICE-STYLE.md) |
-| 86 个工具、以及它们怎么被放进 DSH | [subsystems/AGENT-TOOLS-AND-PRESETS.md](guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
+| 91 个工具、以及它们怎么被放进 DSH | [subsystems/AGENT-TOOLS-AND-PRESETS.md](guides/subsystems/AGENT-TOOLS-AND-PRESETS.md) |
 | 鱼缸小镇（可选，默认不启用） | [subsystems/SUBSYSTEM-TOWN.md](guides/subsystems/SUBSYSTEM-TOWN.md) |
 | 配置项、状态文件都在哪 | [operations/DATA-AND-CONFIG.md](guides/operations/DATA-AND-CONFIG.md) |
 | 它不该做什么（边界与硬闸） | [operations/BOUNDARIES.md](guides/operations/BOUNDARIES.md) |
@@ -34,13 +38,14 @@
 | 花了多少钱、额度怎么算 | [operations/BILLING.md](guides/operations/BILLING.md) |
 | 面板里那张花费卡怎么看 | [operations/TOKEN_USAGE_CONSOLE.md](guides/operations/TOKEN_USAGE_CONSOLE.md) |
 | 在外面用手机连回面板 | [operations/REMOTE-ACCESS-TAILSCALE.md](guides/operations/REMOTE-ACCESS-TAILSCALE.md) |
+| 夜里让她睡眠、早上叫醒 | [operations/POWER-PLAN.md](guides/operations/POWER-PLAN.md) |
 | 看旧的向量记忆 / embedding 包（`engine=db` 时已停，2026-11-22） | [features/EMBEDDING_PACKS.md](guides/features/EMBEDDING_PACKS.md) |
 | 出问题怎么把日志给我 | [development/ERROR-REPORTING.md](guides/development/ERROR-REPORTING.md) |
 | 想改代码 / 跑回归 | [RELEASE.md](RELEASE.md) |
 
 ## 三条先说清楚的事实
 
-1. **记忆存在 `memory.db`（SQLite）。** 聊天进缓冲表 → 后台切成话题、抽出事实 → 唤醒只喂目录与事实。
+1. **记忆存在 `memory.db`（SQLite）。** 聊天进缓冲表 → 后台切成话题、抽出事实 → 每天 06:30「做梦」改标题、写主体页 → 唤醒只喂区域行、目录与事实。
    `memory.engine='db'` 时旧的记忆卡与向量记忆两条管线整体不启动（2026-11-22），数据保留、不再增长。
    详见 [features/MEMORY.md](guides/features/MEMORY.md)。
 2. **只发文字和图片。** 不合成语音，也不发图片以外的富媒体；设置页与面板里没有这类开关。

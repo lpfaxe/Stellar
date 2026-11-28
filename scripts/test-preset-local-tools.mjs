@@ -2,7 +2,7 @@
 //
 // 为什么必须有这个文件
 // --------------------
-// 结论是：QQ 动作闸门全部跑在桥接进程内，而 OneBot 的
+// `Stellar_PLAN.md` §0.1 的结论是：QQ 动作闸门全部跑在桥接进程内，而 OneBot 的
 // 127.0.0.1:3000 HTTP 接口可被任何本机进程用 Bearer token 直接调用。因此
 // **"仿真会话拿不到 shell"是整个分层安全模型唯一的真边界**。
 //
@@ -21,10 +21,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import { collectDshToolNames as collectDshToolNamesShared } from './dsh-tool-names.mjs';
+
+// 隔离额度状态：test-preset-local-tools 会真调 guard，而 guard 里的绘图/生图
+// 额度闸会写 DSH_HOME 下的 state/*.json。不隔离就会消费本机真实额度，重复跑必红
+// （2026-11-26 全量审计实测：10 分钟窗口被刷到 10/10，绘图工具被误判为"应拒绝"）。
+const TEST_DSH_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'stellar-tool-restrict-'));
+process.env.DSH_HOME = TEST_DSH_HOME;
+process.on('exit', () => {
+  try { fs.rmSync(TEST_DSH_HOME, { recursive: true, force: true }); } catch { /* ignore */ }
+});
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PRESETS_DIR = path.join(ROOT, 'dsh', 'agent-presets');
@@ -114,25 +124,22 @@ const EXPECTED_SAFE_PREFIXES = [
   'mcp__web-search-safe__',
   // 第三方小镇插件的工具**不再整前缀放行**（2026-11-21 安全审计 S1）：
   // 那 13 个工具里 setup/owner/phone 能干「改人设、替主人同意、对外发文本」，
-  // 而 QQ 会话里没有任何主人校验。现在逐名放行只读五件 + 玩法五件（当晚主人拍板 B 档），
-  // 其余 fail-closed（见下面单独的断言）。
+  // 而 QQ 会话里没有任何主人校验。现在逐名放行只读 + 玩法（当晚主人拍板 B 档），
+  // isle_act 仅主人私聊，其余 fail-closed（见下面单独的断言）。
 ];
 
 /** 插件侧允许她在 QQ 会话里用的只读工具（与 qq-tool-restrict.mjs 的导出保持一致）。 */
 const FISHBOWL_READONLY = [
   'fishbowl_town_recent',
-  'fishbowl_town_look',
+  'fishbowl_isle_look',
   'fishbowl_town_album',
   'fishbowl_town_chats',
   'fishbowl_town_rules',
 ];
 
-/** B 档放开的玩法五件（同上，与 FISHBOWL_PLAY 保持一致）。 */
+/** B 档放开的玩法（同上，与 FISHBOWL_PLAY 保持一致；0.9.20 只剩 go/friends）。 */
 const FISHBOWL_PLAY = [
   'fishbowl_town_go',
-  'fishbowl_town_play',
-  'fishbowl_town_visit',
-  'fishbowl_town_place',
   'fishbowl_town_friends',
 ];
 
@@ -235,6 +242,19 @@ test('schema 精简名单已下发给 restrict，且不误伤放行工具', asyn
   }
 });
 
+test('DrawAI 画布工具在 QQ schema 里被隐藏（它们只属于本地开发会话）', async () => {
+  // 2026-11-26 她误以为 diagram_apply 是画图工具，调了才被白名单拒。
+  // 这些工具执行期本来就不放行，但 schema 里留着会持续诱导模型。
+  for (const id of SIMULATION_PRESETS) {
+    const { dir } = readPreset(id);
+    const mod = await import(pathToFileURL(path.join(dir, 'qq-tool-restrict.mjs')).href);
+    for (const name of ['diagram_apply', 'diagram_export', 'diagram_read']) {
+      assert.ok(mod.SCHEMA_SLIM_TOOL_NAMES.includes(name),
+        `${id}: ${name} 必须进 schema 精简名单（否则模型会看到并尝试一个必被拒的工具）`);
+    }
+  }
+});
+
 test('守卫导出的名单与本测试的清单一致（防两份名单各自漂移）', async () => {
   // 先前这个测试只是"复制"名单的前 19 个名字，导致守卫里多出的 7 个名字
   // 从来没被断言过。现在改为**导入**守卫自己导出的数组，两边不可能漂移。
@@ -296,6 +316,32 @@ test('守卫仍放行 QQ MCP 命名空间与无害模型侧工具', async () => 
     for (const name of ['ask_user_question', 'todo_write']) {
       assert.equal(fakeTools._guard({ name }), undefined, `${id}: ${name} 应放行`);
     }
+    // 绘图：三个精确工具名放行，未知的 mcp__diagram__* 仍 fail-closed（不整前缀放行）。
+    for (const name of ['mcp__diagram__plot_function', 'mcp__diagram__plot_curve', 'mcp__diagram__draw_mindmap']) {
+      assert.equal(fakeTools._guard({ name }), undefined, `${id}: ${name} 应放行`);
+    }
+    assert.equal(typeof fakeTools._guard({ name: 'mcp__diagram__some_new_tool' }), 'string',
+      `${id}: 未登记的 mcp__diagram__ 工具必须拒绝`);
+    // DrawAI 画布工具执行期拒绝（与 schema 隐藏两道防线）。
+    for (const name of ['diagram_apply', 'diagram_export', 'diagram_read']) {
+      const denied = fakeTools._guard({ name });
+      assert.equal(typeof denied, 'string',
+        `${id}: ${name} 必须被 QQ 白名单拒绝（画布编辑不属于仿真会话）`);
+      assert.match(denied, /mcp__diagram__plot_function/,
+        `${id}: ${name} 被拒时必须指向可用的绘图 MCP（否则模型只会说没有工具）`);
+    }
+    // 精确函数图提示词：不要在生图额度里白白烧掉，直接指向本地绘图 MCP。
+    const mathDenied = fakeTools._guard({
+      name: 'image_generate',
+      arguments: { prompt: '画一下 y=x 的函数图像，要有坐标轴' },
+    });
+    assert.equal(typeof mathDenied, 'string', `${id}: 函数图提示词必须被 image_generate 拦下`);
+    assert.match(mathDenied, /mcp__diagram__plot_function/,
+      `${id}: 拦截文案必须指向 mcp__diagram__plot_function，实际 ${JSON.stringify(mathDenied)}`);
+    assert.equal(fakeTools._guard({
+      name: 'image_generate',
+      arguments: { prompt: '一只戴帽子的猫，水彩插画' },
+    }), undefined, `${id}: 普通插画提示词不应被函数图规则误伤`);
     // 小镇插件：只读五件 + 玩法五件放行；三根红线与**将来新加的**一律拒（S1：整前缀放行过宽）。
     for (const name of FISHBOWL_READONLY) {
       assert.equal(fakeTools._guard({ name }), undefined, `${id}: 只读工具 ${name} 应放行`);
@@ -304,11 +350,19 @@ test('守卫仍放行 QQ MCP 命名空间与无害模型侧工具', async () => 
       assert.equal(fakeTools._guard({ name }), undefined, `${id}: 玩法工具 ${name} 应放行（2026-11-21 B 档）`);
     }
     for (const name of [
-      'fishbowl_town_setup', 'fishbowl_town_owner', 'fishbowl_town_phone',
+      'fishbowl_town_setup', 'fishbowl_town_owner', 'fishbowl_town_phone', 'fishbowl_town_build',
+      'fishbowl_town_look', // 0.9.17 已删的旧名字，不能被当成新玩法放行
       'fishbowl_town_some_new_tool',
     ]) {
       assert.ok(typeof fakeTools._guard({ name }) === 'string',
-        `${id}: 小镇红线/未知工具 ${name} 必须被拒绝（fail-closed）`);
+        `${id}: 小镇红线/旧名/未知工具 ${name} 必须被拒绝（fail-closed）`);
+    }
+    // isle_act 能动主人的饭票：非主人（或群聊、或没有 15 分钟内的 turn-context）必须被拒；
+    // 主人私聊时返回 undefined。测试环境通常没有新鲜 context，所以同时接受两种结果，但拒绝时文案必须指路。
+    const isleAct = fakeTools._guard({ name: 'fishbowl_isle_act' });
+    if (isleAct !== undefined) {
+      assert.equal(typeof isleAct, 'string', `${id}: isle_act 拒绝必须是文案`);
+      assert.match(isleAct, /主人私聊/, `${id}: isle_act 拒绝文案必须说明只在主人私聊`);
     }
     // 未知工具名必须 fail-closed。
     for (const name of ['', null, undefined, 'mcp__unknown__x', 'totally_new_tool']) {

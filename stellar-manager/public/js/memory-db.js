@@ -2,8 +2,8 @@
  * 后端 stellar-manager/lib/memory-db.js，库文件与桥接共用 characters/<角色>/memory/memory.db。
  * 只做显示与发请求；分层、忘记、侧写字数这些判定都在服务端。
  */
-var MEMDB = { data: null, canWrite: true };
-var TOPICS = { owner: '', tier: '', q: '', offset: 0, limit: 20, total: 0, items: [], currentId: '' };
+var MEMDB = { data: null, canWrite: true, pane: 'overview' };
+var TOPICS = { owner: '', tier: '', region: '', q: '', offset: 0, limit: 20, total: 0, items: [], currentId: '' };
 var PROFILES = { items: [], people: [] };
 
 function mdbEsc(s) {
@@ -34,11 +34,12 @@ function mdbRenderStats(d) {
   if (!box) return;
   var s = d.stats || {};
   var cells = [
-    ['缓存待切', s.cache || 0, '句'],
-    ['话题', s.topics || 0, '段对话'],
-    ['重要', s.important || 0, '不淘汰'],
-    ['零碎', s.fragments || 0, '单边话'],
-    ['侧写', s.profiles || 0, '每人一句'],
+    ['话题', s.topics || 0, '其中重要 ' + (s.important || 0)],
+    ['缓存待切', s.cache || 0, '今天 ' + (s.todayCache || 0) + ' 句'],
+    ['零碎', s.fragments || 0, '等整理'],
+    ['记忆页', s.pages || 0, '主体 ' + (s.subjects || 0) + ' 个'],
+    ['事实', (d.facts && d.facts.total) || 0, '生日 / 忌口 / 约定'],
+    ['见闻', ((d.zones && d.zones.bili && d.zones.bili.total) || 0) + ((d.zones && d.zones.qzone && d.zones.qzone.total) || 0), 'B站 + 好友爱看'],
   ];
   box.innerHTML = cells.map(function (c) {
     return '<div class="memdb-cell"><span class="k">' + mdbEsc(c[0]) + '</span><b>' + mdbEsc(c[1]) + '</b><span class="hint">' + mdbEsc(c[2]) + '</span></div>';
@@ -49,7 +50,14 @@ function mdbJobName(name) {
   if (name === 'window') return '窗口清理';
   if (name === 'review') return '复核';
   if (name === 'profile') return '侧写';
+  if (name === 'dream') return '做梦';
   return '切分';
+}
+
+function mdbJobTone(state) {
+  if (state === 'failed') return ' bad';
+  if (state === 'done') return ' ok';
+  return '';
 }
 
 function mdbRenderMeta(d) {
@@ -61,22 +69,104 @@ function mdbRenderMeta(d) {
     return;
   }
   var jobs = (d.jobs || []).map(function (j) {
-    return '<div class="memdb-job"><span class="pill">' + mdbEsc(mdbJobName(j.name)) + '</span>' +
-      '<span class="muted small">' + mdbEsc(j.day || '') + ' · ' + mdbEsc(j.state || '') + ' · ' + mdbClock(j.lastRunAt) + '</span>' +
-      (j.lastError ? '<span class="msg bad">' + mdbEsc(String(j.lastError).slice(0, 120)) + '</span>' : '') + '</div>';
-  }).join('');
-  var trash = (d.trash || []).slice(0, 6).map(function (t) {
-    return '<div class="memdb-job"><span class="muted small">忘记的备份 · ' + mdbEsc(t.name) + ' · ' + mdbSize(t.bytes) + ' · ' + mdbClock(t.at) + '</span></div>';
+    return '<div class="memdb-job"><span class="memdb-state' + mdbJobTone(j.state) + '"></span>' +
+      '<b>' + mdbEsc(mdbJobName(j.name)) + '</b>' +
+      '<span class="muted small">' + mdbEsc(j.state || '') + ' · ' + mdbClock(j.lastRunAt) + '</span>' +
+      (j.lastError ? '<span class="msg bad">' + mdbEsc(String(j.lastError).slice(0, 80)) + '</span>' : '') + '</div>';
   }).join('');
   var queued = (d.queued || []).map(function (q) {
-    return '<div class="memdb-job"><span class="pill on">已排队</span><span class="muted small">' +
-      mdbEsc(q.job === 'profile' ? '侧写生成' : '前天复核') + ' · ' + mdbClock(q.at) +
-      ' · 她那边每 10 分钟检查一次</span></div>';
+    return '<div class="memdb-job"><span class="memdb-state"></span><b>' +
+      mdbEsc(q.job === 'profile' ? '侧写生成' : '前天复核') + ' 已排队</b>' +
+      '<span class="muted small">' + mdbClock(q.at) + ' · 她那边每 10 分钟检查一次</span></div>';
   }).join('');
+  var trash = (d.trash || []).length
+    ? '<div class="memdb-trash"><b>忘记的备份</b><span class="muted small">' + (d.trash || []).length + ' 份 · 最近 ' + mdbEsc((d.trash[0] || {}).name || '') + ' · ' + mdbSize((d.trash[0] || {}).bytes) + '</span></div>'
+    : '';
   box.innerHTML =
-    '<div class="memdb-meta-row"><span class="muted small">' + mdbEsc(info.name || info.role || '') + ' · ' + mdbEsc(info.file || '') + '</span>' +
-    '<span class="muted small">' + mdbSize(info.bytes) + ' · 更新于 ' + mdbClock(info.mtime) + '</span></div>' +
-    queued + (jobs || '<div class="muted small">后台作业还没跑过。</div>') + trash;
+    '<div class="memdb-meta-row"><span class="muted small">' + mdbEsc(info.name || info.role || '') + ' · ' + mdbSize(info.bytes) + '</span>' +
+    '<span class="muted small">更新于 ' + mdbClock(info.mtime) + '</span></div>' +
+    '<div class="memdb-jobs">' + (queued + jobs || '<div class="muted small">后台作业还没跑过。</div>') + '</div>' + trash;
+}
+
+function mdbRegionName(code) {
+  var rows = (MEMDB.data && MEMDB.data.regions) || [];
+  for (var i = 0; i < rows.length; i++) if (rows[i].code === code) return rows[i].name || code;
+  return code || '';
+}
+
+function mdbRenderRegions(d) {
+  var box = el('mdbRegions');
+  if (!box) return;
+  var rows = (d && d.regions) || [];
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty">还没有记忆区。库是旧版，或者回填还没跑。</div>';
+    return;
+  }
+  box.innerHTML = rows.map(function (r) {
+    return '<button class="mdb-region" data-region="' + mdbEsc(r.code) + '">' +
+      '<span class="mdb-region-name">' + mdbEsc(r.name || r.code) + '</span>' +
+      '<span class="mdb-region-desc">' + mdbEsc(r.description || '') + '</span>' +
+      '<span class="mdb-region-nums"><b>' + (r.topics || 0) + '</b> 话题 · <b>' + (r.subjects || 0) + '</b> 主体 · <b>' + (r.pages || 0) + '</b> 页</span>' +
+      '</button>';
+  }).join('');
+}
+
+function mdbFillRegionSelect(d) {
+  var sel = el('tpRegion');
+  if (!sel) return;
+  var rows = (d && d.regions) || [];
+  sel.innerHTML = '<option value="">全部区域</option>' + rows.map(function (r) {
+    return '<option value="' + mdbEsc(r.code) + '"' + (TOPICS.region === r.code ? ' selected' : '') + '>' + mdbEsc(r.name || r.code) + '</option>';
+  }).join('');
+}
+
+function mdbRenderPages(d) {
+  var box = el('mdbPages');
+  if (!box) return;
+  var rows = (d && d.pages) || [];
+  if (el('mdbPageCount')) el('mdbPageCount').textContent = rows.length ? ('最近 ' + rows.length + ' 页') : '';
+  if (!rows.length) {
+    var dream = ((d && d.jobs) || []).filter(function (j) { return j.name === 'dream'; })[0];
+    var why = dream && dream.state === 'failed'
+      ? ('这次做梦失败了：' + String(dream.lastError || '模型没有返回内容').slice(0, 80) + '。失败不会删原文，下一轮会重试。')
+      : '还没有记忆页。做梦每天 06:30 读最近三天的原文，把「对这个人 / 这件事现在怎么看」写成页。';
+    box.innerHTML = '<div class="empty">' + mdbEsc(why) + '</div>';
+    return;
+  }
+  box.innerHTML = rows.map(function (p) {
+    var privacy = p.privacy === 'secret' ? '机密' : p.privacy === 'private' ? '私密' : '';
+    return '<article class="memdb-page">' +
+      '<div class="memdb-page-head"><b>' + mdbEsc(p.title || '（没标题）') + '</b>' +
+      '<span class="pill">v' + (p.version || 1) + '</span>' +
+      (privacy ? '<span class="pill on">' + mdbEsc(privacy) + '</span>' : '') +
+      '<span class="muted small">' + mdbEsc(p.subjectName || p.subjectId || '') +
+      (p.regionName ? ' · ' + mdbEsc(p.regionName) : '') + ' · ' + mdbClock(p.updatedAt) + '</span></div>' +
+      '<div class="memdb-page-body">' + mdbEsc(String(p.body || '').slice(0, 600)) + '</div>' +
+      (p.sources && p.sources.length ? '<div class="mdb-page-src">来源 ' + p.sources.length + ' 条</div>' : '') +
+      '</article>';
+  }).join('');
+}
+
+function mdbPaneLoaded(pane) {
+  if (pane === 'topics') loadTopics(0);
+  else if (pane === 'frags') loadFragments();
+  else if (pane === 'facts') loadFacts();
+  else if (pane === 'zones') loadZones();
+}
+
+function mdbSetPane(pane) {
+  MEMDB.pane = pane || 'overview';
+  var tabs = document.querySelectorAll('.mdb-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    var on = tabs[i].getAttribute('data-pane') === MEMDB.pane;
+    tabs[i].classList.toggle('on', on);
+    tabs[i].setAttribute('aria-selected', on ? 'true' : 'false');
+  }
+  var panes = document.querySelectorAll('.mdb-pane');
+  for (var j = 0; j < panes.length; j++) {
+    panes[j].hidden = panes[j].id !== ('mdbPane-' + MEMDB.pane);
+  }
+  mdbPaneLoaded(MEMDB.pane);
 }
 
 function loadMemoryDb() {
@@ -85,6 +175,9 @@ function loadMemoryDb() {
     MEMDB.canWrite = d.canWrite !== false;
     mdbRenderStats(d);
     mdbRenderMeta(d);
+    mdbRenderRegions(d);
+    mdbFillRegionSelect(d);
+    mdbRenderPages(d);
     mdbRenderZones(d);
     var b = el('mdbSplit');
     if (b) b.disabled = !MEMDB.canWrite;
@@ -128,6 +221,8 @@ function mdbRenderTopics(d) {
       return '<div class="memdb-topic" data-id="' + mdbEsc(t.id) + '">' +
         '<div class="memdb-topic-head"><b>' + mdbEsc(t.title || '（没标题）') + '</b>' +
         (t.tier === 'important' ? '<span class="pill on">重要</span>' : '') +
+        (t.regionName ? '<span class="pill">' + mdbEsc(t.regionName) + '</span>' : '') +
+        (t.titleSource === 'dream' ? '<span class="pill">她改过</span>' : '') +
         '<span class="muted small">' + mdbEsc(t.ownerLabel || '') + (t.relation ? ' · ' + mdbEsc(t.relation) : '') + '</span></div>' +
         '<div class="memdb-topic-sum">' + mdbEsc(String(t.summary || '').slice(0, 160)) + '</div>' +
         '<div class="memdb-topic-meta"><span class="muted small">' + mdbEsc(t.day || '') + ' · ' + (t.msgCount || 0) + ' 句 · 重要度 ' + (t.importance || 0) + '</span>' + tags + '</div>' +
@@ -148,6 +243,7 @@ function loadTopics(offset) {
   var qs = '?limit=' + TOPICS.limit + '&offset=' + TOPICS.offset;
   if (TOPICS.owner) qs += '&owner=' + encodeURIComponent(TOPICS.owner);
   if (TOPICS.tier) qs += '&tier=' + encodeURIComponent(TOPICS.tier);
+  if (TOPICS.region) qs += '&region=' + encodeURIComponent(TOPICS.region);
   if (TOPICS.q) qs += '&q=' + encodeURIComponent(TOPICS.q);
   return api('/api/memory-db/topics' + qs).then(function (d) {
     if (!d.ok) throw new Error(d.message || '读话题失败');
@@ -336,7 +432,19 @@ window.loadFragments = loadFragments;
 window.loadProfiles = loadProfiles;
 window.loadStyleRefs = loadStyleRefs;
 
-if (el('mdbRefresh')) el('mdbRefresh').onclick = function () { loadMemoryDb(); loadTopics(); loadFragments(); };
+if (el('mdbRefresh')) el('mdbRefresh').onclick = function () { loadMemoryDb(); mdbSetPane(MEMDB.pane); };
+if (el('mdbTabs')) el('mdbTabs').addEventListener('click', function (ev) {
+  var btn = ev.target.closest('.mdb-tab');
+  if (btn) mdbSetPane(btn.getAttribute('data-pane'));
+});
+if (el('mdbRegions')) el('mdbRegions').addEventListener('click', function (ev) {
+  var card = ev.target.closest('.mdb-region');
+  if (!card) return;
+  TOPICS.region = card.getAttribute('data-region') || '';
+  if (el('tpRegion')) el('tpRegion').value = TOPICS.region;
+  mdbSetPane('topics');
+});
+if (el('tpRegion')) el('tpRegion').onchange = function (ev) { TOPICS.region = ev.target.value; loadTopics(0); };
 if (el('mdbSplit')) el('mdbSplit').onclick = function () {
   var b = el('mdbSplit');
   b.disabled = true;
@@ -517,8 +625,7 @@ if (el('zqRefresh')) el('zqRefresh').onclick = function () { loadZoneNotes('qzon
   };
 });
 
-// 记忆库总览一刷新就把两个区的计数带上；见闻列表首次进页面时拉一次。
-if (el('mdbRefresh')) el('mdbRefresh').addEventListener('click', function () { loadZones(); });
+// 见闻列表首次进页面时拉一次；刷新统一走上面的 mdbRefresh。
 loadZones();
 
 // ── 重要事实（主人 2026-11-13）：生日 / 忌口 / 联系方式按人对号存 ─────────────
@@ -703,5 +810,4 @@ if (el('ftList')) el('ftList').addEventListener('click', function (ev) {
     .catch(function (e) { del.disabled = false; mdbMsg('ftMsg', '删失败：' + e.message, false); });
 });
 
-if (el('mdbRefresh')) el('mdbRefresh').addEventListener('click', function () { loadFacts(); });
 loadFacts();

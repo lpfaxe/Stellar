@@ -6897,6 +6897,10 @@ function maybeApproveImageRequest(text, key) {
           for (const [flag, name] of Object.entries(toolMap)) {
             if (tools[flag] !== false && !(stickerToolFlags.has(flag) && !stickerEnabled())) enabledTools.push(name);
           }
+          // 精确绘图走 DSH 的模型侧 MCP（mcp-diagram），不在 toolMap 里。
+          // 不补进来的话 qq_get_prompt 会让模型以为没有绘图工具（2026-11-26 她因此误调已下线的 diagram_apply）。
+          const DIAGRAM_TOOLS = ['mcp__diagram__plot_function', 'mcp__diagram__plot_curve', 'mcp__diagram__draw_mindmap'];
+          enabledTools.push(...DIAGRAM_TOOLS);
           sendJson({
             ok: true,
             key,
@@ -6931,6 +6935,12 @@ function maybeApproveImageRequest(text, key) {
               proactive: cfg.socialV2?.proactive ?? {}
             },
             enabledTools,
+            // 显式点名 + 提示，避免模型把「enabledTools 里没有」当成「没有这个工具」。
+            drawing: {
+              available: true,
+              tools: DIAGRAM_TOOLS,
+              hint: '精确函数图用 mcp__diagram__plot_function，参数/极坐标曲线用 mcp__diagram__plot_curve，思维导图用 mcp__diagram__draw_mindmap；生成 PNG 后用 qq_send_image 发送。不要用 image_generate 或 diagram_apply。'
+            },
             replyTiming: replyTimingV2(st),
             unreadCount: st.unread.length,
             recentCount: st.recentMessages.length,
@@ -16279,6 +16289,9 @@ function saveSocialV2State() {
       }));
     } catch {}
     const imageQuotaText = imageQuotaLine();
+    // 2026-11-26：她读 qq_get_prompt 的 enabledTools 没看到绘图工具，就以为没有；
+    // 每轮唤醒直接点名一次，不依赖她主动去查（schema 里已有这三个工具）。
+    const diagramLine = '【绘图】精确函数图用 mcp__diagram__plot_function，参数/极坐标曲线用 mcp__diagram__plot_curve，思维导图用 mcp__diagram__draw_mindmap；生成后用 qq_send_image 发。不要用 image_generate 或 diagram_apply。\n\n';
     const wc = st.wakeConfig || {};
     const wcTr = wc.triggers || {};
     const wcMode = wc.mode === 'active' ? '活跃' : '潜水';
@@ -16369,7 +16382,7 @@ function saveSocialV2State() {
     const conversationLine = conversationIdentityLineV2(key);
     const groupPeopleLine = groupParticipantsLineV2(key, st);
     // 侧写放最前（设计 §7.2）：一句话定调「对方是谁、该怎么说话」，比长记忆卡更省也更有效。
-    const base = profileLineText + roleLine + identityLine + conversationLine + groupPeopleLine + provenanceLine + adminLine + styleRefLine + biliLine + townLine + memoryCardLine + memoryFactLine + memoryCatalogLine + memoryDetailLine + tokenLine + imageQuotaText + initialPromptLine + antiAiLine + proactiveLine + closureLine + stickerLine + stickerMatchLine + replyLine + replyPlanText + statusLine + wakeLine + memoryLine + participationLine + fishGuardLine + tokenGuardLine + preSleepLine;
+    const base = profileLineText + roleLine + identityLine + conversationLine + groupPeopleLine + provenanceLine + adminLine + styleRefLine + biliLine + townLine + memoryCardLine + memoryFactLine + memoryCatalogLine + memoryDetailLine + tokenLine + imageQuotaText + diagramLine + initialPromptLine + antiAiLine + proactiveLine + closureLine + stickerLine + stickerMatchLine + replyLine + replyPlanText + statusLine + wakeLine + memoryLine + participationLine + fishGuardLine + tokenGuardLine + preSleepLine;
     lastWakePromptMeta = {
       profile: profileLineText.length,
       role: roleLine.length,
@@ -16385,6 +16398,7 @@ function saveSocialV2State() {
       fact: memoryFactLine.length,
       memoryDetail: memoryDetailLine.length,
       token: tokenLine.length,
+      diagram: diagramLine.length,
       initialPrompt: initialPromptLine.length,
       antiAi: antiAiLine.length,
       voiceSource: voiceStyle.source,

@@ -91,6 +91,63 @@ function readJobs(db) {
   })
 }
 
+/** 记忆区（2026-11-27 新记忆架构）：区域页不存正文，这里只实时统计。旧库没有这些表时返回空数组。 */
+function readRegions(db) {
+  const rows = safe(function () {
+    return db.prepare(
+      'SELECT r.code, r.name, r.description, r.sort,' +
+      ' (SELECT COUNT(*) FROM topic t WHERE t.region_id = r.code) AS topics,' +
+      ' (SELECT COUNT(*) FROM memory_subject s WHERE s.region_id = r.code) AS subjects,' +
+      ' (SELECT COUNT(*) FROM memory_page p WHERE p.region_id = r.code) AS pages' +
+      ' FROM memory_region r ORDER BY r.sort, r.code'
+    ).all()
+  }, []) || []
+  return rows.map(function (r) {
+    return {
+      code: String(r.code || ''),
+      name: String(r.name || r.code || ''),
+      description: String(r.description || ''),
+      topics: Number(r.topics) || 0,
+      subjects: Number(r.subjects) || 0,
+      pages: Number(r.pages) || 0,
+    }
+  })
+}
+
+function readPages(db, limit) {
+  const rows = safe(function () {
+    return db.prepare(
+      'SELECT p.*, s.name AS subject_name, s.kind AS subject_kind, r.name AS region_name' +
+      ' FROM memory_page p' +
+      ' LEFT JOIN memory_subject s ON s.id = p.subject_id' +
+      ' LEFT JOIN memory_region r ON r.code = p.region_id' +
+      ' ORDER BY p.updated_at DESC LIMIT ?'
+    ).all(Math.max(1, Math.min(MAX_LIMIT, Number(limit) || 20)))
+  }, []) || []
+  return rows.map(function (r) {
+    let links = []
+    let sources = []
+    try { links = JSON.parse(r.links || '[]') } catch {}
+    try { sources = JSON.parse(r.sources || '[]') } catch {}
+    return {
+      id: String(r.id || ''),
+      regionId: String(r.region_id || ''),
+      regionName: String(r.region_name || ''),
+      subjectId: String(r.subject_id || ''),
+      subjectName: String(r.subject_name || ''),
+      subjectKind: String(r.subject_kind || ''),
+      title: String(r.title || ''),
+      body: String(r.body || ''),
+      links: Array.isArray(links) ? links : [],
+      sources: Array.isArray(sources) ? sources : [],
+      privacy: String(r.privacy || 'normal'),
+      version: Number(r.version) || 1,
+      updatedAt: Number(r.updated_at) || 0,
+      updatedBy: String(r.updated_by || 'dream'),
+    }
+  })
+}
+
 function trashList(dir) {
   const out = []
   try {
@@ -131,6 +188,8 @@ export function buildMemoryDb() {
     jobs: [],
     queued: pendingRequests(),
     owners: [],
+    regions: [],
+    pages: [],
     trash: [],
     at: new Date().toISOString(),
   }
@@ -155,8 +214,12 @@ export function buildMemoryDb() {
       styleSlices: countOf(db, 'SELECT COUNT(*) FROM style_slice WHERE enabled = 1'),
       todayCache: countOf(db, 'SELECT COUNT(*) FROM cache_msg WHERE day_key = ?', dayOf()),
       todayTopics: countOf(db, 'SELECT COUNT(*) FROM topic WHERE day_key = ?', dayOf()),
+      subjects: countOf(db, 'SELECT COUNT(*) FROM memory_subject'),
+      pages: countOf(db, 'SELECT COUNT(*) FROM memory_page'),
     }
     base.jobs = readJobs(db)
+    base.regions = readRegions(db)
+    base.pages = readPages(db, 24)
     const index = peopleIndex()
     const rows = safe(function () {
       return db.prepare('SELECT owner_id, COUNT(*) AS n FROM topic GROUP BY owner_id ORDER BY n DESC').all()
@@ -188,6 +251,7 @@ export function listTopics(opts = {}) {
   const args = []
   if (opts.owner) { where.push('owner_id = ?'); args.push(String(opts.owner)) }
   if (opts.tier === 'important' || opts.tier === 'daily') { where.push('tier = ?'); args.push(opts.tier) }
+  if (opts.region) { where.push('region_id = ?'); args.push(String(opts.region)) }
   if (opts.day) { where.push('day_key = ?'); args.push(String(opts.day)) }
   const q = String(opts.q || '').trim().slice(0, 40)
   if (q) { where.push('(title LIKE ? OR summary LIKE ?)'); args.push('%' + q + '%', '%' + q + '%') }
@@ -199,6 +263,7 @@ export function listTopics(opts = {}) {
     const total = countOf(db, 'SELECT COUNT(*) FROM topic' + clause, ...args)
     const rows = db.prepare('SELECT * FROM topic' + clause + ' ORDER BY ended_at DESC LIMIT ? OFFSET ?').all(...args, limit, offset);
     const index = peopleIndex()
+    const regionNames = new Map((safe(function () { return db.prepare('SELECT code, name FROM memory_region').all() }, []) || []).map(function (x) { return [String(x.code), String(x.name)] }))
     const items = rows.map(function (r) {
       const v = ownerView(index, r.owner_id)
       let facets = []
@@ -215,6 +280,9 @@ export function listTopics(opts = {}) {
         startedAt: Number(r.started_at) || 0,
         endedAt: Number(r.ended_at) || 0,
         day: String(r.day_key || ''),
+        regionId: String(r.region_id || ''),
+        regionName: regionNames.get(String(r.region_id || '')) || '',
+        titleSource: String(r.title_source || 'auto'),
         ownerId: v.ownerId,
         ownerLabel: v.label,
         relation: v.relation,

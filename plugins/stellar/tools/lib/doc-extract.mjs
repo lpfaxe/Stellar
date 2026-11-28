@@ -22,10 +22,13 @@ const PDFJS_CANDIDATES = [
 ];
 const PDFJS_PATH = PDFJS_CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || PDFJS_CANDIDATES[0];
 export const MAX_INPUT_BYTES = 60 * 1024 * 1024;
-// 演示文稿单独放宽到 256MB（2026-11-26 主人要求）：一整本宣讲/课件动辄 100MB+，体积基本都在图里，
-// 而 pptx 只解 slides/*.xml，不会把整包媒体读进内存。其它文档（PDF/Word/Excel）仍是 60MB。
-export const MAX_PRESENTATION_BYTES = 256 * 1024 * 1024;
-const PRESENTATION_KINDS = new Set(['pptx', 'ppt', 'dps', 'odp']);
+// 大文件单独放宽到 256MB（2026-11-26 演示文稿、2026-11-27 PDF）：一整本宣讲/课件/扫描书动辄 100MB+，
+// 体积基本都在图里。pptx 只解 slides/*.xml，不会把整包媒体读进内存；PDF 要整份交给 pdfjs，内存占用随体积涨。
+// 其它文档（Word/Excel/WPS）仍是 60MB —— 它们没有这种「一本几百页」的常见场景。
+export const MAX_LARGE_BYTES = 256 * 1024 * 1024;
+export const MAX_PRESENTATION_BYTES = MAX_LARGE_BYTES;
+export const MAX_PDF_BYTES = MAX_LARGE_BYTES;
+const LARGE_KINDS = new Set(['pdf', 'pptx', 'ppt', 'dps', 'odp']);
 
 const KIND_LABEL = {
   pdf: 'PDF',
@@ -65,15 +68,15 @@ export function kindFromName(fileName = '') {
   return EXT_KIND[path.extname(String(fileName || '')).toLowerCase()] || '';
 }
 
-/** 某种格式最多允许多大：演示文稿 256MB，其余 60MB。 */
+/** 某种格式最多允许多大：PDF / 演示文稿 256MB，其余 60MB。 */
 export function inputLimitForKind(kind = '') {
-  return PRESENTATION_KINDS.has(String(kind || '')) ? MAX_PRESENTATION_BYTES : MAX_INPUT_BYTES;
+  return LARGE_KINDS.has(String(kind || '')) ? MAX_LARGE_BYTES : MAX_INPUT_BYTES;
 }
 
 /** 上手前按文件名估上限；认不出扩展名时按最大上限放行，读完再按真实格式判（QQ 里常有人把 pptx 改名 .bin）。 */
 export function inputLimitForName(fileName = '') {
   const kind = kindFromName(fileName);
-  return kind ? inputLimitForKind(kind) : MAX_PRESENTATION_BYTES;
+  return kind ? inputLimitForKind(kind) : MAX_LARGE_BYTES;
 }
 
 function tooBigError(bytes, limit, kind = '') {
@@ -490,8 +493,8 @@ export async function extractDocument(opts = {}) {
   if (!buffer && opts.filePath) {
     const stat = await fsp.stat(opts.filePath);
     const nameKind = kindFromName(fileName);
-    // 有扩展名就按格式先拦，不用把 200MB 先读进内存；没有扩展名的可能是被改名的 pptx，先按最大上限放行。
-    const earlyLimit = nameKind ? inputLimitForKind(nameKind) : MAX_PRESENTATION_BYTES;
+    // 有扩展名就按格式先拦，不用把 200MB 先读进内存；没有扩展名的可能是被改名的 pptx/pdf，先按最大上限放行。
+    const earlyLimit = nameKind ? inputLimitForKind(nameKind) : MAX_LARGE_BYTES;
     if (stat.size > earlyLimit) return tooBigError(stat.size, earlyLimit, nameKind);
     buffer = await fsp.readFile(opts.filePath);
   }

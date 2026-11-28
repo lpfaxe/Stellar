@@ -19,17 +19,18 @@ try {
     fs.writeFileSync(path.join(dir, 'cordis.patch.yml'), body, 'utf8');
   };
 
-  // 1) 三条 MCP 都在 → 健康
+  // 1) 四条 MCP 都在 → 健康
   writeProfile('desktop', [
     'plugins:',
     '  - id: mcp-snowluma',
     '  - id: mcp-snowluma-host',
     '  - id: mcp-web-search-safe',
+    '  - id: mcp-diagram',
     '  - id: stellar',
   ].join('\n'));
   {
     const r = checkProfileMcp(home);
-    ok(r.ok === true && r.checked === 1, '三条 MCP 齐全 → 健康', JSON.stringify(r));
+    ok(r.ok === true && r.checked === 1, '四条 MCP 齐全 → 健康', JSON.stringify(r));
     ok(r.healthy.includes('desktop'), '健康的 profile 被记下');
   }
 
@@ -39,7 +40,7 @@ try {
     const r = checkProfileMcp(home);
     ok(r.ok === true, '仍有一个健康 profile 时整体不判坏（用户的 desktop 还在）');
     const web = r.broken.find((x) => x.profile === 'web');
-    ok(web && web.missing.length === REQUIRED_MCP_IDS.length, 'web 缺三条 MCP 被列出', JSON.stringify(web));
+    ok(web && web.missing.length === REQUIRED_MCP_IDS.length, `web 缺 ${REQUIRED_MCP_IDS.length} 条 MCP 被列出`, JSON.stringify(web));
   }
 
   // 3) 全坏 → ok=false（触发 L2）

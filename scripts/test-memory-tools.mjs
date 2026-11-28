@@ -148,7 +148,7 @@ function textOf(result) {
 const { tools } = loadTools();
 
 test('三个工具都注册了，且都带 token 参数（身份闸不能漏）', () => {
-  for (const name of ['stellar_memory_catalog', 'stellar_memory_topic', 'stellar_memory_search']) {
+  for (const name of ['stellar_memory_catalog', 'stellar_memory_topic', 'stellar_memory_page', 'stellar_memory_search']) {
     const tool = tools.get(name);
     assert.ok(tool, name + ' 没注册');
     assert.ok(tool.schema.token, name + ' schema 缺 token');
@@ -251,4 +251,28 @@ test('参数闸：ownerId 非法 / 关键词 1 个字', async () => {
   const ok = await call(tools, 'stellar_memory_search', { key: OWNER_KEY, token: 'owner-token-aaaa', q: '火锅' });
   assert.equal(ok.isError, undefined);
   assert.match(textOf(ok), /火锅|没搜到|没有/, '搜到或明确说没搜到，不能空回复');
+});
+
+
+test('主体页：目录给标题、page 工具读正文；朋友不能读主人的私有页', async () => {
+  const sub = memoryDb.subjectForOwner(OWNER, { db: memoryDb.openDb({}) });
+  assert.ok(sub, '话题落库后主体必须已经建好');
+  const page = memoryDb.upsertPage({
+    subjectId: sub.id, title: '关于他的学习', body: '他在准备无机化学第七章的思维导图。',
+    links: ['无机化学'], sources: ['tp_20261113_0001'], updatedBy: 'dream', db: memoryDb.openDb({}),
+  });
+  assert.equal(page.ok, true, JSON.stringify(page));
+
+  const cat = await call(tools, 'stellar_memory_catalog', { key: OWNER_KEY, token: 'owner-token-aaaa', limit: 5 });
+  assert.match(textOf(cat), /关于他的学习/);
+  assert.match(textOf(cat), /stellar_memory_page/);
+
+  const one = await call(tools, 'stellar_memory_page', { key: OWNER_KEY, token: 'owner-token-aaaa', pageId: page.id });
+  assert.equal(one.isError, undefined);
+  assert.match(textOf(one), /无机化学第七章/);
+  assert.match(textOf(one), /来源：tp_20261113_0001/);
+
+  const friend = await call(tools, 'stellar_memory_page', { key: 'private:2493502782', token: 'friend-token-cccc', pageId: page.id });
+  assert.equal(friend.isError, true, '朋友不能读主人主体下的页');
+  assert.match(textOf(friend), /只有主人|不能|不允许|不是给你的/);
 });

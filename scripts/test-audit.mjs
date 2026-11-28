@@ -65,21 +65,24 @@ const tests = [
   // （主人跨人问也一样，否则「A 的生日」会被念给 B 听）；④ 改一条撞键必须报 duplicate 不许静默覆盖。
   'test-memory-facts.mjs',
   // 引擎退役（2026-11-22）：桥接与插件必须读同一份 config.json（以前插件读 $DSH_HOME 旧壳，
-  // engine=db 只生效一半：B站 每轮注入旧卡、向量记忆照跑、embedding 照打云端）。
+  // engine=db 只生效一半：B站 每轮注入旧卡、向量记忆照跑、embedding 照打云端，PITFALLS #303）。
   // 钉住：共享选文件规则 + 两条定时器启动即挡 + 维护函数早退清产物 + keepalive 不再拉起 18765。
   'test-memory-retired.mjs',
+  // 记忆分区（2026-11-27）：区/主体/主体页/零碎收件箱。钉住「区域是显示维度不是第二个库」：
+  // 建话题就要落区与主体、零碎必须进 inbox、目录按区过滤、主体页无来源不许写、回填可 dry-run 且幂等。
+  'test-memory-regions.mjs',
+  // 做梦（2026-11-27）：每天读最近 3 天原文改标题、写主体页、路由零碎；模型坏整轮不写、
+  // 不打 dreamed_at，review 因此跳过 prune（原文是梦的唯一来源，先删就再也补不回来）。
+  'test-memory-dream.mjs',
+  // 控制台记忆工作区（2026-11-27 重组）：概览必须带 regions/pages，按区过滤不能串。
+  // 以前面板只读统计，看不见记忆区/主体页；前端重做后这两个字段就是契约。
+  'test-panel-memory.mjs',
   'test-voice-style.mjs',
   'test-voice-style-bili.mjs',
   'test-group-link-guard.mjs',
-  // 2026-11-24：漏传令牌兜底 / 小镇双向同步 / 转发卡片两种形状
-  'test-tokenless-guard.mjs',
-  'test-town-chat-sync.mjs',
-  'test-town-prompt-digest.mjs',
-  'test-subs-digest.mjs',
-  'test-reply-and-finish-send.mjs',
   'test-qq-card.mjs',
   // 等 2 秒 + 盯「正在输入」（2026-11-25）：只认私聊 input_status，窗口滑动但不越硬上限
-  // （普通 15 秒 / 打字中 60 秒），日志按天滚动且只写枚举。群聊与点名保持固定窗口。
+  // （普通 15 秒 / 打字中 60 秒），日志 7 天滚动且只写枚举。群聊与点名保持固定窗口。
   'test-typing-watch.mjs',
   // 文档锚点门禁（2026-11-25）：行号锚点会随 bridge.js 变长而整体漂移（实测只有 17% 仍准确），
   // 所以锚点改成「文件 + 符号名」；这个自测同时钉住门禁本身（干净通过/strict 拦行号/越界拦/白名单豁免）。
@@ -87,14 +90,26 @@ const tests = [
   // 文档读取上限（2026-11-26 主人要）：PPT/PPTX 等演示文稿 256MB，其它文档 60MB。
   // 钉住：61MB pptx 能读、61MB docx 仍拦、257MB pptx 打开前就拒、MCP 两条下载都带分档上限。
   'test-doc-limits.mjs',
-  // 素材包（2026-11-25）：日报与说说共用的记忆 / 小镇 / 配图聚合。
+  // 绘图 MCP（2026-11-26 主人要）：函数图 / 参数与极坐标 / 4 层思维导图。
+  // 钉住：默认 512、三角函数 [-2π,2π]、渐近线断开、切线/积分、等比曲线、节点/层级上限、
+  // 非主人 20 张/天与 10 张/10 分钟、stdio 端到端真渲染、坏输入给 code+hint。
+  'test-diagram-function.mjs', 'test-diagram-curve.mjs', 'test-diagram-mindmap.mjs',
+  'test-diagram-budget.mjs', 'test-mcp-diagram.mjs',
+  // 2026-11-27：PDF 按章读 / 插图裁切 / 深度读额度（只读测试，不依赖真实 PDF）。
+  'test-pdf-parse.mjs', 'test-pdf-budget.mjs', 'test-pdf-guard.mjs', 'test-mcp-pdf.mjs',
+  // 找图准确性（2026-11-27 主人要）：Bing 多词中文不可用 → 中文走百度；结构式走 PubChem；
+  // 药品包装用 Windows OCR 双命中才算 [已核对]；钉住解析/元数据/排序/别名/CID/缓存/校验/schema。
+  // 预加载两阶段（2026-11-27）：30–100 条候选 → 下载 20–30 → 联系表 → pick 1–5 张才占每天 30 张。
+  'test-webimg-parse.mjs', 'test-webimg-meta.mjs', 'test-webimg-rank.mjs',
+  'test-webimg-chem.mjs', 'test-webimg-verify.mjs', 'test-webimg-preload.mjs', 'test-mcp-web-image.mjs',
+  // 素材包（2026-11-25 主人要）：日报与说说共用的记忆 / 小镇 / 配图聚合。
   // 钉住：图片来源判定、封面 6 : 相册 4 的加权、关键词命中 ×4、最近用过的图排除、
   // 兜底图每周 1 次（按 qzone-log 的 imageSources 统计）、说说不给「她记得的事」且条数收窄。
   'test-material-kit.mjs',
   // 参考引擎（方案 B）：参考角色名必须清洗（名字进提示词=模型扮演 TA）、PART1 角色档案不入库、
   // >800 字不索引、只挑命中情境的 2 片且总字符 ≤900、同一情境连续第 3 次跳过。
   // 待办「提醒谁」（2026-11-13）：targetKey/targetName 必须优先于会话 key 与 requester，
-  // 否则控制台替主人加的「提醒示例好友」会发到主人私聊；面板的合法 key 白名单也不许被绕过。
+  // 否则控制台替主人加的「提醒小土豆」会发到主人私聊；面板的合法 key 白名单也不许被绕过。
   'test-todo-target.mjs',
   // 命名隧道（固定域名）：token 走单独文件并加固 ACL、不落面板展示文件；缺 token 时
   // startTunnel 必须回 ok:false（以前回 ok:true 但根本没通道）。
@@ -110,6 +125,9 @@ const tests = [
   // 公网来源也能重启 DSH（2026-11-25）：只开 restart-dsh 一个动作，60 秒冷却，
   // 其余写动作仍必须被 requireWrite 拒。也钉住「没记录过」不等于「epoch 0 点过」。
   'test-panel-remote-restart.mjs',
+  // 夜间电源开关（2026-11-27）：默认 23:50 睡眠 / 06:05 唤醒，测试走 STELLAR_POWER_DRY=1
+  // 不碰真实计划任务；面板三个路由都必须先过 requireWrite，休眠没启用时明确拒绝。
+  'test-panel-power.mjs',
   'test-style-refs.mjs',
   // 记忆查询三工具（catalog / topic / search）：身份闸（无令牌+外来会话必须拒）、
   // ownerId 白名单、search 至少 2 字，以及「真的读得到库里的话题与双方原话」。
@@ -173,24 +191,27 @@ const tests = [
   // 好友爱看（刷 QQ 空间公开流）：自己的会话（feed-whale-*）+ 自己的记账类别 + 每日总量硬闸
   // （2026-11-20 主人发现它没单独记账、一天看了上限的 4 倍）。
   'test-feed-whale.mjs',
-  // 鱼缸小镇（2026-11-21）：接口保留、默认不启用。纯逻辑 / 客户端 / 独立库 / 采集器各一份静态契约，
-  // 调度器那份还钉住「守卫顺序 + 先占位再叫醒 + 零动作」，因为那些改坏了是静默出事。
-  'test-town-memory-pure.mjs',
-  'test-town-client.mjs',
-  'test-town-store.mjs',
-  'test-town-collector.mjs',
-  'test-town-scheduler.mjs',
-  'test-town-tools.mjs',
-  'test-town-turns.mjs',
+  // 鱼缸小镇（2026-11-21）：只读采集 + 3 天记忆 + 影子会话（town-act 预设）+ 只读工具面。
+  // 分四层钉：纯逻辑（TTL/去重/renderRecall）、HTTP 边界（域名/重定向/体积）、独立库、
+  // 采集器退避，以及调度器与 MCP 的静态契约（守卫顺序、零动作、无访问码不醒）。
+  'test-town-memory-pure.mjs', 'test-town-client.mjs', 'test-town-store.mjs',
+  'test-town-collector.mjs', 'test-town-scheduler.mjs', 'test-town-tools.mjs', 'test-town-turns.mjs',
   'test-idle-mode.mjs',
-  'test-town-album.mjs',
   // 自主参与（2026-11-21）：动作三道闸（日上限/冷却/预算）+ 只读快照（面板那一页的数据源）。
-  'test-town-actions.mjs', 'test-town-decoupling.mjs',
-  'test-town-snapshot.mjs',
+  'test-town-actions.mjs', 'test-town-snapshot.mjs',
   // 超支熔断（P2 watchdog，2026-11-21）：/spending 超线停插件那条鱼 + 面板横幅。
   'test-town-guard.mjs',
   // 官方插件（dsh-fishbowl-town）在场时让位：检测/人设派生/设置文件读改写（2026-11-21）。
   'test-town-plugin.mjs',
+  'test-town-decoupling.mjs',
+  // 相册镜像（2026-11-22）：id 白名单 / 魔数 / 不带头抓图 / 8MB 走缩略图 / 60 张与 120MB 双淘汰。
+  'test-town-album.mjs',
+  // 小镇近况一行（2026-11-22）：从 recall 抠今天那两句、24 小时过期不提、坏快照不炸。
+  'test-town-prompt-digest.mjs',
+  // 小镇近况同步回插件（2026-11-22）：只认主人私聊、同一会话不重复打、换会话加新摘旧、失败静默退避。
+  'test-town-chat-sync.mjs',
+  // 无令牌发送兜底（2026-11-22）：三条同时成立才放行 + MCP 不再把 token 当必填（接线级断言）。
+  'test-tokenless-guard.mjs',
   // 上线补历史消息（socialV2.history）：默认开、水位/去重/黑名单、桥接启动补看离线消息、
   // history 唤醒提示与快照标记（VM 夹具网关，不连真 QQ）。
   'test-history-catchup.mjs',
@@ -204,7 +225,7 @@ const tests = [
   // 平台启动开关：QQ/B站 各自「是否启动」的唯一真相 + 旧 bridge.autoStart 迁移
   // （2026-10-24 用户要求；只碰临时 DSH_HOME，不启停真实桥接）。
   'test-platform-start.mjs',
-  // B站 会话权限：workspace-write 在 %USERPROFILE% 起不了命令 → 自动切 danger-full-access。
+  // B站 会话权限：workspace-write 在 C:\Users\Mieksido 起不了命令 → 自动切 danger-full-access。
   'test-scheduler-permission.mjs',
   // B站生物钟会话归组：新会话 workspaceId，旧版无工作区服务才退回专用 cwd。
   'test-bili-workspace.mjs',
@@ -214,10 +235,15 @@ const tests = [
   'test-bili-reply-coordinates.mjs',
   // B站登录态守门：cookie 过期了别让生物钟继续空转（2026-11-20）。
   'test-bili-login-watch.mjs',
+  // 字幕「目录 + 命中窗口」：看视频不再把整篇字幕读进上下文（2026-11-21，A+D）。
+  'test-subs-digest.mjs',
   'test-token-economy.mjs', 'test-qq-model-view.mjs', 'test-qq-preset-contract.mjs',
   // 表情清单/消息快照改存独立文件 + 话题新鲜度（2026-11-16 主人要求）。
   'test-prompt-files.mjs',
-  'test-reply-wait.mjs', 'test-preset-prompt.mjs', 'test-role-card.mjs',
+  'test-reply-wait.mjs', 'test-reply-and-finish-send.mjs', 'test-preset-prompt.mjs', 'test-role-card.mjs',
+  // QQ 发送字段名（2026-11-22）：qq_reply_and_finish 单条路径发了 message（单数），桥接只读
+  // messages ⇒ 50 次「key 和 messages 不能为空」，模型只能拆两步发。上面那条钉子把两种工具、
+  // 三种入参形状锁死在同一个 messages 字段上（真数组 77 成功 / 数组字符串 14 成功是反证）。
   // 管理员身份（QQ ⇄ B站 同一个人）+「对管理员温柔 / 绝不回嘴」提示词：
   // 号码规范化、旧字段推导、保存冲突、QQ/B站 两份提示词（B站 不得带 QQ 号）；
   // 以及真实 bridge.js 源码里的接线（唤醒 / 角色提示 / 消息标记）。

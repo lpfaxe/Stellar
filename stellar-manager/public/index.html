@@ -262,7 +262,7 @@
     </details>
     <p class="muted small">这里放你懒得反复上传的东西（Word / Excel / PPT / PDF / 图片都行）。
       文件<b>不会被自动塞进她的上下文</b>——你用不着担心白花 token；只有你提到某个文件、或她要答复时，
-      她自己用 <code>stellar_file_list</code> 查名字、<code>stellar_file_read</code> 读那一份。单个文件最大 512 MB。</p>
+      她自己用 <code>stellar_file_list</code> 查名字、<code>stellar_file_read</code> 读那一份。</p>
   </section>
   <section class="card" id="bvCard" data-tab="her">
     <h2>今天刷的 B站视频 <span class="hint">她看了什么 · 封面和标题原样留在这里</span></h2>
@@ -326,97 +326,165 @@
   </section>
 
   <!-- ══ 记忆 ══ -->
-  <section class="card" id="memDbCard" data-tab="memory">
-    <h2>记忆库 <span class="hint">话题 · 重要 · 零碎 · 侧写</span></h2>
-    <div class="memdb-stats" id="mdbStats"></div>
-    <div class="memdb-meta" id="mdbMeta"><span class="muted">读取中…</span></div>
-    <div class="row wrap">
-      <button id="mdbRefresh" class="ghost small">刷新</button>
-      <button id="mdbSplit" class="ghost small">立即切分</button>
-      <button id="mdbReview" class="ghost small" title="把前天的条目交给模型判一遍：值得的升成重要，其余清掉">复核前天</button>
-      <span class="msg" id="mdbMsg"></span>
-    </div>
-    <p class="muted small" id="mdbNote">她说话和你说话都存进缓存；攒够了才切成「话题」。一个话题里有你说的话，也有她回的话。</p>
-  </section>
-  <section class="card" id="topicCard" data-tab="memory">
-    <h2>话题目录 <span class="hint">唤醒时她只看到目录，想知道细节才去翻</span></h2>
-    <div class="row wrap" id="tpOwners"></div>
-    <div class="row wrap">
-      <select id="tpTier" class="grow-lite">
-        <option value="">全部</option>
-        <option value="important">只看重要</option>
-        <option value="daily">只看日常</option>
-      </select>
-      <input id="tpSearch" class="grow" placeholder="搜标题 / 摘要">
-      <button id="tpSearchBtn" class="ghost small">搜索</button>
-      <button id="tpRefresh" class="ghost small">刷新</button>
-    </div>
-    <div id="tpList" class="memdb-list"><span class="muted">读取中…</span></div>
-    <div class="row pager">
-      <button id="tpPrev" class="ghost small">上一页</button>
-      <span id="tpPage" class="muted">-</span>
-      <button id="tpNext" class="ghost small">下一页</button>
-    </div>
-  </section>
-  <section class="card" id="fragCard" data-tab="memory">
-    <h2>零碎记忆 <span class="hint">单边的一句话 · 还没凑成话题</span></h2>
-    <div class="row wrap">
-      <span id="fgSummary" class="pill">—</span>
-      <button id="fgRefresh" class="ghost small">刷新</button>
-      <span class="msg" id="fgMsg"></span>
-    </div>
-    <div id="fgList" class="memdb-list"><span class="muted">读取中…</span></div>
-    <p class="muted small">零碎是「只有一方说的话」——比如她在群里自言自语、或你发完她还没回。攒够两小时后会自动降级成零碎，不再当成对话。</p>
-  </section>
-  <section class="card" id="factCard" data-tab="memory">
-    <h2>重要事实 <span class="hint">生日 / 忌口 / 联系方式 · 按人对号存，不按话题分类</span></h2>
-    <div class="row wrap">
-      <span id="ftSummary" class="pill">—</span>
-      <select id="ftOwnerFilter"><option value="">全部人</option></select>
-      <button id="ftRefresh" class="ghost small">刷新</button>
-      <span class="msg" id="ftMsg"></span>
-      <button id="ftToggle" class="ghost small">注入一条</button>
-    </div>
-    <div id="ftList" class="memdb-list"><span class="muted">读取中…</span></div>
-    <div id="ftForm" class="fold-body" hidden>
-      <h3 id="ftFormTitle">注入一条新事实</h3>
-      <div class="grid">
-        <label>是谁<select id="ftOwner"></select></label>
-        <label>类型<select id="ftKind"></select></label>
-        <label>标题<input id="ftLabel" placeholder="如 生日 / 不吃 / 手机号" maxlength="40"></label>
-        <label>隐私级<select id="ftPrivacy"></select></label>
-        <label>权重<input id="ftWeight" type="number" min="1" max="9" value="3"></label>
+  <section class="card memdb-workspace" id="memDbCard" data-tab="memory">
+    <div class="mdb-head">
+      <div class="mdb-title">
+        <h2>记忆</h2>
+        <p>她记得的事，以及她怎么理解这些人。唤醒时只带目录，细节按需翻。</p>
       </div>
-      <label class="block">内容<textarea id="ftText" rows="2" maxlength="400" placeholder="如 1月1日 / 香菜 / 138xxxx"></textarea></label>
-      <div class="row">
-        <button id="ftSave" class="primary">保存</button>
-        <button id="ftCancel" class="ghost">取消</button>
-        <span class="msg" id="ftFormMsg"></span>
+      <div class="mdb-actions">
+        <button id="mdbRefresh" class="ghost small">刷新</button>
+        <button id="mdbSplit" class="ghost small">立即切分</button>
+        <button id="mdbReview" class="ghost small" title="把前天的条目交给模型判一遍：值得的升成重要，其余清掉">复核前天</button>
+        <span class="msg" id="mdbMsg"></span>
       </div>
-      <p class="muted small">她的唤醒提示里会按「正在跟谁说话」挑着注入：private 只在这个人面前提，secret 只在本人私聊与这个面板可见，normal 群里也能用。同一个人 + 同一个标题会覆盖旧的，权重取更高。写完下一轮唤醒就生效。</p>
     </div>
-  </section>
-  <section class="card" id="zoneBiliCard" data-tab="memory">
-    <h2>B站记忆 <span class="hint">不按话题分类 · 她自己看完写的总结</span></h2>
-    <div class="row wrap">
-      <span id="zbSummary" class="pill">—</span>
-      <button id="zbRefresh" class="ghost small">刷新</button>
-      <button id="zbClear" class="ghost small">清空</button>
-      <span class="msg" id="zbMsg"></span>
+
+    <div class="mdb-stats" id="mdbStats"></div>
+
+    <nav class="mdb-tabs" id="mdbTabs" role="tablist" aria-label="记忆视图">
+      <button class="mdb-tab on" data-pane="overview" role="tab" aria-selected="true">概览</button>
+      <button class="mdb-tab" data-pane="topics" role="tab" aria-selected="false">话题</button>
+      <button class="mdb-tab" data-pane="pages" role="tab" aria-selected="false">记忆页</button>
+      <button class="mdb-tab" data-pane="frags" role="tab" aria-selected="false">零碎</button>
+      <button class="mdb-tab" data-pane="facts" role="tab" aria-selected="false">事实</button>
+      <button class="mdb-tab" data-pane="zones" role="tab" aria-selected="false">见闻</button>
+    </nav>
+
+    <div class="mdb-panes">
+      <div class="mdb-pane" id="mdbPane-overview" role="tabpanel">
+        <div class="mdb-section-head">
+          <div><b>记忆区</b><span>按来源分开；区域页不存正文，数字实时算</span></div>
+        </div>
+        <div class="mdb-regions" id="mdbRegions"><span class="muted">读取中…</span></div>
+        <div class="mdb-overview-grid">
+          <div class="mdb-block">
+            <div class="mdb-block-head"><b>整理状态</b><span>后台每 10 分钟检查一次，做梦在 06:30</span></div>
+            <div class="mdb-meta" id="mdbMeta"><span class="muted">读取中…</span></div>
+          </div>
+          <div class="mdb-block">
+            <div class="mdb-block-head"><b>记忆怎么长出来</b><span>原话永远留着</span></div>
+            <ol class="mdb-flow">
+              <li><b>缓存</b><span>聊天先原样进缓存，不马上总结</span></li>
+              <li><b>话题</b><span>攒够一段切成话题，标题先由代码截取</span></li>
+              <li><b>做梦</b><span>每天读原文，改标题、写记忆页、给零碎找出路</span></li>
+              <li><b>唤醒</b><span>只带人物侧写、重要事实、区域行和目录</span></li>
+            </ol>
+            <p class="muted small" id="mdbNote">她说话和你说话都存进缓存；攒够了才切成「话题」。一个话题里有你说的话，也有她回的话。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mdb-pane" id="mdbPane-topics" role="tabpanel" hidden>
+        <div class="mdb-section-head">
+          <div><b>话题</b><span>按时间倒序；点开看原文</span></div>
+          <button id="tpRefresh" class="ghost small">刷新</button>
+        </div>
+        <div class="mdb-toolbar">
+          <div class="mdb-chips" id="tpOwners"></div>
+          <div class="mdb-filters">
+            <select id="tpRegion" class="mdb-select" aria-label="按记忆区筛选">
+              <option value="">全部区域</option>
+            </select>
+            <select id="tpTier" aria-label="按层级筛选">
+              <option value="">全部层级</option>
+              <option value="important">只看重要</option>
+              <option value="daily">只看日常</option>
+            </select>
+            <input id="tpSearch" placeholder="搜标题 / 摘要">
+            <button id="tpSearchBtn" class="ghost small">搜索</button>
+          </div>
+        </div>
+        <div id="tpList" class="memdb-list"><span class="muted">读取中…</span></div>
+        <div class="row pager">
+          <button id="tpPrev" class="ghost small">上一页</button>
+          <span id="tpPage" class="muted">-</span>
+          <button id="tpNext" class="ghost small">下一页</button>
+        </div>
+      </div>
+
+      <div class="mdb-pane" id="mdbPane-pages" role="tabpanel" hidden>
+        <div class="mdb-section-head">
+          <div><b>记忆页</b><span>做梦整理出的结论：对一个人、一件事，她现在怎么看</span></div>
+          <span id="mdbPageCount" class="muted"></span>
+        </div>
+        <div id="mdbPages" class="memdb-list"><span class="muted">读取中…</span></div>
+      </div>
+
+      <div class="mdb-pane" id="mdbPane-frags" role="tabpanel" hidden>
+        <div class="mdb-section-head">
+          <div><b>零碎</b><span>单边的一句话，还没凑成话题；做梦会给它找出路</span></div>
+          <div class="mdb-actions">
+            <span id="fgSummary" class="pill">—</span>
+            <button id="fgRefresh" class="ghost small">刷新</button>
+            <span class="msg" id="fgMsg"></span>
+          </div>
+        </div>
+        <div id="fgList" class="memdb-list"><span class="muted">读取中…</span></div>
+        <p class="muted small">零碎是只有一方说的话。攒够两小时后会降级成零碎，不再当成对话；整理时会被升成事实、挂到某个话题，或先留几天。</p>
+      </div>
+
+      <div class="mdb-pane" id="mdbPane-facts" role="tabpanel" hidden>
+        <div class="mdb-section-head">
+          <div><b>重要事实</b><span>生日 / 忌口 / 联系方式，按人对号存，不按话题分类</span></div>
+          <div class="mdb-actions">
+            <span id="ftSummary" class="pill">—</span>
+            <select id="ftOwnerFilter"><option value="">全部人</option></select>
+            <button id="ftRefresh" class="ghost small">刷新</button>
+            <button id="ftToggle" class="ghost small">注入一条</button>
+            <span class="msg" id="ftMsg"></span>
+          </div>
+        </div>
+        <div id="ftList" class="memdb-list"><span class="muted">读取中…</span></div>
+        <div id="ftForm" class="fold-body" hidden>
+          <h3 id="ftFormTitle">注入一条新事实</h3>
+          <div class="grid">
+            <label>是谁<select id="ftOwner"></select></label>
+            <label>类型<select id="ftKind"></select></label>
+            <label>标题<input id="ftLabel" placeholder="如 生日 / 不吃 / 手机号" maxlength="40"></label>
+            <label>隐私级<select id="ftPrivacy"></select></label>
+            <label>权重<input id="ftWeight" type="number" min="1" max="9" value="3"></label>
+          </div>
+          <label class="block">内容<textarea id="ftText" rows="2" maxlength="400" placeholder="如 6月29日 / 香菜 / 138xxxx"></textarea></label>
+          <div class="row">
+            <button id="ftSave" class="primary">保存</button>
+            <button id="ftCancel" class="ghost">取消</button>
+            <span class="msg" id="ftFormMsg"></span>
+          </div>
+          <p class="muted small">唤醒时按「正在跟谁说话」挑着注入：private 只在这个人面前提，secret 只在本人私聊与这个面板可见，normal 群里也能用。同一个人 + 同一个标题会覆盖旧的，权重取更高。</p>
+        </div>
+      </div>
+
+      <div class="mdb-pane" id="mdbPane-zones" role="tabpanel" hidden>
+        <div class="mdb-zone-grid">
+          <div class="mdb-block">
+            <div class="mdb-block-head">
+              <div><b>B站</b><span>她刷完 B站 写的总结，不按话题分</span></div>
+              <div class="mdb-actions">
+                <span id="zbSummary" class="pill">—</span>
+                <button id="zbRefresh" class="ghost small">刷新</button>
+                <button id="zbClear" class="ghost small">清空</button>
+              </div>
+            </div>
+            <div id="zbList" class="memdb-list"><span class="muted">读取中…</span></div>
+            <div class="msg" id="zbMsg"></div>
+          </div>
+          <div class="mdb-block">
+            <div class="mdb-block-head">
+              <div><b>好友爱看</b><span>公开动态刷完的总结，不抄原文</span></div>
+              <div class="mdb-actions">
+                <span id="zqSummary" class="pill">—</span>
+                <button id="zqRefresh" class="ghost small">刷新</button>
+                <button id="zqClear" class="ghost small">清空</button>
+              </div>
+            </div>
+            <div id="zqList" class="memdb-list"><span class="muted">读取中…</span></div>
+            <div class="msg" id="zqMsg"></div>
+          </div>
+        </div>
+        <p class="muted small">删掉的会先导出到 memory-trash，能找回。见闻区不参与话题晋升。</p>
+      </div>
     </div>
-    <div id="zbList" class="memdb-list"><span class="muted">读取中…</span></div>
-    <p class="muted small">她每刷完一趟 B站 会往这里写一段（≤200 字），被问「今天在b站看了什么」时她先查这里。删掉的会先导出到 memory-trash。</p>
-  </section>
-  <section class="card" id="zoneQzoneCard" data-tab="memory">
-    <h2>好友爱看记忆 <span class="hint">不按话题分类 · 她刷公开动态后的总结</span></h2>
-    <div class="row wrap">
-      <span id="zqSummary" class="pill">—</span>
-      <button id="zqRefresh" class="ghost small">刷新</button>
-      <button id="zqClear" class="ghost small">清空</button>
-      <span class="msg" id="zqMsg"></span>
-    </div>
-    <div id="zqList" class="memdb-list"><span class="muted">读取中…</span></div>
-    <p class="muted small">每天看完「好友爱看」那一批，她写一段总结存这里（不抄原文、不写别人隐私）。被问「你今天刷到什么」时先查这里。</p>
   </section>
 
   <!-- ══ 运行 ══ -->
@@ -452,6 +520,27 @@
       <button id="taskResume" class="ghost">恢复运行</button>
       <button id="taskWake" class="primary">立即唤醒</button>
       <span class="msg" id="taskActMsg"></span>
+    </div>
+    <div class="power-box">
+      <div class="power-head"><b>夜间电源</b><span class="muted" id="powerState">读取中…</span></div>
+      <label class="switch power-switch" for="powerEnabled">
+        <input type="checkbox" id="powerEnabled">
+        <span class="cap-body">
+          <b class="cap-name">晚上让她睡，早上自己醒</b>
+          <small class="cap-desc">到点让整台电脑睡眠（不是只停机器人），早上按唤醒时间自动醒来。公网只读。</small>
+        </span>
+      </label>
+      <div class="power-form">
+        <label>睡眠时间<input type="time" id="powerSleepAt" value="23:50"></label>
+        <label>唤醒时间<input type="time" id="powerWakeAt" value="06:05"></label>
+        <label>方式<select id="powerMode"><option value="sleep">睡眠（快，推荐）</option><option value="hibernate">休眠（更省电）</option></select></label>
+        <div class="row wrap">
+          <button id="powerSave" class="primary">保存电源计划</button>
+          <button id="powerNow" class="ghost">现在睡眠</button>
+          <span class="msg" id="powerMsg"></span>
+        </div>
+      </div>
+      <p class="muted small" id="powerHint"></p>
     </div>
     <label class="block">以主人身份跟她说一句（最多 1500 字）
       <textarea id="taskText" rows="3" maxlength="1500" placeholder="例如：去空间看看我新发的说说，挑一条评论回一下"></textarea>
@@ -813,6 +902,7 @@
 <script src="/js/web-images.js"></script>
 <script src="/js/run-mode.js"></script>
 <script src="/js/task.js"></script>
+<script src="/js/power.js"></script>
 <script src="/js/approvals.js"></script>
 <script src="/js/capabilities.js"></script>
 <script src="/js/town.js"></script>

@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 夹具放系统临时目录，**不要**放仓库的 state/：harden-state-acl.mjs 会把 state/ 的
 // 继承 ACE 去掉（只留当前用户 / SYSTEM / Administrators），于是 DSH 沙箱的能力 SID
 // 不在 ACL 里，在沙箱内跑这个测试会直接 EPERM 建目录。
-const tmpHome = path.join(os.tmpdir(), 'stellar-setup-test-home');
+const tmpHome = path.join(os.tmpdir(), 'Stellar-setup-test-home');
 fs.rmSync(tmpHome, { recursive: true, force: true });
 fs.mkdirSync(path.join(tmpHome, 'profiles', 'web'), { recursive: true });
 fs.mkdirSync(path.join(tmpHome, 'plugins'), { recursive: true });
@@ -53,7 +53,7 @@ fs.symlinkSync(path.join(ROOT, 'plugins', 'stellar'), path.join(tmpHome, 'plugin
 function runSetup(label) {
   const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'setup-dsh.mjs'), 'web'], {
     // 保留最小 PATH（进程启动需要），但把 dsh CLI 排除在外 → 跳过自动 pnpm 安装那一步
-    env: { ...process.env, DSH_HOME: tmpHome, PATH: path.dirname(process.execPath) },
+    env: { ...process.env, DSH_HOME: tmpHome, PATH: path.dirname(process.execPath), QQ_BRIDGE_SKIP_DSH_INSTALL: '1' },
     encoding: 'utf8',
     cwd: ROOT,
   });
@@ -70,7 +70,7 @@ const finalPatch = fs.readFileSync(path.join(tmpHome, 'profiles', 'web', 'cordis
 
 // 断言 1：每个托管 id 恰好出现一次
 let failed = 0;
-for (const id of ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe']) {
+for (const id of ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-diagram']) {
   const n = finalPatch.split('\n').filter((l) => new RegExp(`^\\s*-\\s*id:\\s*${id}\\s*$`).test(l)).length;
   const ok = n === 1;
   if (!ok) failed += 1;

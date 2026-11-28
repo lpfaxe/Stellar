@@ -1,7 +1,7 @@
 /**
  * 记忆库（SQLite）：新记忆机制的存储层。
  *
- * 设计：CHANGELOG.md 表结构 / §4 模块一 / §5 模块二）
+ * 设计：docs/designs/2026-11-13-memory-refactor-design.md（§3 表结构 / §4 模块一 / §5 模块二）
  *
  * 边界（别越界）：
  *  · 只装「启用之后的新对话」。旧档案（memory-card*.jsonl / memory-inbox.jsonl /
@@ -13,10 +13,11 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { activeMemoryPaths } from './character-persona.js';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const DB_FILE_NAME = 'memory.db';
 
 const SCHEMA_FILE = new URL('./memory-db-schema.sql', import.meta.url);
@@ -51,6 +52,7 @@ export function openDb({ file } = {}) {
   // 老库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，schema 里加列必须在这里
   // 显式 ALTER 一次（sqlite 的 ADD COLUMN 不能带非常量默认值，所以默认值给字面量）。
   migrateColumns(db);
+  ensureRegions(db);
   try {
     db.prepare('INSERT INTO meta(k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run('schema_version', String(SCHEMA_VERSION));
     db.prepare('INSERT OR IGNORE INTO meta(k, v) VALUES (?, ?)').run('engine', 'memorydb-v1');
@@ -61,7 +63,22 @@ export function openDb({ file } = {}) {
 
 /** 给老库补上后来新增的列（幂等）。 */
 function migrateColumns(db) {
-  const want = [['topic', 'scope', "TEXT NOT NULL DEFAULT 'direct'"]];
+  const want = [
+    ['topic', 'scope', "TEXT NOT NULL DEFAULT 'direct'"],
+    ['topic', 'region_id', "TEXT NOT NULL DEFAULT ''"],
+    ['topic', 'subject_id', "TEXT NOT NULL DEFAULT ''"],
+    ['topic', 'title_source', "TEXT NOT NULL DEFAULT 'auto'"],
+    ['topic', 'dreamed_at', 'INTEGER NOT NULL DEFAULT 0'],
+    ['zone_note', 'region_id', "TEXT NOT NULL DEFAULT ''"],
+    ['zone_note', 'subject_id', "TEXT NOT NULL DEFAULT ''"],
+    ['fragment', 'region_id', "TEXT NOT NULL DEFAULT ''"],
+    ['fragment', 'subject_id', "TEXT NOT NULL DEFAULT ''"],
+    ['fragment', 'status', "TEXT NOT NULL DEFAULT 'inbox'"],
+    ['fragment', 'routed_to', "TEXT NOT NULL DEFAULT ''"],
+    ['fragment', 'resolved_at', 'INTEGER NOT NULL DEFAULT 0'],
+    ['fact', 'subject_id', "TEXT NOT NULL DEFAULT ''"],
+    ['profile', 'subject_id', "TEXT NOT NULL DEFAULT ''"],
+  ];
   for (const [table, column, type] of want) {
     try {
       const cols = db.prepare('PRAGMA table_info(' + table + ')').all();
@@ -383,11 +400,16 @@ export function insertTopic({ topic = {}, rows = [], db: conn } = {}) {
   }
   const now = Date.now();
   const summarize = String(topic.title || '').slice(0, 24) || '（未命名话题）';
+  const regionId = String(topic.regionId || regionForKey(conversationKey));
+  let subjectId = String(topic.subjectId || '');
+  if (!subjectId) {
+    try { const sub = ensureSubjectForOwner(ownerId, { db }); subjectId = sub ? String(sub.id) : ''; } catch {}
+  }
   db.exec('BEGIN');
   try {
     db.prepare(
-      'INSERT INTO topic (id, owner_id, conversation_key, day_key, title, summary, tier, importance, facets, sentiment, msg_count, started_at, ended_at, promoted_at, promote_reason, created_at, scope) '
-      + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO topic (id, owner_id, conversation_key, day_key, title, summary, tier, importance, facets, sentiment, msg_count, started_at, ended_at, promoted_at, promote_reason, created_at, scope, region_id, subject_id, title_source, dreamed_at) '
+      + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       id, ownerId, conversationKey, day, summarize,
       String(topic.summary || '').slice(0, 120),
@@ -399,6 +421,7 @@ export function insertTopic({ topic = {}, rows = [], db: conn } = {}) {
       tier === 'important' ? String(topic.promoteReason || 'score') : '',
       now,
       effectiveScope,
+      regionId, subjectId, 'auto', 0,
     );
     const stmt = db.prepare('INSERT INTO topic_msg (topic_id, seq, role, speaker_id, speaker_name, text, at) VALUES (?, ?, ?, ?, ?, ?, ?)');
     rows.forEach((row, index) => {
@@ -443,8 +466,16 @@ export function insertFragment({ ownerId, day, text, facet = '', weight = 1, top
   const db = conn || openDb();
   const body = String(text || '').slice(0, 120);
   if (!body) return { ok: false, reason: 'empty' };
-  const info = db.prepare('INSERT INTO fragment (owner_id, day_key, text, facet, weight, tier, topic_id, at, promoted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)')
-    .run(String(ownerId || 'unknown'), String(day || dayKey(at)), body, String(facet || ''), Math.max(1, Math.min(5, Number(weight) || 1)), 'daily', topicId ? String(topicId) : null, Number(at) || Date.now());
+  let regionId = '';
+  let subjectId = '';
+  try {
+    const d = subjectDescriptorForOwner(ownerId, { db });
+    regionId = d ? d.regionId : 'region_05';
+    const sub = ensureSubjectForOwner(ownerId, { db });
+    subjectId = sub ? String(sub.id) : '';
+  } catch { regionId = 'region_05'; }
+  const info = db.prepare('INSERT INTO fragment (owner_id, day_key, text, facet, weight, tier, topic_id, at, promoted_at, region_id, subject_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)')
+    .run(String(ownerId || 'unknown'), String(day || dayKey(at)), body, String(facet || ''), Math.max(1, Math.min(5, Number(weight) || 1)), 'daily', topicId ? String(topicId) : null, Number(at) || Date.now(), regionId, subjectId, 'inbox');
   const id = Number(info.lastInsertRowid);
   upsertSearchDoc({ refType: 'fragment', refId: String(id), ownerId, body, at, db });
   return { ok: true, id };
@@ -481,8 +512,8 @@ export function insertZoneNote({ zone, text, day, items = [], source = 'tool', a
     db.prepare('UPDATE zone_note SET at = ? WHERE id = ?').run(when, dup.id);
     return { ok: true, id: Number(dup.id), duplicated: true };
   }
-  const info = db.prepare('INSERT INTO zone_note (zone, owner_id, day_key, text, items, source, at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(z, 'self', dayKeyText, body, itemsJson, String(source || 'tool'), when);
+  const info = db.prepare('INSERT INTO zone_note (zone, owner_id, day_key, text, items, source, at, region_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(z, 'self', dayKeyText, body, itemsJson, String(source || 'tool'), when, regionForZone(z));
   return { ok: true, id: Number(info.lastInsertRowid), duplicated: false };
 }
 
@@ -688,17 +719,24 @@ export function soloGroupTopicIds(ownerQQ, { db: conn } = {}) {
 
 /** 目录：当前对象的话题标题（important 优先，再按结束时间倒序）。
  *  私聊时额外带上「人类参与者只有她+主人」的群话题（行上标 viaGroup=true）。 */
-export function catalog({ ownerId, limit = 20, db: conn } = {}) {
+export function catalog({ ownerId, limit = 20, regionId = '', subjectId = '', db: conn } = {}) {
   const db = conn || openDb();
   const n = Math.max(1, Math.min(50, Number(limit) || 20));
   const who = String(ownerId || '');
+  const rid = String(regionId || '').trim();
+  const sid = String(subjectId || '').trim();
   // 私聊视角额外放行「只跟她+主人说话」的群话题（2026-11-22 主人要求），群里视角不受影响。
   const soloIds = soloGroupTopicIds(who, { db });
   const soloSql = soloIds.length ? ' OR id IN (' + soloIds.map(() => '?').join(',') + ')' : '';
+  const extraWhere = [];
+  const extraArgs = [];
+  if (rid) { extraWhere.push("COALESCE(NULLIF(region_id, ''), 'region_05') = ?"); extraArgs.push(rid); }
+  if (sid) { extraWhere.push('subject_id = ?'); extraArgs.push(sid); }
+  const extraSql = extraWhere.length ? ' AND ' + extraWhere.join(' AND ') : '';
   const rows = db.prepare(
-    "SELECT id, title, tier, importance, ended_at, day_key, scope, conversation_key FROM topic WHERE owner_id = ?" + soloSql + ' '
+    "SELECT id, title, tier, importance, ended_at, day_key, scope, conversation_key, region_id, subject_id, title_source, dreamed_at FROM topic WHERE owner_id = ?" + soloSql + extraSql + ' '
     + "ORDER BY (tier = 'important') DESC, ended_at DESC LIMIT ?",
-  ).all(who, ...soloIds, n);
+  ).all(who, ...soloIds, ...extraArgs, n);
   // 参与者一次批量捞（每条各查一次 SQL 会在目录重建时放大成 N 次磁盘读）。
   const ids = rows.map((r) => String(r.id));
   const pMap = new Map();
@@ -727,15 +765,28 @@ export function catalog({ ownerId, limit = 20, db: conn } = {}) {
   if (String(ownerId || '').startsWith('group:')) {
     try { roster = groupRoster(ownerId, { db, limit: 12 }); } catch {}
   }
-  return { ownerId: String(ownerId || ''), roster, rows: withPeople, fragments: Number(fragRow && fragRow.n ? fragRow.n : 0), persona: profile ? String(profile.persona || '') : '', zones, facts };
+  let regions = [];
+  let regionLine = '';
+  let subjects = [];
+  let pages = [];
+  let subject = null;
+  try { regions = regionStats({ db }); regionLine = formatRegionLine({ db }); } catch {}
+  if (rid) { try { subjects = listSubjects({ regionId: rid, db: conn, limit: 20 }); } catch {} }
+  try {
+    subject = subjectForOwner(ownerId, { db });
+    if (subject) pages = listPages({ subjectId: subject.id, db: conn, limit: 5 });
+    else if (sid) pages = listPages({ subjectId: sid, db: conn, limit: 5 });
+  } catch {}
+  return { ownerId: String(ownerId || ''), roster, rows: withPeople, fragments: Number(fragRow && fragRow.n ? fragRow.n : 0), persona: profile ? String(profile.persona || '') : '', zones, facts, regions, regionLine, subjects, pages, subject };
 }
 
 /** 目录渲染成注入块（目标 ≈450 字符，只给标题，不给正文）。 */
-export function formatCatalogForModel(data, { titles = 8, maxChars = 600, ownerQQ = '', selfId = '' } = {}) {
+export function formatCatalogForModel(data, { titles = 8, maxChars = 600, ownerQQ = '', selfId = '', regionNames = false } = {}) {
   if (!data) return '';
   const list = (data.rows || []).slice(0, Math.max(1, Math.min(20, Number(titles) || 8)));
   const lines = [];
   if (data.persona) lines.push('［侧写］' + data.persona);
+  if (regionNames && data.regionLine) lines.push(data.regionLine);
   // 群名册：先给「这些人是谁」，再给话题。否则她读到时不知道谁是主人、谁刚才说过话。
   if (Array.isArray(data.roster) && data.roster.length) {
     lines.push('［群里的人］' + formatParticipants(data.roster, { selfId, ownerQQ, max: 10 }) + '（括号里是 QQ 号；同名不同人靠号区分）');
@@ -756,6 +807,9 @@ export function formatCatalogForModel(data, { titles = 8, maxChars = 600, ownerQ
       lines.push('· ' + row.id + ' ' + row.title + '  (' + when + ')' + mark + via + people + amb);
     }
     if (data.fragments > 0) lines.push('· 另有 ' + data.fragments + ' 条零碎记忆（爱好/雷区/习惯），想找用 stellar_memory_search');
+    if (Array.isArray(data.pages) && data.pages.length) {
+      lines.push('［关于' + (data.subject && data.subject.name ? data.subject.name : '最近这个人/这件事') + '］' + data.pages.slice(0, 3).map((p) => p.title + '(v' + (Number(p.version) || 1) + ')').join(' / '));
+    }
     // 按人分类（2026-11-13 主人的要求）：先确认问的是谁的事，再决定查谁。
     // 不加这句时她会拿当前对话对象的记忆去答别人的问题（或反过来把别人的事当自己的）。
     const inGroup = String(data.ownerId || '').startsWith('group:');
@@ -985,9 +1039,14 @@ export function pruneWindow({ targetDay, trashDir, db: conn } = {}) {
   const db = conn || openDb();
   const day = String(targetDay || '');
   if (!day) return { ok: false, reason: 'targetDay required' };
-  const topics = db.prepare("SELECT * FROM topic WHERE day_key <= ? AND tier = 'daily'").all(day);
-  const frags = db.prepare("SELECT * FROM fragment WHERE day_key <= ? AND tier = 'daily'").all(day);
-  const caches = db.prepare('SELECT * FROM cache_msg WHERE day_key <= ? AND keep = 0').all(day);
+  // 3B：daily 话题只有「已经做过梦」或「超过 7 天没做成梦」才删；没做梦就留着等下一天补，
+  // 否则一次模型故障会把原话删掉（做梦必须读得到原文）。零碎只删已归档的（收件箱 7 天→deferred 30 天→archived）。
+  const cutoffAt = Date.parse(day + 'T00:00:00');
+  const cutoff = dayKey((Number.isFinite(cutoffAt) ? cutoffAt : Date.now()) - 7 * 86400000);
+  const topics = db.prepare("SELECT * FROM topic WHERE day_key <= ? AND tier = 'daily' AND (dreamed_at > 0 OR day_key < ?)").all(day, cutoff);
+  const frags = db.prepare("SELECT * FROM fragment WHERE day_key <= ? AND COALESCE(status, '') = 'archived'").all(day);
+  const cacheSql = 'SELECT * FROM cache_msg c WHERE c.day_key <= ? AND c.keep = 0 AND NOT EXISTS (SELECT 1 FROM topic t WHERE t.day_key = c.day_key AND t.owner_id = c.owner_id AND t.tier = \'daily\' AND COALESCE(t.dreamed_at, 0) = 0)';
+  const caches = db.prepare(cacheSql).all(day);
   const dir = trashDir || path.join(path.dirname(resolveDbFile()), 'memory-trash');
   let exported = '';
   try {
@@ -1014,7 +1073,7 @@ export function pruneWindow({ targetDay, trashDir, db: conn } = {}) {
       db.prepare("DELETE FROM search_doc WHERE ref_type = 'fragment' AND ref_id = ?").run(String(f.id));
       db.prepare('DELETE FROM fragment WHERE id = ?').run(f.id);
     }
-    const delCache = db.prepare('DELETE FROM cache_msg WHERE day_key <= ? AND keep = 0').run(day);
+    const delCache = db.prepare('DELETE FROM cache_msg WHERE day_key <= ? AND keep = 0 AND NOT EXISTS (SELECT 1 FROM topic t WHERE t.day_key = cache_msg.day_key AND t.owner_id = cache_msg.owner_id AND t.tier = \'daily\' AND COALESCE(t.dreamed_at, 0) = 0)').run(day);
     db.exec('COMMIT');
     return { ok: true, day, deleted: { topics: topics.length, fragments: frags.length, cache: Number(delCache.changes || 0) }, promoted: 0, exported };
   } catch (error) {
@@ -1115,9 +1174,9 @@ export function upsertFact(entry = {}) {
  * 把 QQ 通讯录里的「备注名」写成事实（2026-11-22 加）。
  *
  * 为什么需要：库里的人名只取消息事件里的 speaker_name（私聊是「私聊」占位、群里是群名片），
- * 主人给谁起的备注从来没进过库 —— 主人问「为什么没有示例好友的记忆」，一半原因就在这：
+ * 主人给谁起的备注从来没进过库 —— 主人问「为什么没有小土豆的记忆」，一半原因就在这：
  * 他确实进过库（11-15 有两个双方话题），随后被 11-13…11-19 那批批量删除抹掉；
- * 而「示例好友」这个称呼从头到尾只活在 state/friends.json 的 remark 里。
+ * 而「小土豆」这个称呼从头到尾只活在 state/friends.json 的 remark 里。
  *
  * 幂等：upsertFact 按 owner+kind+label 去重，每天跑一次只是刷新文本。
  * label 用「备注名」而不是「称呼」：后者是聊天里「叫我 X 就行」抽出来的，别互相覆盖。
@@ -1289,4 +1348,346 @@ export function formatFactLine(f) {
   if (!f) return '';
   const when = new Date(Number(f.updatedAt) || Number(f.at) || Date.now()).toLocaleDateString('zh-CN');
   return '#' + f.id + ' [' + (f.kindLabel || '其它') + '] ' + f.text + '（' + (f.privacyLabel || '') + '，权重 ' + f.weight + '，' + when + '，' + (f.source || '') + '）';
+}
+
+
+// ── 记忆分区 / 主体 / 主体页（2026-11-27）──────────────────────────────
+// 设计：区域是书架（region_01..05），主体是书（memory_subject），主体页是「关于这个人/这件事
+// 我现在怎么看」的结论页（memory_page）。区域页不存正文：listRegions() 实时从 topic/zone_note
+// 统计出来即可。旧数据回填走 backfillMemoryRegions({dryRun})，推不出区的落 region_05。
+
+export const REGIONS = Object.freeze([
+  { code: 'region_01', name: 'QQ聊天', description: 'QQ 私聊与群聊里发生过的事', sort: 1 },
+  { code: 'region_02', name: '好友爱看', description: 'QQ 空间好友爱看里刷到的内容', sort: 2 },
+  { code: 'region_03', name: 'B站', description: 'B站视频、评论、动态里看到的内容', sort: 3 },
+  { code: 'region_04', name: '小镇', description: '鱼缸小镇里发生的事', sort: 4 },
+  { code: 'region_05', name: '未归类', description: '暂时推不出属于哪个区的旧记忆', sort: 5 },
+]);
+export const REGION_CODES = Object.freeze(REGIONS.map((r) => r.code));
+export const REGION_NAMES = Object.freeze(Object.fromEntries(REGIONS.map((r) => [r.code, r.name])));
+export const SUBJECT_KINDS = Object.freeze(['user', 'group', 'friend', 'up', 'place', 'self', 'unknown']);
+export const FRAGMENT_STATUS = Object.freeze(['inbox', 'deferred', 'routed', 'promoted', 'archived']);
+
+function regionName(code) { return REGION_NAMES[String(code || '')] || String(code || '未归类'); }
+
+/** 建区（幂等）。新库打开即种；老库打开也补。 */
+export function ensureRegions(db) {
+  const conn = db || openDb();
+  const now = Date.now();
+  for (const r of REGIONS) {
+    conn.prepare('INSERT OR IGNORE INTO memory_region (code, name, description, sort, enabled, created_at) VALUES (?, ?, ?, ?, 1, ?)')
+      .run(r.code, r.name, r.description, r.sort, now);
+  }
+  return REGIONS.length;
+}
+
+export function regionForKey(conversationKey) {
+  const k = String(conversationKey || '');
+  if (k.startsWith('private:') || k.startsWith('group:') || k.startsWith('owner:')) return 'region_01';
+  if (k.startsWith('bili:')) return 'region_03';
+  if (k.startsWith('qzone:') || k.startsWith('friend:') || k.startsWith('friends:')) return 'region_02';
+  if (k.startsWith('town:')) return 'region_04';
+  return 'region_05';
+}
+
+export function regionForZone(zone) {
+  const z = String(zone || '').toLowerCase();
+  if (z === 'bili') return 'region_03';
+  if (z === 'qzone' || z === 'friends' || z === 'friend') return 'region_02';
+  if (z === 'town') return 'region_04';
+  return 'region_05';
+}
+
+function subjectIdOf(regionId, kind, externalId) {
+  const raw = String(regionId || '') + '|' + String(kind || '') + '|' + String(externalId || '');
+  return 'su_' + crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16);
+}
+
+/** 从 owner_id 推出主体（不写库）。私聊=user:<QQ>，群=group:<群号>，owner: 前缀按 user。 */
+export function subjectDescriptorForOwner(ownerId, { db: conn } = {}) {
+  const db = conn || openDb();
+  const raw = String(ownerId || '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('group:')) {
+    const id = raw.slice(6);
+    return { regionId: 'region_01', kind: 'group', externalId: id, name: '群 ' + id, privacy: 'normal' };
+  }
+  if (raw.startsWith('owner:')) {
+    const id = raw.slice(6);
+    return { regionId: 'region_01', kind: 'user', externalId: id, name: 'QQ ' + id, privacy: 'private' };
+  }
+  if (/^\d{5,12}$/.test(raw)) {
+    let name = '';
+    try {
+      const row = db.prepare('SELECT name FROM topic_participant WHERE qq = ? AND name <> ? ORDER BY msgs DESC LIMIT 1').get(raw, '');
+      name = String(row && row.name ? row.name : '');
+    } catch {}
+    return { regionId: 'region_01', kind: 'user', externalId: raw, name: name || ('QQ ' + raw), privacy: 'private' };
+  }
+  if (raw === 'self') return { regionId: 'region_01', kind: 'self', externalId: 'self', name: '她自己', privacy: 'normal' };
+  return { regionId: 'region_05', kind: 'unknown', externalId: raw, name: raw, privacy: 'normal' };
+}
+
+/** 建/更新主体（幂等）。返回主体行。 */
+export function ensureSubject({ regionId = 'region_05', kind = 'unknown', externalId = '', name = '', aliases = [], privacy = 'normal', db: conn } = {}) {
+  const db = conn || openDb();
+  const rid = REGION_CODES.includes(String(regionId)) ? String(regionId) : 'region_05';
+  const k = SUBJECT_KINDS.includes(String(kind)) ? String(kind) : 'unknown';
+  const ext = String(externalId || '');
+  const id = subjectIdOf(rid, k, ext);
+  const now = Date.now();
+  const aliasText = JSON.stringify(Array.isArray(aliases) ? aliases.filter(Boolean).slice(0, 12) : []);
+  const priv = ['normal', 'private', 'secret'].includes(String(privacy)) ? String(privacy) : 'normal';
+  db.prepare(
+    'INSERT INTO memory_subject (id, region_id, kind, external_id, name, aliases, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+    + 'ON CONFLICT(region_id, kind, external_id) DO UPDATE SET name = CASE WHEN excluded.name <> \'\' THEN excluded.name ELSE memory_subject.name END, '
+    + 'aliases = CASE WHEN excluded.aliases <> \'[]\' THEN excluded.aliases ELSE memory_subject.aliases END, '
+    + 'privacy = excluded.privacy, updated_at = excluded.updated_at',
+  ).run(id, rid, k, ext, String(name || ''), aliasText, priv, now, now);
+  return db.prepare('SELECT * FROM memory_subject WHERE id = ?').get(id) || null;
+}
+
+/** 按 owner 找主体（会读，不会写）；没有就返回 null。 */
+export function subjectForOwner(ownerId, { db: conn } = {}) {
+  const db = conn || openDb();
+  const d = subjectDescriptorForOwner(ownerId, { db });
+  if (!d) return null;
+  return db.prepare('SELECT * FROM memory_subject WHERE region_id = ? AND kind = ? AND external_id = ?')
+    .get(d.regionId, d.kind, d.externalId) || null;
+}
+
+/** 按 owner 建主体（回填/写入用）。 */
+export function ensureSubjectForOwner(ownerId, { db: conn } = {}) {
+  const db = conn || openDb();
+  const d = subjectDescriptorForOwner(ownerId, { db });
+  if (!d) return null;
+  return ensureSubject({ ...d, db });
+}
+
+export function listRegions({ db: conn } = {}) {
+  const db = conn || openDb();
+  return db.prepare('SELECT code, name, description, sort, enabled FROM memory_region ORDER BY sort, code').all();
+}
+
+/** 区域统计：给区域页/唤醒一行用，不存正文。 */
+export function regionStats({ db: conn } = {}) {
+  const db = conn || openDb();
+  const out = new Map();
+  for (const r of REGIONS) out.set(r.code, { code: r.code, name: r.name, topics: 0, subjects: 0, notes: 0, pages: 0 });
+  const bump = (code, key, n) => {
+    const hit = out.get(String(code || 'region_05')) || out.get('region_05');
+    hit[key] = Number(hit[key] || 0) + Number(n || 0);
+  };
+  try {
+    for (const row of db.prepare("SELECT COALESCE(NULLIF(region_id, ''), 'region_05') AS code, COUNT(*) AS n FROM topic GROUP BY code").all()) bump(row.code, 'topics', row.n);
+    for (const row of db.prepare("SELECT COALESCE(NULLIF(region_id, ''), 'region_05') AS code, COUNT(*) AS n FROM memory_subject GROUP BY code").all()) bump(row.code, 'subjects', row.n);
+    for (const row of db.prepare("SELECT COALESCE(NULLIF(region_id, ''), 'region_05') AS code, COUNT(*) AS n FROM zone_note GROUP BY code").all()) bump(row.code, 'notes', row.n);
+    for (const row of db.prepare("SELECT COALESCE(NULLIF(region_id, ''), 'region_05') AS code, COUNT(*) AS n FROM memory_page GROUP BY code").all()) bump(row.code, 'pages', row.n);
+  } catch {}
+  return [...out.values()];
+}
+
+/** 唤醒用的一行区域摘要（≤90 字）：只给有内容的区，不把未归类空区塞进去。 */
+export function formatRegionLine({ db: conn, maxChars = 90 } = {}) {
+  const db = conn || openDb();
+  const parts = [];
+  for (const r of regionStats({ db })) {
+    const total = Number(r.topics || 0) + Number(r.notes || 0) + Number(r.pages || 0);
+    if (!total) continue;
+    if (r.code === 'region_01') parts.push(r.name + ' ' + Number(r.topics || 0) + ' 话题/' + Number(r.subjects || 0) + ' 人');
+    else if (r.notes) parts.push(r.name + ' ' + Number(r.notes || 0) + ' 条');
+    else parts.push(r.name + ' ' + total + ' 条');
+  }
+  if (!parts.length) return '';
+  let text = '［记忆区］' + parts.join(' · ');
+  if (text.length > Number(maxChars)) text = text.slice(0, Number(maxChars) - 1) + '…';
+  return text;
+}
+
+export function listSubjects({ regionId = '', db: conn, limit = 50 } = {}) {
+  const db = conn || openDb();
+  const rid = String(regionId || '').trim();
+  const n = Math.max(1, Math.min(200, Number(limit) || 50));
+  const rows = rid
+    ? db.prepare('SELECT s.*, (SELECT COUNT(*) FROM topic t WHERE t.subject_id = s.id) AS topic_count FROM memory_subject s WHERE s.region_id = ? ORDER BY s.updated_at DESC LIMIT ?').all(rid, n)
+    : db.prepare('SELECT s.*, (SELECT COUNT(*) FROM topic t WHERE t.subject_id = s.id) AS topic_count FROM memory_subject s ORDER BY s.updated_at DESC LIMIT ?').all(n);
+  return rows.map((r) => ({ ...r, aliases: (() => { try { const v = JSON.parse(r.aliases || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })() }));
+}
+
+export function getSubject(subjectId, { db: conn } = {}) {
+  const db = conn || openDb();
+  return db.prepare('SELECT * FROM memory_subject WHERE id = ?').get(String(subjectId || '')) || null;
+}
+
+export function listPages({ regionId = '', subjectId = '', db: conn, limit = 30 } = {}) {
+  const db = conn || openDb();
+  const n = Math.max(1, Math.min(100, Number(limit) || 30));
+  let rows;
+  if (subjectId) rows = db.prepare('SELECT * FROM memory_page WHERE subject_id = ? ORDER BY updated_at DESC LIMIT ?').all(String(subjectId), n);
+  else if (regionId) rows = db.prepare('SELECT * FROM memory_page WHERE region_id = ? ORDER BY updated_at DESC LIMIT ?').all(String(regionId), n);
+  else rows = db.prepare('SELECT * FROM memory_page ORDER BY updated_at DESC LIMIT ?').all(n);
+  return rows.map((r) => ({ ...r, links: (() => { try { const v = JSON.parse(r.links || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })(), sources: (() => { try { const v = JSON.parse(r.sources || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })() }));
+}
+
+export function getPage(pageId, { db: conn } = {}) {
+  const db = conn || openDb();
+  const row = db.prepare('SELECT * FROM memory_page WHERE id = ?').get(String(pageId || ''));
+  if (!row) return null;
+  return { ...row, links: (() => { try { const v = JSON.parse(row.links || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })(), sources: (() => { try { const v = JSON.parse(row.sources || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })() };
+}
+
+export function pageHistory(pageId, { db: conn, limit = 20 } = {}) {
+  const db = conn || openDb();
+  return db.prepare('SELECT * FROM memory_page_history WHERE page_id = ? ORDER BY version DESC LIMIT ?').all(String(pageId || ''), Math.max(1, Math.min(100, Number(limit) || 20)));
+}
+
+/**
+ * 写/更新主体页。id 由 subject + title 决定；同标题再写就是新版本。
+ * 硬规则：没有 sources（话题 id）不写；privacy 默认继承主体；manual 版不覆盖。
+ */
+export function upsertPage({ subjectId, title, body, links = [], sources = [], privacy = '', reason = '', updatedBy = 'dream', db: conn } = {}) {
+  const db = conn || openDb();
+  const subject = getSubject(subjectId, { db });
+  if (!subject) return { ok: false, reason: 'subject-not-found' };
+  const t = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const b = String(body || '').trim().slice(0, 1200);
+  if (!t || !b) return { ok: false, reason: 'empty' };
+  const src = Array.isArray(sources) ? sources.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 30) : [];
+  if (!src.length) return { ok: false, reason: 'no-sources' };
+  const priv = ['normal', 'private', 'secret'].includes(String(privacy)) ? String(privacy) : String(subject.privacy || 'normal');
+  const now = Date.now();
+  const existing = db.prepare('SELECT * FROM memory_page WHERE subject_id = ? AND title = ?').get(String(subject.id), t);
+  const id = existing ? String(existing.id) : ('pg_' + crypto.createHash('sha1').update(String(subject.id) + '|' + t).digest('hex').slice(0, 16));
+  const version = existing ? Math.max(1, Number(existing.version) || 1) + 1 : 1;
+  const linksText = JSON.stringify(Array.isArray(links) ? links.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 20) : []);
+  const sourceText = JSON.stringify(src);
+  if (existing) {
+    db.prepare('INSERT INTO memory_page_history (page_id, version, title, body, links, sources, privacy, reason, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, Number(existing.version) || 1, existing.title, existing.body, existing.links, existing.sources, existing.privacy, String(reason || 'update').slice(0, 80), now);
+    db.prepare('UPDATE memory_page SET title = ?, body = ?, links = ?, sources = ?, privacy = ?, version = ?, updated_at = ?, updated_by = ? WHERE id = ?')
+      .run(t, b, linksText, sourceText, priv, version, now, String(updatedBy || 'dream'), id);
+  } else {
+    db.prepare('INSERT INTO memory_page (id, region_id, subject_id, title, body, links, sources, privacy, version, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)')
+      .run(id, String(subject.region_id), String(subject.id), t, b, linksText, sourceText, priv, now, now, String(updatedBy || 'dream'));
+  }
+  try {
+    db.prepare('DELETE FROM search_doc WHERE ref_type = ? AND ref_id = ?').run('page', id);
+    upsertSearchDoc({ refType: 'page', refId: id, ownerId: String(subject.external_id || subject.id), body: t + ' ' + b, at: now, db });
+  } catch {}
+  return { ok: true, id, version, title: t, privacy: priv };
+}
+
+/** 改话题标题：manual > dream > auto。review 仍算 auto 级（不阻止以后做梦再改）。 */
+export function updateTopicTitle({ topicId, title, summary = '', source = 'dream', reason = '', db: conn } = {}) {
+  const db = conn || openDb();
+  const id = String(topicId || '');
+  const row = db.prepare('SELECT id, title, title_source FROM topic WHERE id = ?').get(id);
+  if (!row) return { ok: false, reason: 'topic-not-found' };
+  const cur = String(row.title_source || 'auto');
+  const next = String(source || 'dream');
+  if (cur === 'manual' && next !== 'manual') return { ok: false, reason: 'manual-locked' };
+  if (cur === 'dream' && next !== 'manual') return { ok: false, reason: 'dream-newer' };
+  const t = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+  const s = String(summary || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!t && !s) return { ok: false, reason: 'empty' };
+  db.prepare('INSERT INTO memory_title_history (topic_id, old_title, new_title, source, reason, at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, String(row.title || ''), t || String(row.title || ''), next, String(reason || '').slice(0, 80), Date.now());
+  db.prepare('UPDATE topic SET title = CASE WHEN ? <> \'\' THEN ? ELSE title END, summary = CASE WHEN ? <> \'\' THEN ? ELSE summary END, title_source = ? WHERE id = ?')
+    .run(t, t, s, s, next, id);
+  return { ok: true, id, title: t || String(row.title || ''), source: next };
+}
+
+export function formatPageForModel(page, { maxChars = 2400 } = {}) {
+  if (!page) return '没有这一页。';
+  const lines = [];
+  lines.push('［' + regionName(page.region_id) + '·' + String(page.title || '') + '］v' + (Number(page.version) || 1) + '（' + String(page.updated_by || 'dream') + ' 整理）');
+  if (page.links && page.links.length) lines.push('相关：' + page.links.join(' / '));
+  if (page.sources && page.sources.length) lines.push('来源：' + page.sources.slice(0, 12).join(' / '));
+  lines.push('');
+  let body = String(page.body || '');
+  if (body.length > Number(maxChars)) body = body.slice(0, Number(maxChars)) + '…';
+  lines.push(body);
+  return lines.join('\n');
+}
+
+/**
+ * 回填分区/主体/零碎状态。默认 dry-run 只统计；写入时先算再改，幂等。
+ * 推不出区的落 region_05；主体推不出就不建（不丢原数据）。
+ */
+export function backfillMemoryRegions({ db: conn, dryRun = true, force = false } = {}) {
+  const db = conn || openDb();
+  ensureRegions(db);
+  if (!dryRun && !force) {
+    const done = db.prepare("SELECT v FROM meta WHERE k = 'regions_backfilled'").get();
+    if (done && String(done.v) === '1') return { ok: true, already: true, dryRun: false };
+  }
+  const topics = db.prepare("SELECT id, owner_id, conversation_key, COALESCE(region_id, '') AS region_id, COALESCE(subject_id, '') AS subject_id FROM topic").all();
+  const zones = db.prepare("SELECT id, zone, COALESCE(region_id, '') AS region_id FROM zone_note").all();
+  const frags = db.prepare("SELECT id, owner_id, COALESCE(region_id, '') AS region_id, COALESCE(subject_id, '') AS subject_id, COALESCE(status, '') AS status FROM fragment").all();
+  const facts = db.prepare("SELECT id, owner_id, COALESCE(subject_id, '') AS subject_id FROM fact").all();
+  const profiles = db.prepare("SELECT owner_id, COALESCE(subject_id, '') AS subject_id FROM profile").all();
+  const out = { ok: true, dryRun: Boolean(dryRun), topics: 0, zones: 0, fragments: 0, facts: 0, profiles: 0, subjects: 0, unclassified: 0 };
+  const subjectCache = new Map();
+  const subjectFor = (ownerId) => {
+    const key = String(ownerId || '');
+    if (subjectCache.has(key)) return subjectCache.get(key);
+    const d = subjectDescriptorForOwner(key, { db });
+    if (!d) { subjectCache.set(key, null); return null; }
+    if (dryRun) { subjectCache.set(key, 'dry-' + d.regionId + '|' + d.kind + '|' + d.externalId); return subjectCache.get(key); }
+    const s = ensureSubject({ ...d, db });
+    if (s) out.subjects += 1;
+    subjectCache.set(key, s ? s.id : null);
+    return subjectCache.get(key);
+  };
+  const plan = [];
+  for (const t of topics) {
+    const rid = String(t.region_id || '') || regionForKey(t.conversation_key);
+    const sid = String(t.subject_id || '') || (subjectFor(t.owner_id) || '');
+    if (!t.region_id || !t.subject_id) plan.push({ kind: 'topic', id: t.id, rid, sid });
+    if (rid === 'region_05') out.unclassified += 1;
+  }
+  for (const z of zones) {
+    const rid = String(z.region_id || '') || regionForZone(z.zone);
+    if (!z.region_id) plan.push({ kind: 'zone_note', id: z.id, rid, sid: '' });
+    if (rid === 'region_05') out.unclassified += 1;
+  }
+  for (const fr of frags) {
+    const rid = String(fr.region_id || '') || (subjectDescriptorForOwner(fr.owner_id, { db })?.regionId || 'region_05');
+    const sid = String(fr.subject_id || '') || (subjectFor(fr.owner_id) || '');
+    const status = String(fr.status || '') || 'inbox';
+    if (!fr.region_id || !fr.subject_id || !fr.status) plan.push({ kind: 'fragment', id: fr.id, rid, sid, status });
+    if (rid === 'region_05') out.unclassified += 1;
+  }
+  for (const fa of facts) {
+    if (fa.subject_id) continue;
+    const sid = subjectFor(fa.owner_id) || '';
+    if (sid) plan.push({ kind: 'fact', id: fa.id, sid });
+  }
+  for (const p of profiles) {
+    if (p.subject_id) continue;
+    const sid = subjectFor(p.owner_id) || '';
+    if (sid) plan.push({ kind: 'profile', id: p.owner_id, sid });
+  }
+  out.topics = plan.filter((x) => x.kind === 'topic').length;
+  out.zones = plan.filter((x) => x.kind === 'zone_note').length;
+  out.fragments = plan.filter((x) => x.kind === 'fragment').length;
+  out.facts = plan.filter((x) => x.kind === 'fact').length;
+  out.profiles = plan.filter((x) => x.kind === 'profile').length;
+  if (dryRun) return out;
+  db.exec('BEGIN');
+  try {
+    for (const x of plan) {
+      if (x.kind === 'topic') db.prepare('UPDATE topic SET region_id = ?, subject_id = ? WHERE id = ?').run(x.rid, x.sid, x.id);
+      else if (x.kind === 'zone_note') db.prepare('UPDATE zone_note SET region_id = ? WHERE id = ?').run(x.rid, x.id);
+      else if (x.kind === 'fragment') db.prepare('UPDATE fragment SET region_id = ?, subject_id = ?, status = ? WHERE id = ?').run(x.rid, x.sid, x.status, x.id);
+      else if (x.kind === 'fact') db.prepare('UPDATE fact SET subject_id = ? WHERE id = ?').run(x.sid, x.id);
+      else if (x.kind === 'profile') db.prepare('UPDATE profile SET subject_id = ? WHERE owner_id = ?').run(x.sid, x.id);
+    }
+    db.prepare("INSERT INTO meta (k, v) VALUES ('regions_backfilled', '1') ON CONFLICT(k) DO UPDATE SET v = excluded.v").run();
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    return { ok: false, error: String(error?.message ?? error), ...out };
+  }
+  return out;
 }

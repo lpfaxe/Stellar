@@ -1333,7 +1333,17 @@ F("sessionCwd", "会话工作目录", "留空用 stellar 根目录", "text", { b
         F("slang.autoResearch", "自动联网研究", "", "switch"),
       ]},
       { group: "联网搜索", fields: [
-        F("webSearch.provider", "搜索后端", "auto / deepseek / bing", "select", { options: [["auto", "auto"], ["deepseek", "deepseek"], ["bing", "bing"]] }),
+        F("webSearch.provider", "搜索后端", "auto = AnySearch → DeepSeek → Bing", "select", {
+        options: [
+          ["auto", "auto（AnySearch 优先）"],
+          ["anysearch", "anysearch"],
+          ["deepseek-api", "deepseek-api（直连搜索 API）"],
+          ["deepseek", "deepseek（模型轮次）"],
+          ["bing", "bing"]
+        ]
+      }),
+      F("webSearch.anysearchApiKeyEnv", "AnySearch 凭据环境变量", "默认 ANYSEARCH_API_KEY；没有就走匿名额度"),
+      F("webSearch.anysearchBaseURL", "AnySearch 端点", "留空 = https://api.anysearch.com"),
         F("webSearch.apiKeyEnv", "凭据环境变量", "默认 DEEPSEEK_API_KEY"),
         F("webSearch.apiKey", "搜索 API Key", "不推荐写死；留 ******** 保持原值", "password"),
         F("webSearch.baseURL", "搜索端点", "必须 https 且解析到公网"),
@@ -1479,7 +1489,7 @@ F("sessionCwd", "会话工作目录", "留空用 stellar 根目录", "text", { b
         F("fishGuard.failCooldownMinutes", "风控失败冷却（分钟）", "默认 60；遇到 -509/12015 等码自动停手", "number", { min: 1 }),
       ]},
       { group: "B站 会话权限", note: "只影响她自己的 DSH 会话（bili-whale-*），不影响 QQ 桥接；改完下一次 tick 生效", fields: [
-        F("agent.sandbox", "会话权限", "danger-full-access = 定时醒来能跑 bili.mjs（推荐；%USERPROFILE% 用 workspace-write 会因 WRITE_OWNER 起不了命令）；workspace-write = 更安全但可能什么都跑不了", "select", {
+        F("agent.sandbox", "会话权限", "danger-full-access = 定时醒来能跑 bili.mjs（推荐；C:\\Users\\<用户名> 用 workspace-write 会因 WRITE_OWNER 起不了命令）；workspace-write = 更安全但可能什么都跑不了", "select", {
           options: [["danger-full-access", "完全访问（推荐，能跑工具）"], ["workspace-write", "仅工作区（更安全，可能跑不了命令）"]],
         }),
       ]},
@@ -2567,7 +2577,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
                 h(Browse, { mode: "dir", title: "选择 SnowLuma2 解压出来的根目录（里面有 app）", onPick: (picked) => detectSnowLuma(picked) }),
                 h(Btn, { kind: "qbw-btn2", onClick: () => act("start-snowluma"), disabled: !!busy }, "只打开 SnowLuma"),
                 h(Btn, { kind: "qbw-btn3", onClick: () => act("stop-snowluma"), disabled: !!busy }, "关闭 SnowLuma")),
-              h("div", { className: "qbw-hint" }, "检测只会在常见位置里猜。装在别处（例如 C:\软件\SnowLuma2）就点「手动选择已安装的 SnowLuma」，选 SnowLuma.exe 或 app\launcher.bat（也可以直接选解压根目录）。"),
+              h("div", { className: "qbw-hint" }, "检测只会在常见位置里猜。装在别处（例如 C:\Tools\SnowLuma2）就点「手动选择已安装的 SnowLuma」，选 SnowLuma.exe 或 app\launcher.bat（也可以直接选解压根目录）。"),
               h("div", { className: "qbw-hint" }, "「手动选择」只是告诉插件你装好的 SnowLuma 在哪：不下载、不安装、不移动、不删除任何文件。"),
               h("div", { className: "qbw-hint" }, "Stellar 只负责检测、打开和查看连接状态；SnowLuma2 本体按 EULA 不随插件分发，安装与扫码仍需你完成。")),
             h("div", { className: "qbw-card" },
@@ -3690,16 +3700,16 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
             h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, `四类动态：${kindLine || "—"}`),
             h("div", { className: "qbw-hint" }, `下一类：${data.dynamics?.next ? `${data.dynamics.next.label} ${data.dynamics.next.slotText}` : "—"}`),
             h("div", { className: "qbw-hint" },
-              `QQ 分享：${data.qStellarare?.enabled ? `下一班 ${data.qStellarare.nextText ?? "—"} → ${(data.qStellarare.groupsEffective ?? []).length} 个群` : "已关"}`))
+              `QQ 分享：${data.qqShare?.enabled ? `下一班 ${data.qqShare.nextText ?? "—"} → ${(data.qqShare.groupsEffective ?? []).length} 个群` : "已关"}`))
           : h("div", { className: "qbw-hint" }, "读取中…"));
     }
 
     // ── B站 → QQ 自动分享（写根 config.json 的 biliBridge，保存后需重启桥接）──
     // 放在 B站 页最上面 + 默认展开：以前埋在页面最底部、还是折叠的，
     // 用户找了半天都找不到（见 PITFALLS #21）。
-    function QStellarareSection({ qq, set, data, busy, setBusy, toast }) {
+    function QqShareSection({ qq, set, data, busy, setBusy, toast }) {
       const fields = QQ_BILI_SHARE_FIELDS;
-      const share = data?.qStellarare;
+      const share = data?.qqShare;
       const [shareMsg, setShareMsg] = useState("");
       const shareNow = async () => {
         if (!confirm("现在就让角色往白名单群分享一条 B站 视频？这会真的发到群里，并占用今天的一个分享名额。")) return;
@@ -4363,7 +4373,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
           h("p", null, "推荐扫码登录示例账号（用 B站 App 扫一扫）；手动粘贴 cookie 和待审核队列在「高级设置」里。"),
           h("div", { className: "qbw-actions", style: { borderTop: "none", marginTop: "6px", paddingTop: "0" } },
             h(Btn, { onClick: () => setQrFish(true), disabled: !!busy }, "扫码登录示例账号"))),
-        h(QStellarareSection, { qq, set: setQqPath, data: automation, busy, setBusy, toast }),
+        h(QqShareSection, { qq, set: setQqPath, data: automation, busy, setBusy, toast }),
         h(Section, { title: "作息窗口", note: "C 模式：每个窗口至少 1 次；全天上限见「每天最多醒来」，剩余次数按该时段最近评分分配，相邻两次至少隔「最小间隔」", defaultOpen: true },
           h("div", { style: { padding: "6px 0" } }, h(WindowsEditor, { value: cfg?.night?.windows, onChange: (v) => set(["night", "windows"], v) }))),
         h(AdvancedSettings, { note: "凭据 / 鱼群状态 / 口味权重 / 待审核 / 全部 B站 参数：展开后同样可改" },
@@ -4879,7 +4889,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
               h("span", { className: "qbw-label" }, "群号"),
               h("input", {
                 className: "qbw-input", value: (circle.groups || []).join(", "),
-                placeholder: "1000000018, 733...（逗号/空格分隔）",
+                placeholder: "712144923, 733...（逗号/空格分隔）",
                 onChange: (e) => updateCircle(index, { groups: parseGroupIds(e.target.value) }),
                 style: { flex: "1 1 260px" },
               }))),
@@ -5484,7 +5494,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
               })),
             h(Row, { label: "手动安装 zip/目录", hint: "高级入口；普通用户用每行右侧「导入」" },
               h("div", { className: "qbw-actions" },
-                h("input", { className: "qbw-input", style: { width: "420px" }, value: pathInput, onChange: (e) => setPathInput(e.target.value), placeholder: "C:\\packs\\bge-small.zip" }),
+                h("input", { className: "qbw-input", style: { width: "420px" }, value: pathInput, onChange: (e) => setPathInput(e.target.value), placeholder: "D:\\packs\\bge-small.zip" }),
                 h(Btn, { kind: "qbw-btn2", disabled: !!busy, onClick: installPath }, "安装"))),
             h(Row, { label: "下载地址", hint: "只接受 http(s)；安装前校验 SHA256" },
               h("div", { className: "qbw-actions" },
@@ -5525,7 +5535,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
       const zoneLabel = (z) => (z === "qzone" ? "好友爱看" : "B站");
       const jobLabel = (j) => {
         const when = j.lastRunAt ? fmtTime(new Date(j.lastRunAt).toISOString()) : "还没跑过";
-        return (j.name === "split" ? "切分" : j.name === "window" ? "窗口清理" : "侧写") + " · " + j.state + " · " + when;
+        return (j.name === "split" ? "切分" : j.name === "dream" ? "做梦" : j.name === "window" ? "窗口清理" : "侧写") + " · " + j.state + " · " + when;
       };
       const num = (v) => (Number(v) || 0).toLocaleString("zh-CN");
       return h("div", { className: "qbw-group" },
@@ -5544,6 +5554,12 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
             h("div", { className: "qbw-kv" }, h("span", null, "风格切片"), h("span", null, "已停用")),
             db?.counts?.dbBytes ? h("div", { className: "qbw-kv" }, h("span", null, "库文件"), h("span", null, fmtBytes(db.counts.dbBytes))) : null),
           h("div", { className: "qbw-card" },
+            h("h4", null, "记忆区"),
+            (db?.regions ?? []).map((r) => h("div", { key: r.code, className: "qbw-kv" },
+              h("span", null, r.name || r.code),
+              h("span", null, num(r.topics) + " 话题 · " + num(r.subjects) + " 人 · " + num(r.pages) + " 页"))),
+            h("div", { className: "qbw-hint", style: { marginTop: "4px" } }, "区域页不存正文，按区实时统计。")),
+          h("div", { className: "qbw-card" },
             h("h4", null, "重要事实"),
             h("div", { className: "qbw-kv" }, h("span", null, "共"), h("span", null, num(db?.facts?.total) + " 条")),
             h("div", { className: "qbw-kv" }, h("span", null, "公开 / 私密 / 机密"), h("span", null, num(db?.facts?.normal) + " / " + num(db?.facts?.private) + " / " + num(db?.facts?.secret))),
@@ -5557,10 +5573,19 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
               h("div", { className: "qbw-category" }, h("h4", { className: "qbw-category-title" }, "最近的话题")),
               h("div", { className: "qbw-list" }, db.topics.map((t) => h("div", { key: t.id, className: "qbw-item" },
                 h("div", null,
-                  h("div", null, t.title || "(无标题)", t.tier === "important" ? h("span", { className: "qbw-badge ok" }, "重要") : null),
+                  h("div", null, t.title || "(无标题)", t.tier === "important" ? h("span", { className: "qbw-badge ok" }, "重要") : null, t.regionId ? h("span", { className: "qbw-badge" }, t.regionId.replace("region_", "区")) : null),
                   t.summary ? h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, t.summary) : null,
                   h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, (t.day || "") + " · " + (t.msgCount || 0) + " 句 · " + (t.ownerId || "") + (t.endedAt ? " · " + fmtTime(new Date(t.endedAt).toISOString()) : "")))))))
           : h("div", { className: "qbw-hint", style: { marginTop: "6px" } }, "还没有话题。她跟人聊够一段（双方都说过话）之后，后台才会切出来。"),
+        (db?.pages ?? []).length
+          ? h("div", null,
+              h("div", { className: "qbw-category" }, h("h4", { className: "qbw-category-title" }, "主体页（做梦整理出的结论）"), h("small", null, "每天 06:30 读原文后改写；带来源与版本")),
+              h("div", { className: "qbw-list" }, db.pages.map((p) => h("div", { key: p.id, className: "qbw-item" },
+                h("div", null,
+                  h("div", null, p.title || "(无标题)", h("span", { className: "qbw-badge" }, "v" + (p.version || 1)), p.privacy !== "normal" ? h("span", { className: "qbw-badge warn" }, p.privacy === "secret" ? "机密" : "私密") : null),
+                  p.body ? h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, p.body) : null,
+                  h("div", { className: "qbw-hint", style: { marginTop: "2px" } }, (p.subjectName || p.subjectId || "") + " · " + (p.regionId || "") + (p.updatedAt ? " · " + fmtTime(new Date(p.updatedAt).toISOString()) : "")))))))
+          : null,
         (db?.factRows ?? []).length
           ? h("div", null,
               h("div", { className: "qbw-category" }, h("h4", { className: "qbw-category-title" }, "事实条目（生日 / 忌口 / 约定这类）")),

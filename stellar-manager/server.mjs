@@ -31,6 +31,7 @@ import { readChatAudit, readOutbox, seedOutboxFromToolCalls } from './lib/outbox
 import { contactIndex, nameForKey, relationFor } from './lib/people.js'
 import { readTaskState, sendOwnerCommand, setPaused, wakeOwner } from './lib/task.js'
 import { readRunMode, saveRunMode } from './lib/run-mode.js'
+import { powerStatus, savePowerPlan, sleepNow } from './lib/power-plan.js'
 import { buildWebImages, clearWebImages, deleteWebImage, webImageFile } from './lib/web-images.js'
 import { deleteFile as deleteCabinetFile, filePath as cabinetFilePath, listFiles as listCabinetFiles, saveFile as saveCabinetFile, saveStream as saveCabinetStream } from './lib/files.js'
 import { readVoicePanel, restoreVoicePanel, saveVoicePanel } from './lib/voice-style.js'
@@ -575,6 +576,14 @@ const server = http.createServer(async (req, res) => {
       const scope = requestScope(req)
       return sendJson(res, 200, { ...t, ok: true, bridgeOk: t.ok === true, canWrite: scope !== 'public', scope })
     }
+    // ── 夜间电源：睡眠 / 唤醒计划（owner 2026-11-27）──────────────────────
+    // 只做「整台电脑」的电源计划；停机器人仍走 /api/task/action 的 pause。
+    if (url.pathname === '/api/power' && req.method === 'GET') {
+      const scope = requestScope(req)
+      const data = await powerStatus()
+      return sendJson(res, 200, { ...data, canWrite: scope !== 'public', scope })
+    }
+
     // ── 她自己上网找的图：列表 / 原图 / 删一张 / 清空（owner 2026-11-11）──
     // 与 B站封面分开放（状态在 ~/.dsh/stellar/web-images/<日期>/），每天清空但索引留着，
     // 所以控制台能看到「今天她找了什么、删了哪几张」。
@@ -706,6 +715,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/memory-db/topics') return sendJson(res, 200, listTopics({
       owner: url.searchParams.get('owner') || '',
       tier: url.searchParams.get('tier') || '',
+      region: url.searchParams.get('region') || '',
       day: url.searchParams.get('day') || '',
       q: url.searchParams.get('q') || '',
       offset: numParam(url, 'offset', 0, 100000, 0),
@@ -917,6 +927,44 @@ const server = http.createServer(async (req, res) => {
         appendAudit('task-action-rejected', { action, by, text: maskText(body.text || '', 60), error: String(e && e.message || e) })
         logLine('task ' + action + ' failed: ' + String(e && e.message || e))
         return sendJson(res, 400, { ok: false, action, message: String(e && e.message || e) })
+      }
+    }
+
+    // ── 夜间电源：保存计划 / 立刻睡（owner 2026-11-27）──────────────────────
+    if (url.pathname === '/api/power' && req.method === 'POST') {
+      if (!requireWrite(req, res)) return
+      const body = await readBody(req)
+      const by = 'panel:' + clientIp(req)
+      try {
+        const data = await savePowerPlan({
+          enabled: body.enabled === true,
+          sleepAt: String(body.sleepAt || ''),
+          wakeAt: String(body.wakeAt || ''),
+          mode: String(body.mode || 'sleep')
+        }, { by })
+        appendAudit('power-plan', { enabled: data.plan.enabled, sleepAt: data.plan.sleepAt, wakeAt: data.plan.wakeAt, mode: data.plan.mode, by })
+        logEvent('power-plan', { enabled: data.plan.enabled, sleepAt: data.plan.sleepAt, wakeAt: data.plan.wakeAt, mode: data.plan.mode, by })
+        invalidateStatus()
+        return sendJson(res, 200, { ...data, canWrite: true })
+      } catch (e) {
+        appendAudit('power-plan-rejected', { by, error: String(e && e.message || e) })
+        logLine('power-plan failed: ' + String(e && e.message || e))
+        return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
+      }
+    }
+    if (url.pathname === '/api/power/now' && req.method === 'POST') {
+      if (!requireWrite(req, res)) return
+      const body = await readBody(req)
+      const by = 'panel:' + clientIp(req)
+      try {
+        const data = await sleepNow({ mode: String(body.mode || 'sleep'), by })
+        appendAudit('power-now', { mode: data.mode, by })
+        logEvent('power-now', { mode: data.mode, by })
+        logLine('power-now ' + data.mode + ' by ' + by)
+        return sendJson(res, 200, { ...data, message: '3 秒后进入' + (data.mode === 'hibernate' ? '休眠' : '睡眠') + '；早上会按唤醒时间自动醒来' })
+      } catch (e) {
+        appendAudit('power-now-rejected', { by, error: String(e && e.message || e) })
+        return sendJson(res, 400, { ok: false, message: String(e && e.message || e) })
       }
     }
 

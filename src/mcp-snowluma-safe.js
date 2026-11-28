@@ -337,7 +337,7 @@ async function legacyReadToolAllowed() {
   return String(status?.mode ?? '') === 'closed-agent';
 }
 
-const server = new McpServer({ name: 'snowluma-safe', version: '1.0.9' });
+const server = new McpServer({ name: 'snowluma-safe', version: '0.2.0-r4' });
 
 // ── 工具开关必须在**注册期**生效，而不是只在校验期 ──────────────────────────
 //
@@ -1469,7 +1469,7 @@ function runLocalScript(args, { timeoutMs = 240000 } = {}) {
 
 async function ownerOnlyError(key, token = '') {
   const owner = String(getConfig().ownerQQ ?? '').trim();
-  if (!owner) return '未配置 ownerQQ，无法确认主人身份，已拒绝';
+  if (!owner) return '未配置 ownerQQ，无法确认主人身份，已拒绝。\n下一步：先在 config.json 的 admin.qq 填写主人 QQ，再重启 DSH。';
   if (!(await isOwnerRequest(key, token))) {
     // 失败必须可行动（AGENTS.md §1.7）：说清「为什么被拒」和「下一步怎么做」。
     // 不提令牌内容、不提具体会话，避免把身份信息带回群聊。
@@ -2935,7 +2935,7 @@ server.tool(
 
 server.tool(
   'stellar_todo',
-  '她的待办事项（只给主人用，key 必须是 private:<主人QQ>）。主人说「后天提醒我买东西」「今晚 9 点叫我」时：action=add，text=要提醒的事，dueAt=时间（可以写「后天 19:00」「2026-11-12 09:30」或毫秒时间戳）。到点前她会被调度器叫醒，再由她用 qq_send_message 提醒主人。主人说「提醒示例好友明天带伞」时，再带上 targetKey（示例好友的会话 key，如 private:<他的QQ>）与 targetName。不填 targetKey 就提醒让记这件事的人。action=list 看还没做的；action=done/cancel 用 id 收尾。',
+  '她的待办事项（只给主人用，key 必须是 private:<主人QQ>）。主人说「后天提醒我买东西」「今晚 9 点叫我」时：action=add，text=要提醒的事，dueAt=时间（可以写「后天 19:00」「2026-11-12 09:30」或毫秒时间戳）。到点前她会被调度器叫醒，再由她用 qq_send_message 提醒主人。主人说「提醒小土豆明天带伞」时，再带上 targetKey（小土豆的会话 key，如 private:<他的QQ>）与 targetName。不填 targetKey 就提醒让记这件事的人。action=list 看还没做的；action=done/cancel 用 id 收尾。',
   {
     key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
@@ -2943,8 +2943,8 @@ server.tool(
     text: z.string().optional().describe('action=add 时必填：要提醒什么事'),
     dueAt: z.union([z.string(), z.number()]).optional().describe('action=add 时必填：什么时候提醒（「后天 19:00」「明天上午 9 点」「2026-11-12 09:30」或毫秒时间戳）'),
     id: z.string().optional().describe('action=done/cancel 时必填：待办 id（t 开头）'),
-    targetKey: z.string().optional().describe('action=add 时可选：到点提醒谁（会话 key，如 private:1000000003 或 group:123456）。不填就提醒让记这件事的人'),
-    targetName: z.string().optional().describe('action=add 时可选：提醒对象怎么称呼（如「示例好友」），只用于提示词和列表展示'),
+    targetKey: z.string().optional().describe('action=add 时可选：到点提醒谁（会话 key，如 private:2493502782 或 group:123456）。不填就提醒让记这件事的人'),
+    targetName: z.string().optional().describe('action=add 时可选：提醒对象怎么称呼（如「小土豆」），只用于提示词和列表展示'),
     includeDone: z.boolean().optional().describe('action=list 时是否连已完成的一起列，默认 false'),
     limit: z.number().int().min(1).max(100).optional().describe('action=list 时最多列几条，默认 20')
   },
@@ -3005,7 +3005,7 @@ server.tool(
   '遇到只有主人能拍板的问题（别人说「你不信去问你主人」、问到主人的私事/权限/安排），用它把问题转给主人。别自己编主人的态度。只能在非主人会话里用；主人会收到 QQ 私聊，回复后答案会送回这个会话，你再按主人的意思回复对方。',
   {
     key: z.string().describe('当前会话 key，形如 private:<QQ> 或 group:<群号>'),
-    question: z.string().describe('要问主人的问题，一句话说清（比如「好友B问能不能帮他画一张图，你同意吗？」）'),
+    question: z.string().describe('要问主人的问题，一句话说清（比如「见星问能不能帮他画一张图，你同意吗？」）'),
     context: z.string().optional().describe('可选：对方原话或背景，方便主人判断')
   },
   async ({ key, question, context }) => {
@@ -3362,22 +3362,31 @@ server.tool(
     key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
     ownerId: z.string().optional().describe('看谁的目录：数字QQ / group:<群号>；不填就是当前会话的对方'),
+    regionId: z.string().optional().describe('只看某个记忆区：region_01 QQ聊天 / region_02 好友爱看 / region_03 B站 / region_04 小镇 / region_05 未归类'),
+    subjectId: z.string().optional().describe('只看某个主体（人/群/UP/地点）的话题；id 形如 su_…，可先用 regionId 列出主体'),
     limit: z.number().optional().describe('返回几条标题（默认 20，上限 50）')
   },
-  async ({ key, token, ownerId, limit }) => {
+  async ({ key, token, ownerId, regionId, subjectId, limit }) => {
     try {
       const access = await memoryAccess(key, token, ownerId);
       if (!access.ok) return { content: [{ type: 'text', text: access.text }], isError: true };
       const owner = access.owner;
       const mod = await memoryDbModule();
-      const data = mod.catalog({ ownerId: owner, limit: Math.max(1, Math.min(50, Number(limit) || 20)) });
+      const data = mod.catalog({ ownerId: owner, limit: Math.max(1, Math.min(50, Number(limit) || 20)), regionId: String(regionId || ''), subjectId: String(subjectId || '') });
       const rows = Array.isArray(data.rows) ? data.rows : [];
-      if (!rows.length && !data.fragments && !data.persona) {
+      if (!rows.length && !data.fragments && !data.persona && !(data.pages || []).length && !(data.subjects || []).length) {
         return { content: [{ type: 'text', text: '记忆库里还没有 ' + owner + ' 的话题（启用后才会开始记）。' }] };
       }
       const roster = Array.isArray(data.roster) ? data.roster : [];
       const lines = [];
       if (data.persona) lines.push('侧写：' + data.persona);
+      if (data.regionLine) lines.push(data.regionLine);
+      if (Array.isArray(data.subjects) && data.subjects.length) {
+        lines.push('主体：' + data.subjects.slice(0, 20).map((x) => x.name + '(' + x.id + '·' + x.kind + ')').join('、'));
+      }
+      if (Array.isArray(data.pages) && data.pages.length) {
+        lines.push('［主体页］' + data.pages.slice(0, 10).map((p) => p.title + '(v' + (Number(p.version) || 1) + ')').join(' / ') + '；读正文用 stellar_memory_page(pageId=…)');
+      }
       if (roster.length) {
         // 群里的名册：名字后面必须带 QQ —— 同名的人在这类群里太常见了。
         lines.push('［群里的人］' + roster.map((p) => {
@@ -3401,7 +3410,7 @@ server.tool(
         const ambient = String(row.scope || '') === 'ambient' ? '  [旁观]' : '';
         lines.push('· ' + row.id + '  ' + row.title + '  (' + when + ')' + (row.tier === 'important' ? '  [重要]' : '') + people + ambient);
       }
-      lines.push('要细节用 stellar_memory_topic(topicId=…)；搜关键词用 stellar_memory_search(q=…)。');
+      lines.push('要细节用 stellar_memory_topic(topicId=…)；主体页用 stellar_memory_page(pageId=…)；搜关键词用 stellar_memory_search(q=…)。');
       if (roster.length) {
         lines.push('问某人说过什么时：先 stellar_memory_search(about=那个人的QQ)，它会把「跟这个人的私聊」和「这个人在群里参与过的话题」一起搜出来；还没有才翻零碎。');
       }
@@ -3444,6 +3453,53 @@ server.tool(
       return { content: [{ type: 'text', text: mod.formatTopicForModel(data, { maxChars: keep }) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: '读话题失败：' + (error?.message ?? error) }], isError: true };
+    }
+  }
+);
+
+
+server.tool(
+  'stellar_memory_page',
+  '读「主体页」：关于某个人/某个群/某件事，她做完梦整理出来的结论页（不是原始聊天）。pageId 读正文；不填就列最近几页（可按 regionId/subjectId 过滤）。页上带版本、来源话题 id 和相关链接；隐私页只在对应私聊里给。',
+  {
+    key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
+    token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
+    pageId: z.string().optional().describe('页 id，形如 pg_…；不填就列出最近几页'),
+    regionId: z.string().optional().describe('只看某个记忆区（region_01…region_05）'),
+    subjectId: z.string().optional().describe('只看某个主体（su_…）'),
+    limit: z.number().optional().describe('列几页（默认 10，上限 30）')
+  },
+  async ({ key, token, pageId, regionId, subjectId, limit }) => {
+    try {
+      const access = await memoryAccess(key, token, '');
+      if (!access.ok) return { content: [{ type: 'text', text: access.text }], isError: true };
+      const mod = await memoryDbModule();
+      const ownerBare = String(access.owner || '').replace(/^(group:|owner:)/, '');
+      const allowed = (page) => {
+        if (!page) return false;
+        if (access.actor.isOwner) return true;
+        if (String(page.privacy || '') === 'secret') return false;
+        const subject = mod.getSubject(page.subject_id);
+        const ext = String(subject && subject.external_id ? subject.external_id : '').replace(/^(group:|owner:)/, '');
+        return Boolean(ext) && ext === ownerBare;
+      };
+      const want = String(pageId || '').trim();
+      if (want) {
+        const page = mod.getPage(want);
+        if (!page) return { content: [{ type: 'text', text: '记忆库里没有 id=' + want + ' 这一页（可能还没整理出来，或 id 拼错了）。可以先列最近几页。' }], isError: true };
+        if (!allowed(page)) return { content: [{ type: 'text', text: '这一页不是给你的（隐私页只在对应私聊里给）。' }], isError: true };
+        return { content: [{ type: 'text', text: mod.formatPageForModel(page, { maxChars: 2400 }) }] };
+      }
+      const rows = mod.listPages({ regionId: String(regionId || ''), subjectId: String(subjectId || ''), limit: Math.max(1, Math.min(30, Number(limit) || 10)) }).filter(allowed);
+      if (!rows.length) return { content: [{ type: 'text', text: '还没有整理出主体页（每天 06:30 做完梦才会写；也可以先用 stellar_memory_catalog 看话题）。' }] };
+      const lines = ['［主体页］最近 ' + rows.length + ' 页（正文用 stellar_memory_page(pageId=…)）：'];
+      for (const p of rows) {
+        const sub = mod.getSubject(p.subject_id);
+        lines.push('· ' + p.id + '  ' + p.title + '  v' + (Number(p.version) || 1) + '  — ' + (sub ? sub.name : p.subject_id) + '  (' + String(p.updated_at || '').slice(0, 10) + ')');
+      }
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: '读主体页失败：' + (error?.message ?? error) }], isError: true };
     }
   }
 );
@@ -3843,7 +3899,7 @@ server.tool(
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
     scope: z.enum(['owner', 'mine', 'friends', 'person', 'public']).optional().describe('读哪个流：owner=主人（默认）、mine=自己、friends=好友动态（含主人与自己）、person=通讯录里某个人（要同时给 uin）、public=好友爱看/推荐流（陌生人的公开动态）'),
     tid: z.string().optional().describe('某条说说 id；给了就读这条的评论详情。scope=public 时可以给公开动态的短 id（列表里 [xxxx] 那串，前 8 位就够）来只取这条的图'),
-    uin: z.string().optional().describe('这条说说属于谁：读主人空间要传主人 QQ；scope=person 时必传（通讯录里那个人的 QQ，比如测试员A 1000000003）'),
+    uin: z.string().optional().describe('这条说说属于谁：读主人空间要传主人 QQ；scope=person 时必传（通讯录里那个人的 QQ，比如测试员A 2493502782）'),
     num: z.union([z.number(), z.string()]).optional().describe('条数：列表默认 10，详情默认 20'),
     attachImages: z.boolean().optional().describe('默认 true：把这一页里带图的说说图片直接附在结果里（最多 3~4 张，每张都算 token）。只想读文字、或图太多时传 false，会说还有几张没附')
   },
@@ -4270,16 +4326,30 @@ server.tool(
 // 但索引 index.jsonl 留着 —— 所以控制台能看到「今天找了什么、删了哪几张」。
 server.tool(
   'stellar_web_image',
-  '她自己上网找图。action=search 会真的去 Bing 图片搜、把图下载到本地（每天最多 30 张，第二天清空，和控制台里那张「她自己找的图」是同一个目录），返回里带文件名和前两张预览图——**先看清图对不对**，再用 qq_send_image 的 imagePath 传**本地完整路径**发给对方（别传网址）。action=list 看今天有哪些；action=del 删一张（只给主人，控制台会留删除记录）；action=clear 全删（只给主人）；action=path 只报目录。别人让你「找张 XX 的图」时就用它，别拿搜索页链接糊弄。',
+  '她自己上网找图。action=search 会真的去搜图、把图下载到本地（普通图/药品包装每天最多 30 张，第二天清空；化学结构式单独缓存、不占这 30 张），返回里带文件名和前两张预览图——**先看清图对不对**，再用 qq_send_image 的 imagePath 传**本地完整路径**发给对方（别传网址）。想看更多候选：search 时给 preload（30–100），只预加载 20–30 张并拼一张带编号的联系表，不占 30 张额度；看完用 action=pick session=<会话> picks=[1,4,7] 存 1–5 张，**只有 pick 才真正占额度**。mode=auto 会自己判：化学结构式（给 name/cas/smiles/nameEn）走 PubChem 精确结构；药品包装（给 manufacturer/brand/strength）走来源筛选 + OCR 校验药名和规格；其余走普通图。action=list 看今天有哪些；action=del 删一张（只给主人，控制台会留删除记录）；action=clear 全删（只给主人）；action=path 只报目录。别人让你「找张 XX 的图」时就用它，别拿搜索页链接糊弄；化学结构式不要用 image_generate 画。',
   {
     key: z.string().describe('当前会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
-    action: z.enum(['search', 'list', 'del', 'clear', 'path']).describe('search=搜图并下载 / list=看今天找了哪些 / del=删一张 / clear=全删 / path=只报目录'),
-    query: z.string().optional().describe('action=search 时的关键词（中文更准，比如「雪山下的小镇」「橘猫 表情包」）'),
-    n: z.number().int().min(1).max(10).optional().describe('action=search 时下几张，默认 3，最多 10'),
+    action: z.enum(['search', 'pick', 'list', 'del', 'clear', 'path']).describe('search=搜图并下载（带 preload 时只预加载）/ pick=从预加载联系表挑 1–5 张存进今天 / list=看今天找了哪些 / del=删一张 / clear=全删 / path=只报目录'),
+    query: z.string().optional().describe('action=search 时的关键词（中文更准，比如「雪山下的小镇」「橘猫 表情包」）；化学名/药名也可以放这里'),
+    mode: z.enum(['auto', 'structure', 'product', 'photo']).optional().describe('找图类型：auto=自动判断（默认）/ structure=化学结构式 / product=药品或试剂包装实物 / photo=普通图'),
+    chemical: z.object({
+      name: z.string().optional(),
+      nameEn: z.string().optional(),
+      cas: z.string().optional(),
+      smiles: z.string().optional(),
+      manufacturer: z.string().optional(),
+      brand: z.string().optional(),
+      strength: z.string().optional(),
+      dosageForm: z.string().optional()
+    }).optional().describe('mode=structure/product 时的结构化信息：中文名、英文名、CAS、SMILES、厂家、商品名、规格（如 100mg）、剂型'),
+    n: z.number().int().min(1).max(10).optional().describe('action=search 时下几张，默认 3，最多 10（带 preload 时不用管，最终存几张由 pick 决定）'),
+    preload: z.number().int().min(30).max(100).optional().describe('action=search 时：预加载多少条候选（30–100）。只写临时联系表、不占每天 30 张；看完用 action=pick 挑'),
+    session: z.string().optional().describe('action=pick 时：search 预加载返回的 session'),
+    picks: z.array(z.number().int().min(1)).max(5).optional().describe('action=pick 时：联系表上的编号，比如 [1,4,7]，最多 5 张'),
     name: z.string().optional().describe('action=del 时：要删哪个文件（list 给出的文件名）')
   },
-  async ({ key, token, action, query, n, name }) => {
+  async ({ key, token, action, query, mode, chemical, n, name, preload, session, picks }) => {
     try {
       // 2026-11-12：找图从「只给主人」放宽到「会话内谁要求都行」，但**删图仍然只给主人**。
       // 起因：通讯录好友让「帮我去网上找一张 XX 的图」时她没有这个工具，只能用 web_search
@@ -4292,10 +4362,29 @@ server.tool(
       }
       const args = ['webimg']
       if (act === 'search') {
-        const q = String(query ?? '').trim();
-        if (!q) return { content: [{ type: 'text', text: 'action=search 要给 query：想找什么图？' }], isError: true };
+        const chem = (chemical && typeof chemical === 'object') ? chemical : {};
+        const q = String(query ?? chem.name ?? chem.nameEn ?? chem.cas ?? '').trim();
+        if (!q) return { content: [{ type: 'text', text: 'action=search 要给 query 或在 chemical 里给 name/cas/nameEn：想找什么图？' }], isError: true };
         const want = Number.isFinite(n) ? Math.max(1, Math.min(10, Math.floor(n))) : 3;
         args.push('search', q, '--n', String(want), '--by', 'her', '--json');
+        if (mode && mode !== 'auto') args.push('--mode', String(mode));
+        const deep = Number(preload) || 0;
+        if (deep > 0) args.push('--preload', String(Math.max(30, Math.min(100, Math.floor(deep)))));
+        const flags = [
+          ['--name', chem.name], ['--name-en', chem.nameEn], ['--cas', chem.cas], ['--smiles', chem.smiles],
+          ['--manufacturer', chem.manufacturer], ['--brand', chem.brand], ['--strength', chem.strength],
+          ['--dosage-form', chem.dosageForm]
+        ];
+        for (const [flag, value] of flags) {
+          const v = String(value ?? '').trim();
+          if (v) args.push(flag, v);
+        }
+      } else if (act === 'pick') {
+        const sid = String(session ?? '').trim();
+        const chosen = Array.isArray(picks) ? picks.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0) : [];
+        if (!sid) return { content: [{ type: 'text', text: 'action=pick 要给 session：先用 action=search preload=100 拿预加载会话' }], isError: true };
+        if (!chosen.length) return { content: [{ type: 'text', text: 'action=pick 要给 picks：联系表上的编号，比如 [1,4,7]' }], isError: true };
+        args.push('pick', '--session', sid, '--picks', chosen.slice(0, 5).join(','), '--json');
       } else if (act === 'del') {
         const want = String(name ?? '').trim();
         if (!want) return { content: [{ type: 'text', text: 'action=del 要给 name：先用 action=list 看她今天找了哪些图' }], isError: true };
@@ -4310,26 +4399,76 @@ server.tool(
       const { code, text: output } = await runLocalScript(args, { timeoutMs: 180000 });
       const payload = String(output || '').trim() || '（脚本无输出）';
       // search/list 的 --json 直接用；其余给人读的输出原样返回。
-      if ((act === 'search' || act === 'list') && payload.startsWith('{')) {
+      if ((act === 'search' || act === 'pick' || act === 'list') && payload.startsWith('{')) {
         let data = null
         try { data = JSON.parse(payload.slice(payload.indexOf('{'))) } catch {}
         if (data && data.ok === false) {
-          return { content: [{ type: 'text', text: '没找到可用结果：' + (data.reason || data.message || '') }], isError: true };
+          const why = data.error || data.reason || data.message || '没找到可用结果';
+          const codeText = data.code ? '（' + data.code + '）' : '';
+          const hintText = data.hint ? '\n下一步：' + data.hint : '';
+          return { content: [{ type: 'text', text: why + codeText + hintText }], isError: true };
         }
-        const imgs = Array.isArray(data?.images) ? data.images : (Array.isArray(data?.saved) ? data.saved : []);
+        const imgs = Array.isArray(data?.images) ? data.images : (Array.isArray(data?.items) ? data.items : (Array.isArray(data?.saved) ? data.saved : []));
         if (!imgs.length) {
-          return { content: [{ type: 'text', text: (act === 'search' ? '这次一张都没下下来（可能关键词太冷门、图都是 SVG/GIF，或者今天已经 30 张）。' : '今天她还没在网上找图。') + '\n目录：' + (data?.dir || '') }] };
+          const text = act === 'search'
+            ? (data?.mode === 'structure'
+              ? '没取到结构式。' + (data?.error || '') + (data?.hint ? '\n下一步：' + data.hint : '')
+              : '这次一张都没下下来（可能关键词太冷门、图都是 SVG/GIF，或者今天已经 30 张）。')
+            : '今天她还没在网上找图。';
+          return { content: [{ type: 'text', text: text + '\n目录：' + (data?.dir || '') }] };
         }
-        const rows = imgs.slice(0, 12).map((it, idx) => '#' + (idx + 1) + ' ' + (it.name || '') + '  ' + Math.round((Number(it.bytes) || 0) / 1024) + 'KB' + (it.title ? '  ' + clip(it.title, 50) : ''));
+        const isPreload = Boolean(data?.preload);
+        if (isPreload) {
+          const stats = data?.stats || {};
+          const rows = imgs.slice(0, 24).map((it) => {
+            const tag = it.verified ? '  [已核对]' : (data?.mode === 'product' ? '  [候选：未通过包装文字校验]' : '');
+            const ocr = it.ocr && (it.ocr.name || it.ocr.strength)
+              ? '  OCR: ' + [it.ocr.name, it.ocr.strength].filter(Boolean).join(' + ')
+              : '';
+            return '#' + String(it.index || 0).padStart(2, '0') + '  ' + (it.width || 0) + 'x' + (it.height || 0)
+              + '  ' + Math.round((Number(it.bytes) || 0) / 1024) + 'KB' + tag + ocr
+              + (it.title ? '  ' + clip(it.title, 50) : '');
+          });
+          const notes = Array.isArray(data?.notes) && data.notes.length ? '\n说明：' + data.notes.join('；') : '';
+          const sheetBlock = data?.sheet ? mediaImageBlock(data.sheet) : null;
+          const text = '预加载「' + String(data.query || query || '').trim() + '」：候选 ' + (stats.candidates ?? '?') + ' 条，下载 ' + (stats.downloaded ?? imgs.length) + ' 张，共 ' + imgs.length + ' 个编号。\n'
+            + '这一步**没有**占今天的 30 张（今天 ' + (data?.count ?? '?') + '/' + (data?.max || 30) + ' 张）。\n'
+            + 'session：' + (data.session || '') + '\n'
+            + (sheetBlock ? '联系表已附在下面。' : '联系表没拼出来（' + (data?.sheet || '原因不明') + '），只能按上面的标题挑。') + '\n'
+            + rows.join('\n') + notes
+            + '\n\n下一步：看联系表挑 1–5 张，调 action=pick session=' + (data.session || '') + ' picks=[1,4,7]。'
+            + '\n只有 pick 才真正占今天 30 张；pick 完再 qq_send_image 发选中的本地路径。';
+          return { content: [{ type: 'text', text }, ...(sheetBlock ? [sheetBlock] : [])] };
+        }
+        const rows = imgs.slice(0, 12).map((it, idx) => {
+          const tag = data?.mode === 'structure'
+            ? '  [CID ' + (it.cid || '?') + ']'
+            : (it.verified ? '  [已核对]' : (data?.mode === 'product' ? '  [候选：未通过包装文字校验]' : ''));
+          const ocr = it.ocr && (it.ocr.name || it.ocr.strength)
+            ? '  OCR: ' + [it.ocr.name, it.ocr.strength].filter(Boolean).join(' + ')
+            : '';
+          return '#' + (idx + 1) + ' ' + (it.name || '') + '  ' + Math.round((Number(it.bytes) || 0) / 1024) + 'KB'
+            + '  ' + (it.width || 0) + 'x' + (it.height || 0) + tag + ocr
+            + (it.title ? '  ' + clip(it.title, 50) : '');
+        });
         // 给你自己（模型）看一眼图对不对：只附前 2 张，多了太费 token。
         const previewBlocks = [];
         for (const it of imgs.slice(0, 2)) {
           const blk = mediaImageBlock(it.file);
           if (blk) previewBlocks.push(blk);
         }
+        const notes = Array.isArray(data?.notes) && data.notes.length ? '\n说明：' + data.notes.join('；') : '';
         const feedHint = '\n\n发出去：qq_send_image 的 imagePath 直接填上面某个完整路径（本地文件，别填网址）。'
+          + '\n先看图再发；[候选] 的图不能当成「同款/就是它」，要跟对方说明。'
           + '\n想删哪张就用 action=del name=<文件名>；控制台里也会留着这条删除记录。';
-        return { content: [{ type: 'text', text: (act === 'search' ? '搜「' + String(query || '').trim() + '」→ 存了 ' + imgs.length + ' 张（今天共 ' + (data?.count ?? imgs.length) + '/' + (data?.max || 30) + ' 张）\n' : '今天找了 ' + imgs.length + ' 张（最多 30 张，明天清空）\n') + '目录：' + (data?.dir || '') + '\n' + rows.join('\n') + feedHint }, ...previewBlocks] };
+        const head = act === 'pick'
+          ? '从预加载里存了 ' + imgs.length + ' 张（今天共 ' + (data?.count ?? imgs.length) + '/' + (data?.max || 30) + ' 张）\n'
+          : (act === 'search'
+            ? (data?.mode === 'structure'
+              ? '结构式「' + String(data.query || query || '').trim() + '」→ PubChem CID ' + (imgs[0]?.cid || '?') + '，' + (imgs[0]?.width || 0) + '×' + (imgs[0]?.height || 0) + '\n'
+              : '搜「' + String(data.query || query || '').trim() + '」（' + String(data.mode || mode || 'auto') + '）→ 存了 ' + imgs.length + ' 张（今天共 ' + (data?.count ?? imgs.length) + '/' + (data?.max || 30) + ' 张）\n')
+            : '今天找了 ' + imgs.length + ' 张（最多 30 张，明天清空）\n');
+        return { content: [{ type: 'text', text: head + '目录：' + (data?.dir || '') + '\n' + rows.join('\n') + notes + feedHint }, ...previewBlocks] };
       }
       return { content: [{ type: 'text', text: clip(payload, 4000) }], isError: code !== 0 };
     } catch (error) {
@@ -4439,7 +4578,7 @@ server.tool(
 // 解析器在 plugins/stellar/tools/lib/doc-extract.mjs（zip/PDF 纯 JS，老格式借本机 Office/WPS 转换）。
 // 允许用 STELLAR_SOCIAL_STATE 指向另一份状态文件：测试（离线夹具）时不必改动线上 state。
 const SOCIAL_STATE_FILE = process.env.STELLAR_SOCIAL_STATE || path.join(ROOT, 'state', 'social-v2.json');
-// 普通文档的兜底上限；具体读某份文件时按 doc-extract 的 inputLimitForName() 算（演示文稿 256MB）。
+// 普通文档的兜底上限；具体读某份文件时按 doc-extract 的 inputLimitForName() 算（PDF / 演示文稿 256MB）。
 const FILE_MAX_BYTES = 60 * 1024 * 1024;
 let docExtractPromise = null;
 
@@ -4537,7 +4676,7 @@ async function fileDownloadUrl(file, key, { allowOwnerFallback = true } = {}) {
 async function fetchFileBuffer(url, { allowPrivate = false, maxBytes = FILE_MAX_BYTES } = {}) {
   if (!allowPrivate) await assertPublicHttpUrl(url);
   const cap = Number(maxBytes) > 0 ? Number(maxBytes) : FILE_MAX_BYTES;
-  // 大文件（演示文稿）下载可能要好几分钟；普通文档仍按 90 秒收。
+  // 大文件（PDF / 演示文稿）下载可能要好几分钟；普通文档仍按 90 秒收。
   const timeoutMs = cap > 60 * 1024 * 1024 ? 300000 : 90000;
   const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error('下载失败：HTTP ' + res.status);
@@ -4670,7 +4809,7 @@ server.tool(
 );
 server.tool(
   'stellar_file_read',
-  '读文档正文。支持 PDF / Word(doc/docx) / PPT(ppt/pptx) / Excel(xls/xlsx) / WPS(wps/et/dps)，以及 txt/csv/md/rtf/html。主人能用全部来源（messageId / name / path / url）；群聊或非主人会话只能用「这个会话里合并转发过来的文件」——传 forwardId + name（提示里【合并转发的聊天记录 id】那段会给）。用 messageId 或 name 定位刚发来的文件（消息提示里 files[].messageId）。返回提取出的文字；长文档只给开头并把全文存成 spill 文件，要通读就按返回里的路径用 stellar_spill_read 分段读（每次 8000 字），读完再总结，不许只凭开头下结论。扫描件 PDF 没有文字层会读不出来 —— 那就直说看不到，别编。单文件上限：PPT/PPTX 等演示文稿 256MB，其它文档 60MB；超过就直说太大，别猜内容。',
+  '读文档正文。支持 PDF / Word(doc/docx) / PPT(ppt/pptx) / Excel(xls/xlsx) / WPS(wps/et/dps)，以及 txt/csv/md/rtf/html。主人能用全部来源（messageId / name / path / url）；群聊或非主人会话只能用「这个会话里合并转发过来的文件」——传 forwardId + name（提示里【合并转发的聊天记录 id】那段会给）。用 messageId 或 name 定位刚发来的文件（消息提示里 files[].messageId）。返回提取出的文字；长文档只给开头并把全文存成 spill 文件，要通读就按返回里的路径用 stellar_spill_read 分段读（每次 8000 字），读完再总结，不许只凭开头下结论。扫描件 PDF 没有文字层会读不出来 —— 那就直说看不到，别编。单文件上限：PDF 与 PPT/PPTX 等演示文稿 256MB，其它文档 60MB；超过就直说太大，别猜内容。',
   {
     key: z.string().describe('当前会话 key，必须形如 private:<主人QQ>'),
     token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
@@ -4716,7 +4855,7 @@ server.tool(
       let fileName = String(name || '').trim();
       const notes = [];
       let buffer = null;
-      // 上限按格式走（doc-extract 是唯一真相：演示文稿 256MB、其它 60MB），下载前就要知道能收多大。
+      // 上限按格式走（doc-extract 是唯一真相：PDF/演示文稿 256MB、其它 60MB），下载前就要知道能收多大。
       const { extractDocument, inputLimitForName } = await loadDocExtract();
       if (!wantedPath && !wantedUrl && !String(messageId || '').trim() && !fileName) {
         return { content: [{ type: 'text', text: '要读哪个文件？传 messageId、name、path、url 之一（一般用消息提示里的 files[0].messageId）。' }], isError: true };
@@ -4792,6 +4931,126 @@ server.tool(
       return { content: [{ type: 'text', text: head.join('\n') }] };
     } catch (error) {
       return { content: [{ type: 'text', text: '读文件失败：' + (error && error.message ? error.message : error) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'stellar_pdf',
+  '按章读 PDF（扫描版也能读）。先 action:"outline" 看目录和每章的 PDF 页范围；再 action:"read" + chapter（例如 7）只读那一章，单次最多 40 页 / 12000 字；要插图就用 action:"figure" + chapter + figure（例如 7-5），会按图注定位并裁出 PNG 附在结果里，同时给本地路径（用 qq_send_image 发）。扫描件第一次建索引要 OCR 前 40 页，约 50 秒，之后有缓存。主人可用 path/url；非主人只能用本会话合并转发过来的文件。单文件上限 256MB。不要拿 stellar_file_read 整本读，按章读更准也更省。',
+  {
+    key: z.string().describe('当前会话 key，必须形如 private:<主人QQ> 或 group:<群号>'),
+    token: z.string().optional().describe('会话令牌（唤醒提示/调度提示里【会话令牌】那一行的值原样传入；没有就不传）'),
+    action: z.enum(['outline', 'read', 'figure']).default('outline').describe('outline=只看目录；read=读一章/一段页；figure=找并裁一张插图'),
+    messageId: z.string().optional().describe('文件所在消息的 QQ messageId（消息提示里的 files[].messageId）'),
+    forwardId: z.string().optional().describe('合并转发的 id；转发里的 PDF 用这个 + name 定位'),
+    fileId: z.string().optional().describe('文件的 file_id（一般不用传）'),
+    name: z.string().optional().describe('文件名（含 .pdf，可只写一部分）；没给 messageId/forwardId 时用它匹配'),
+    path: z.string().optional().describe('本地 PDF 路径（主人专属，工作区相对路径或绝对路径）'),
+    url: z.string().optional().describe('PDF 的 http(s) 下载地址（主人专属）'),
+    chapter: z.union([z.number(), z.string()]).optional().describe('章号，例如 7；read/figure 用'),
+    page: z.union([z.number(), z.string()]).optional().describe('单页页号（PDF 页码，从 1 开始）；read 用'),
+    pages: z.string().optional().describe('页范围，例如 "199-208"；read 用（与 chapter 二选一）'),
+    figure: z.string().optional().describe('图号，例如 "7-5"；figure 用'),
+    maxChars: z.union([z.number(), z.string()]).optional().describe('read 最多返回多少字：默认 12000，上限 20000')
+  },
+  async ({ key, token, action = 'outline', messageId, forwardId, fileId, name, path: filePath, url, chapter, page, pages, figure, maxChars }) => {
+    let tempDir = '';
+    try {
+      const keyStr = String(key || '').trim();
+      const denied = await ownerOnlyError(key, token);
+      const isOwner = !denied;
+      if (!isOwner) {
+        const ident = await resolveAgentIdentity(token);
+        if (!ident || !ident.key) return { content: [{ type: 'text', text: denied }], isError: true };
+        if (ident.key !== keyStr) {
+          return { content: [{ type: 'text', text: 'key 和会话令牌对不上（令牌属于 ' + ident.key + '），不读。' }], isError: true };
+        }
+        if (String(filePath || '').trim() || String(url || '').trim()) {
+          return { content: [{ type: 'text', text: '只有主人能用 path/url 读任意 PDF。合并转发里的 PDF 请传 forwardId + name。' }], isError: true };
+        }
+      }
+      const wantedPath = String(filePath || '').trim();
+      const wantedUrl = String(url || '').trim();
+      let fileName = String(name || '').trim();
+      if (!wantedPath && !wantedUrl && !String(messageId || '').trim() && !fileName) {
+        return { content: [{ type: 'text', text: '要读哪份 PDF？传 messageId、name、path、url 之一（一般用消息提示里的 files[0].messageId）。' }], isError: true };
+      }
+      const MAX = 256 * 1024 * 1024;
+      let abs = '';
+      let buffer = null;
+      if (wantedPath) {
+        abs = assertReadableLocalPath(wantedPath, { workspaceRoot: WORKSPACE_ROOT, stellarRoot: ROOT, dshHome: dshHome() });
+        const st = fs.statSync(abs);
+        if (!st.isFile()) throw new Error('path 不是文件：' + wantedPath);
+        if (st.size > MAX) throw new Error('PDF 太大（' + (st.size / 1048576).toFixed(1) + ' MB），上限 256 MB');
+        fileName = fileName || path.basename(abs);
+      } else if (wantedUrl) {
+        if (!fileName) fileName = decodeURIComponent(wantedUrl.split('?')[0].split('/').pop() || 'input.pdf');
+        buffer = await fetchFileBuffer(wantedUrl, { maxBytes: MAX });
+      } else {
+        const found = findFileEntry(key, { messageId, forwardId, fileId, name });
+        if (found.error) return { content: [{ type: 'text', text: found.error }], isError: true };
+        const file = found.file;
+        if (!isOwner && file.fromForward !== true) {
+          return { content: [{ type: 'text', text: '这个会话里只有合并转发过来的 PDF 能读（这是别人直接发的文件，只有主人能读）。' }], isError: true };
+        }
+        fileName = String(file.name || fileName || '').trim() || 'input.pdf';
+        buffer = await fetchFileBuffer(
+          await fileDownloadUrl(file, key, { allowOwnerFallback: isOwner }),
+          { allowPrivate: true, maxBytes: MAX }
+        );
+      }
+      if (buffer && buffer.length) {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stellar-pdf-'));
+        const safeName = (fileName || 'input.pdf').replace(/[\\/:*?"<>|]/g, '_');
+        abs = path.join(tempDir, safeName.toLowerCase().endsWith('.pdf') ? safeName : safeName + '.pdf');
+        fs.writeFileSync(abs, buffer);
+      }
+      const pdf = await import(pathToFileURL(path.join(ROOT, 'plugins', 'stellar', 'tools', 'lib', 'pdf', 'index.mjs')).href);
+      if (!pdf.pdfAvailable || !pdf.pdfAvailable()) throw new Error('PDF 渲染组件不可用（缺 pdf-ocr.ps1 / render.ps1 / crop.ps1）');
+      const stateDir = path.join(dshHome(), 'stellar', 'state');
+      if (action === 'outline') {
+        const r = await pdf.outlinePdf({ filePath: abs, stateDir });
+        const lines = ['PDF 共 ' + r.pageCount + ' 页｜目录来源 ' + (r.source || 'unknown') + '｜印刷页偏移 ' + (r.offset >= 0 ? '+' : '') + r.offset];
+        for (const c of r.chapters || []) {
+          lines.push(c.num + '. ' + (c.title || '（未识别标题）') + '｜印刷页 ' + c.printedStart + ' → PDF ' + c.pdfStart + '（' + c.confidence + '）' + (c.pages ? '｜约 ' + c.pages + ' 页' : ''));
+        }
+        lines.push('', '读某一章：action:"read", chapter:7；找插图：action:"figure", chapter:7, figure:"7-5"。');
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      }
+      if (action === 'figure') {
+        const label = String(figure || '').trim();
+        if (!label) return { content: [{ type: 'text', text: '要哪张图？传 figure，例如 "7-5"（章号 7 也一起传）。' }], isError: true };
+        const f = await pdf.figurePdf({ filePath: abs, chapter: chapter ? Number(chapter) : 0, label, page: page ? Number(page) : 0, stateDir });
+        const head = [
+          '已找到：图 ' + f.label + '｜' + f.caption,
+          'PDF 第 ' + f.page + ' 页｜' + f.width + '×' + f.height + '｜' + Math.round(f.bytes / 1024) + ' KB' + (f.fullPage ? '（没定位到图注，给的是整页）' : ''),
+          '本地文件：' + f.file,
+          '要发到聊天就用 qq_send_image，imagePath 填上面这个路径；只回答内容就不用发。'
+        ];
+        const blocks = [{ type: 'text', text: head.join('\n') }];
+        const img = mediaImageBlock(f.file);
+        if (img) blocks.push(img);
+        return { content: blocks };
+      }
+      // read
+      const max = Math.min(20000, Math.max(1000, Number(maxChars) || 12000));
+      let fromPage = page ? Number(page) : 0;
+      let toPage = 0;
+      const range = String(pages || '').trim().match(/^(\d+)\s*[-~–—]\s*(\d+)$/);
+      if (range) { fromPage = Number(range[1]); toPage = Number(range[2]); }
+      const r = await pdf.readPdf({ filePath: abs, chapter: chapter ? Number(chapter) : 0, fromPage, toPage, maxChars: max, stateDir });
+      const head = ['已读 PDF：' + (fileName || 'input.pdf') + '｜' + (r.chapter ? '第 ' + r.chapter.num + ' 章 ' + r.chapter.title + '（PDF ' + r.chapter.pdfStart + '–' + r.chapter.pdfEnd + '）' : '页 ' + r.fromPage + '–' + r.toPage) + '｜' + r.chars + ' 字'];
+      if (r.nextPage) head.push('还有下一页：action:"read", page:' + r.nextPage + '（或 chapter 继续）');
+      head.push('---', r.text || '（这一章没读到文字）');
+      return { content: [{ type: 'text', text: head.join('\n') }] };
+    } catch (error) {
+      const code = error && error.code ? '（' + error.code + '）' : '';
+      const hint = error && error.hint ? '\n下一步：' + error.hint : '';
+      return { content: [{ type: 'text', text: '读 PDF 失败' + code + '：' + (error && error.message ? error.message : error) + hint }], isError: true };
+    } finally {
+      if (tempDir) { try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {} }
     }
   }
 );

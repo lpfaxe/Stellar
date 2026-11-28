@@ -7,19 +7,20 @@
  *  · 这里只做「看得见」，所有写操作（清空/删除/改事实）都留在 3300 面板与 stellar_memory_* 工具，避免两个写入口打架。
  */
 import {
-  catalog, dayKey, factStats, jobState, listFacts, listProfiles, listZoneNotes,
-  openDb, stats, zoneStats,
+  catalog, dayKey, factStats, getSubject, jobState, listFacts, listPages, listProfiles,
+  listRegions, listZoneNotes, openDb, regionStats, stats, zoneStats,
 } from '../../../src/memory-db.js';
 
 const TOPIC_LIMIT = 12;
 const FACT_LIMIT = 12;
 const ZONE_LIMIT = 6;
+const PAGE_LIMIT = 12;
 
 function recentTopics(db, ownerId) {
   const who = String(ownerId || '').trim();
   const sql = who
-    ? 'SELECT id, owner_id, title, summary, tier, importance, msg_count, ended_at, day_key FROM topic WHERE owner_id = ? ORDER BY (tier = ' + "'important'" + ') DESC, ended_at DESC LIMIT ?'
-    : 'SELECT id, owner_id, title, summary, tier, importance, msg_count, ended_at, day_key FROM topic ORDER BY (tier = ' + "'important'" + ') DESC, ended_at DESC LIMIT ?';
+    ? 'SELECT id, owner_id, title, summary, tier, importance, msg_count, ended_at, day_key, region_id, subject_id FROM topic WHERE owner_id = ? ORDER BY (tier = ' + "'important'" + ') DESC, ended_at DESC LIMIT ?'
+    : 'SELECT id, owner_id, title, summary, tier, importance, msg_count, ended_at, day_key, region_id, subject_id FROM topic ORDER BY (tier = ' + "'important'" + ') DESC, ended_at DESC LIMIT ?';
   try {
     return (who ? db.prepare(sql).all(who, TOPIC_LIMIT) : db.prepare(sql).all(TOPIC_LIMIT)).map((r) => ({
       id: r.id,
@@ -31,6 +32,8 @@ function recentTopics(db, ownerId) {
       msgCount: Number(r.msg_count) || 0,
       endedAt: Number(r.ended_at) || 0,
       day: r.day_key || '',
+      regionId: r.region_id || '',
+      subjectId: r.subject_id || '',
     }));
   } catch { return []; }
 }
@@ -118,6 +121,29 @@ export function memoryDbOverview({ ownerId = '', zone = 'bili' } = {}) {
   let catalogRow = { rows: [], fragments: 0, persona: '', zones: null, facts };
   try { catalogRow = catalog({ ownerId: who, limit: 8, db }) || catalogRow; } catch {}
 
+  let regions = [];
+  try { regions = regionStats({ db }); } catch {}
+  let regionNames = [];
+  try { regionNames = listRegions({ db }); } catch {}
+  let pages = [];
+  try {
+    pages = listPages({ db, limit: PAGE_LIMIT }).map((p) => {
+      const sub = getSubject(p.subject_id, { db });
+      return {
+        id: p.id,
+        regionId: p.region_id || '',
+        subjectId: p.subject_id || '',
+        subjectName: sub ? sub.name : '',
+        title: String(p.title || '').slice(0, 80),
+        body: String(p.body || '').slice(0, 160),
+        version: Number(p.version) || 1,
+        privacy: p.privacy || 'normal',
+        updatedBy: p.updated_by || '',
+        updatedAt: Number(p.updated_at) || 0,
+      };
+    });
+  } catch {}
+
   return {
     ok: true,
     day: today,
@@ -129,11 +155,16 @@ export function memoryDbOverview({ ownerId = '', zone = 'bili' } = {}) {
     factRows,
     zoneRows,
     profiles,
+    regions: regions.map((r) => ({
+      ...r,
+      name: (regionNames.find((x) => x.code === r.code) || r).name || r.code,
+    })),
+    pages,
     catalog: {
       topics: (catalogRow.rows || []).length,
       fragments: Number(catalogRow.fragments) || 0,
     },
-    jobs: [jobBrief('split'), jobBrief('window'), jobBrief('profile')],
+    jobs: [jobBrief('split'), jobBrief('dream'), jobBrief('window'), jobBrief('profile')],
   };
 }
 

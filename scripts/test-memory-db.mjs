@@ -21,10 +21,9 @@ const dbFile = path.join(root, 'fixture', 'memory.db');
 const mod = await import('../src/memory-db.js');
 const { openDb, listTopicParticipants, topicsForPerson, groupRoster, append, appendSelf, safeAppendSelf, pendingRows, segmentRows, insertTopic, insertFragment, readTopic, formatTopicForModel, catalog, formatCatalogForModel, search, formatSearchForModel, upsertProfile, listProfiles, insertStyleSlice, listStyleSlices, saveJobState, jobState, stats, pruneWindow, promoteTopic, dayKey, ownerIdForKey, bigramsOf, soloGroupTopicIds } = mod;
 
-const worker = await import('../src/memory-worker.js');
-
 const DAY = '2026-11-13';
 const T0 = new Date('2026-11-13T10:00:00+08:00').getTime();
+const worker = await import('../src/memory-worker.js');
 const db = openDb({ file: dbFile });
 
 test.after(() => {
@@ -42,18 +41,18 @@ test('schema 建全了九类表与 FTS5', () => {
 });
 
 test('owner 软标签与本地日', () => {
-  assert.equal(ownerIdForKey('private:1000000001'), '1000000001');
+  assert.equal(ownerIdForKey('private:3025145051'), '3025145051');
   assert.equal(ownerIdForKey('group:123456'), 'group:123456');
   assert.match(dayKey(T0), /^2026-11-13$/);
 });
 
 test('入站与出站都落缓存（双写是硬要求）', () => {
-  append({ db: dbFile, conversationKey: 'private:1000000003', speakerId: '1000000003', speakerName: '测试员A', role: 'user', text: '帮我画一张绝区零挽昼的图', at: T0, dayKey: DAY });
-  appendSelf({ db: dbFile, conversationKey: 'private:1000000003', speakerId: '1000000002', speakerName: '她', text: '行，那你想要什么角度', at: T0 + 60000, dayKey: DAY });
+  append({ db: dbFile, conversationKey: 'private:2493502782', speakerId: '2493502782', speakerName: '测试员A', role: 'user', text: '帮我画一张绝区零挽昼的图', at: T0, dayKey: DAY });
+  appendSelf({ db: dbFile, conversationKey: 'private:2493502782', speakerId: '2601728971', speakerName: '她', text: '行，那你想要什么角度', at: T0 + 60000, dayKey: DAY });
   const rows = db.prepare('SELECT role, text FROM cache_msg ORDER BY id').all();
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((r) => r.role), ['user', 'self']);
-  assert.equal(rows[0].owner_id || db.prepare('SELECT owner_id FROM cache_msg LIMIT 1').get().owner_id, '1000000003');
+  assert.equal(rows[0].owner_id || db.prepare('SELECT owner_id FROM cache_msg LIMIT 1').get().owner_id, '2493502782');
 });
 
 test('写库失败不抛（safeAppendSelf 返回 null）', () => {
@@ -92,8 +91,8 @@ test('硬约束：只有一边的话不建话题', () => {
 
 test('建话题：正文完整、cache 标 split、important 打 keep', () => {
   const rows = [
-    { id: 101, ck: 'private:1000000001', oid: '1000000001', role: 'user', speaker_id: '1000000001', speaker_name: '主人', text: '以后叫我哥，别叫主人了', at: T0 + 2 * 3600 * 1000, day_key: DAY },
-    { id: 102, ck: 'private:1000000001', oid: '1000000001', role: 'self', speaker_id: '1000000002', speaker_name: '她', text: '哥？行吧，那你别嫌我喊得生硬', at: T0 + 2 * 3600 * 1000 + 30000, day_key: DAY },
+    { id: 101, ck: 'private:3025145051', oid: '3025145051', role: 'user', speaker_id: '3025145051', speaker_name: '主人', text: '以后叫我哥，别叫主人了', at: T0 + 2 * 3600 * 1000, day_key: DAY },
+    { id: 102, ck: 'private:3025145051', oid: '3025145051', role: 'self', speaker_id: '2601728971', speaker_name: '她', text: '哥？行吧，那你别嫌我喊得生硬', at: T0 + 2 * 3600 * 1000 + 30000, day_key: DAY },
   ];
   for (const r of rows) {
     db.prepare('INSERT INTO cache_msg (id, conversation_key, owner_id, speaker_id, speaker_name, role, kind, text, at, day_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -101,7 +100,7 @@ test('建话题：正文完整、cache 标 split、important 打 keep', () => {
   }
   const out = insertTopic({
     db, rows,
-    topic: { ownerId: '1000000001', conversationKey: 'private:1000000001', dayKey: DAY, title: '改口叫哥', summary: '主人要求改称呼，她答应了', importance: 85, facets: ['约定', '关系'] },
+    topic: { ownerId: '3025145051', conversationKey: 'private:3025145051', dayKey: DAY, title: '改口叫哥', summary: '主人要求改称呼，她答应了', importance: 85, facets: ['约定', '关系'] },
   });
   assert.equal(out.ok, true);
   assert.equal(out.tier, 'important');
@@ -122,16 +121,16 @@ test('读话题：双方都在，时间与身份都对', () => {
   const text = formatTopicForModel(data);
   assert.match(text, /【话题】改口叫哥/);
   // 群聊与私聊一律「名字(QQ)」—— 同名的人太多，光靠昵称分不清谁是谁。
-  assert.match(text, /主人\(1000000001\): 以后叫我哥/);
-  assert.match(text, /参与人：主人\(1000000001\)、她\(1000000002\)/);
+  assert.match(text, /主人\(3025145051\): 以后叫我哥/);
+  assert.match(text, /参与人：主人\(3025145051\)、她\(2601728971\)/);
   assert.match(text, /她\(你\): 哥？行吧/);
   assert.equal(data.total, 2);
   assert.equal(readTopic('tp_nope', { db }), null);
 });
 
 test('catalog 只给标题与条数（不给正文）', () => {
-  insertFragment({ ownerId: '1000000001', day: DAY, text: '讨厌被叫「主人」，喜欢被叫哥', facet: '雷区', weight: 4, at: T0, db });
-  const cat = catalog({ ownerId: '1000000001', db });
+  insertFragment({ ownerId: '3025145051', day: DAY, text: '讨厌被叫「主人」，喜欢被叫哥', facet: '雷区', weight: 4, at: T0, db });
+  const cat = catalog({ ownerId: '3025145051', db });
   assert.equal(cat.rows.length, 1);
   assert.equal(cat.fragments, 1);
   const text = formatCatalogForModel(cat);
@@ -142,28 +141,28 @@ test('catalog 只给标题与条数（不给正文）', () => {
 });
 
 test('检索：>=3 字走 FTS5 trigram，2 字走 bigrams LIKE 兜底', () => {
-  const long = search({ q: '绝区零挽昼', ownerId: '1000000001', db });
+  const long = search({ q: '绝区零挽昼', ownerId: '3025145051', db });
   assert.equal(long.length, 0, '主人名下没有这条（应在测试员A名下）');
   const all = search({ q: '绝区零挽昼', scope: 'all', db });
   assert.equal(all.length, 0, '这条只进了 cache，还没建话题（切分前搜不到是正常的）');
   // 造一条带正文的零碎记忆来验检索
-  insertFragment({ ownerId: '1000000003', day: DAY, text: '喜欢绝区零的挽昼，想要侧脸图', facet: '爱好', weight: 3, at: T0 + 5000, db });
-  const hit3 = search({ q: '绝区零', ownerId: '1000000003', db });
+  insertFragment({ ownerId: '2493502782', day: DAY, text: '喜欢绝区零的挽昼，想要侧脸图', facet: '爱好', weight: 3, at: T0 + 5000, db });
+  const hit3 = search({ q: '绝区零', ownerId: '2493502782', db });
   assert.ok(hit3.length >= 1, '3 字以上应该命中');
-  const hit2 = search({ q: '挽昼', ownerId: '1000000003', db });
+  const hit2 = search({ q: '挽昼', ownerId: '2493502782', db });
   assert.ok(hit2.length >= 1, '2 字应该走 LIKE 兜底命中');
-  const miss = search({ q: '量子力学', ownerId: '1000000003', db });
+  const miss = search({ q: '量子力学', ownerId: '2493502782', db });
   assert.equal(miss.length, 0);
   assert.match(formatSearchForModel(miss), /不记得/);
-  const cross = search({ q: '挽昼', scope: 'all', db, currentOwner: '1000000001' });
+  const cross = search({ q: '挽昼', scope: 'all', db, currentOwner: '3025145051' });
   assert.ok(cross.length >= 1);
-  assert.match(formatSearchForModel(cross, { currentOwner: '1000000001' }), /别转述具体内容/);
+  assert.match(formatSearchForModel(cross, { currentOwner: '3025145051' }), /别转述具体内容/);
 });
 
 test('两字切分与 profile/style/job_state', () => {
   assert.equal(bigramsOf('火锅'), '火锅');
   assert.equal(bigramsOf('去吃火锅吧'), '去吃 吃火 火锅 锅吧', '4 个二字组，空格分隔给 LIKE 用');
-  upsertProfile({ ownerId: '1000000003', persona: '二游党，爱看剧情，讨厌被催', detail: '对绝区零投入很深', tags: ['二游', '剧情'], confidence: 60, msgCount: 40, db });
+  upsertProfile({ ownerId: '2493502782', persona: '二游党，爱看剧情，讨厌被催', detail: '对绝区零投入很深', tags: ['二游', '剧情'], confidence: 60, msgCount: 40, db });
   const prof = listProfiles({ db });
   assert.equal(prof.length, 1);
   assert.equal(prof[0].persona, '二游党，爱看剧情，讨厌被催');
@@ -180,29 +179,35 @@ test('两字切分与 profile/style/job_state', () => {
 });
 
 function getProfilePersona() {
-  const row = db.prepare("SELECT persona FROM profile WHERE owner_id = '1000000003'").get();
+  const row = db.prepare("SELECT persona FROM profile WHERE owner_id = '2493502782'").get();
   return row ? row.persona : '';
 }
 
-test('2 天窗口：删 daily、留 important、先导出 trash', async () => {
+test('窗口清理：删 daily、留 important、先导出 trash', async () => {
   const target = '2026-11-11';
   const rows = [
-    { id: 201, ck: 'private:1000000001', oid: '1000000001', role: 'user', speaker_id: '1000000001', speaker_name: '主人', text: '今天早点睡', at: T0 - 2 * 86400000, day_key: target },
-    { id: 202, ck: 'private:1000000001', oid: '1000000001', role: 'self', speaker_id: '1000000002', speaker_name: '她', text: '知道了，你也睡', at: T0 - 2 * 86400000 + 20000, day_key: target },
+    { id: 201, ck: 'private:3025145051', oid: '3025145051', role: 'user', speaker_id: '3025145051', speaker_name: '主人', text: '今天早点睡', at: T0 - 2 * 86400000, day_key: target },
+    { id: 202, ck: 'private:3025145051', oid: '3025145051', role: 'self', speaker_id: '2601728971', speaker_name: '她', text: '知道了，你也睡', at: T0 - 2 * 86400000 + 20000, day_key: target },
   ];
   for (const r of rows) {
     db.prepare('INSERT INTO cache_msg (id, conversation_key, owner_id, speaker_id, speaker_name, role, kind, text, at, day_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run(r.id, r.ck, r.oid, r.speaker_id, r.speaker_name, r.role, 'text', r.text, r.at, r.day_key);
   }
-  const daily = insertTopic({ db, rows, topic: { ownerId: '1000000001', conversationKey: 'private:1000000001', dayKey: target, title: '催睡觉', summary: '互相催睡', importance: 30 } });
+  const daily = insertTopic({ db, rows, topic: { ownerId: '3025145051', conversationKey: 'private:3025145051', dayKey: target, title: '催睡觉', summary: '互相催睡', importance: 30 } });
   assert.equal(daily.tier, 'daily');
   const kept = db.prepare("SELECT * FROM topic WHERE tier = 'important'").all();
   assert.ok(kept.length >= 1);
   const out = pruneWindow({ targetDay: target, db });
   assert.equal(out.ok, true);
-  assert.equal(out.deleted.topics, 1);
-  assert.equal(out.deleted.cache, 2, 'cache 按 day_key 全删（keep=0 的那两条）');
-  assert.ok(out.exported && fs.existsSync(out.exported), 'trash 必须落盘');
+  assert.equal(out.deleted.topics, 0, '没做梦之前一条 daily 都不能删');
+  assert.equal(out.deleted.cache, 0, '没做梦之前原文缓存也不能删（做梦只读缓存）');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM topic WHERE day_key = ?").get(target).n, 1);
+  db.prepare('UPDATE topic SET dreamed_at = ? WHERE id = ?').run(T0, daily.id);
+  const out2 = pruneWindow({ targetDay: target, db });
+  assert.equal(out2.ok, true);
+  assert.equal(out2.deleted.topics, 1);
+  assert.equal(out2.deleted.cache, 2, '做梦标记后 cache 按 day_key 删（keep=0 的那两条）');
+  assert.ok(out2.exported && fs.existsSync(out2.exported), 'trash 必须落盘');
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM topic WHERE day_key = ?").get(target).n, 0);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM topic WHERE tier = 'important'").get().n, kept.length, 'important 一条都不能少');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM topic_msg WHERE topic_id = ?').get(daily.id).n, 0, '话题正文跟着删');
@@ -249,7 +254,7 @@ test('见闻区：两个区互不串、按天取、统计', () => {
 });
 
 test('见闻区：目录块自带「先查这两个区」的提示', () => {
-  const text = mod.formatCatalogForModel(mod.catalog({ ownerId: '1000000001', db }), { titles: 8, maxChars: 600 });
+  const text = mod.formatCatalogForModel(mod.catalog({ ownerId: '3025145051', db }), { titles: 8, maxChars: 600 });
   assert.match(text, /［见闻］/, '目录里要出现见闻行，否则她不知道有这两个区');
   assert.match(text, /stellar_memory_zone/);
 });
@@ -266,8 +271,8 @@ test('见闻区：删一条 / 清空一个区', () => {
 
 test('旁观话题：群里她没插话也要存下来，但绝不进重要晋升', () => {
   const rows = [
-    { id: 201, ck: 'group:1132808329', oid: 'group:1132808329', role: 'user', speaker_id: '1000000003', speaker_name: '测试员A', text: '周末去爬山吗？', at: T0 + 5 * 3600 * 1000, day_key: DAY },
-    { id: 202, ck: 'group:1132808329', oid: 'group:1132808329', role: 'user', speaker_id: '1000000001', speaker_name: '示例主人', text: '我周六有空', at: T0 + 5 * 3600 * 1000 + 20000, day_key: DAY },
+    { id: 201, ck: 'group:1132808329', oid: 'group:1132808329', role: 'user', speaker_id: '2493502782', speaker_name: '测试员A', text: '周末去爬山吗？', at: T0 + 5 * 3600 * 1000, day_key: DAY },
+    { id: 202, ck: 'group:1132808329', oid: 'group:1132808329', role: 'user', speaker_id: '3025145051', speaker_name: '柳畔微风', text: '我周六有空', at: T0 + 5 * 3600 * 1000 + 20000, day_key: DAY },
   ];
   for (const r of rows) {
     db.prepare('INSERT INTO cache_msg (id, conversation_key, owner_id, speaker_id, speaker_name, role, kind, text, at, day_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -286,10 +291,10 @@ test('旁观话题：群里她没插话也要存下来，但绝不进重要晋�
 
   // 参与人索引：按人查得到这条旁观话题，群里也有名册
   const people = listTopicParticipants(ok.id, { db });
-  assert.deepEqual(people.map((x) => x.qq).sort(), ['1000000001', '1000000003']); // 换成假号后字典序变了，按 new 排序写
-  const forA = topicsForPerson('1000000003', { db });
+  assert.deepEqual(people.map((x) => x.qq).sort(), ['2493502782', '3025145051']);
+  const forA = topicsForPerson('2493502782', { db });
   assert.ok(forA.some((t) => t.id === ok.id), '按人查应该能查到他在群里参与过的旁观话题');
-  assert.ok(groupRoster('group:1132808329', { db }).some((r) => r.qq === '1000000003'));
+  assert.ok(groupRoster('group:1132808329', { db }).some((r) => r.qq === '2493502782'));
 
   // 目录里必须带参与人与 [旁观] 标记，否则她分不清这是自己经历还是旁听
   const cat = catalog({ ownerId: 'group:1132808329', db });
@@ -298,7 +303,7 @@ test('旁观话题：群里她没插话也要存下来，但绝不进重要晋�
   assert.ok(Array.isArray(hit.participants) && hit.participants.length === 2);
   const text = formatCatalogForModel(cat, { titles: 8, maxChars: 600 });
   assert.match(text, /［群里的人］/);
-  assert.match(text, /1000000003/);
+  assert.match(text, /2493502782/);
   assert.match(text, /\[旁观\]/);
 });
 
@@ -314,8 +319,8 @@ test('群话题「人类只有她+主人」私聊也能召回（2026-11-22）', 
   const ck = 'group:1132808329';
   const ins = db.prepare('INSERT INTO cache_msg (id, conversation_key, owner_id, speaker_id, speaker_name, role, kind, text, at, day_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const rows = [
-    { id: 9101, role: 'user', sid: '1000000001', name: '主人', text: '塔斯汀套餐', at: T0 + 600000 },
-    { id: 9102, role: 'self', sid: '1000000002', name: '她', text: '塔斯汀啊，还成，比泡面强点', at: T0 + 608000 },
+    { id: 9101, role: 'user', sid: '3025145051', name: '主人', text: '塔斯汀套餐', at: T0 + 600000 },
+    { id: 9102, role: 'self', sid: '2601728971', name: '她', text: '塔斯汀啊，还成，比泡面强点', at: T0 + 608000 },
   ];
   for (const r of rows) ins.run(r.id, ck, ck, r.sid, r.name, r.role, 'text', r.text, r.at, day);
   const solo = insertTopic({
@@ -324,22 +329,22 @@ test('群话题「人类只有她+主人」私聊也能召回（2026-11-22）', 
     topic: { ownerId: ck, conversationKey: ck, dayKey: day, title: '塔斯汀套餐', summary: '塔斯汀套餐 / 还成', importance: 10 },
   });
   assert.equal(solo.ok, true);
-  assert.ok(soloGroupTopicIds('1000000001', { db }).includes(solo.id), '私聊视角应认出这条群话题');
-  const priv = catalog({ ownerId: '1000000001', db, limit: 50 });
+  assert.ok(soloGroupTopicIds('3025145051', { db }).includes(solo.id), '私聊视角应认出这条群话题');
+  const priv = catalog({ ownerId: '3025145051', db, limit: 50 });
   const hit = priv.rows.find((r) => r.id === solo.id);
   assert.ok(hit, '私聊目录里要有这条');
   assert.equal(hit.viaGroup, true);
   assert.match(formatCatalogForModel(priv, { titles: 20, maxChars: 4000 }), /塔斯汀套餐[\s\S]*〔群〕/);
   const grp = catalog({ ownerId: ck, db, limit: 50 });
   assert.ok(grp.rows.some((r) => r.id === solo.id), '群视角照旧看得到');
-  const found = search({ q: '塔斯汀套餐', ownerId: '1000000001', db });
+  const found = search({ q: '塔斯汀套餐', ownerId: '3025145051', db });
   assert.ok(found.some((r) => r.ref_id === solo.id), '私聊关键词检索也要能搜到');
-  assert.match(formatSearchForModel(found, { currentOwner: '1000000001' }), /〔群〕/);
-  assert.ok(!/别转述/.test(formatSearchForModel(found, { currentOwner: '1000000001' })), '自己说过的话不该标成别人的');
+  assert.match(formatSearchForModel(found, { currentOwner: '3025145051' }), /〔群〕/);
+  assert.ok(!/别转述/.test(formatSearchForModel(found, { currentOwner: '3025145051' })), '自己说过的话不该标成别人的');
 });
 
 test('群里有别人的话题不会漏进私聊目录', () => {
-  const priv = catalog({ ownerId: '1000000001', db, limit: 50 });
+  const priv = catalog({ ownerId: '3025145051', db, limit: 50 });
   const leaked = priv.rows.filter((r) => String(r.conversation_key || '').startsWith('group:') && r.scope === 'ambient');
   assert.equal(leaked.length, 0, '旁观话题属于群，不属于私聊');
 });

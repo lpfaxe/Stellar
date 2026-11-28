@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const REQUIRED_MCP_IDS = Object.freeze(['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe']);
+export const REQUIRED_MCP_IDS = Object.freeze(['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-diagram']);
 
 /** 扫 ~/.dsh/profiles/<name>/cordis.patch.yml，找哪些 profile 缺了 MCP 条目。 */
 export function checkProfileMcp(home, { ids = REQUIRED_MCP_IDS } = {}) {
@@ -25,7 +25,7 @@ export function checkProfileMcp(home, { ids = REQUIRED_MCP_IDS } = {}) {
       name,
       file,
       missing: ids.filter((id) => !new RegExp(`(^|\\n)\\s*-?\\s*(?:id:\\s*)?${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(text)),
-      hasStellar: /\bstellar\b/.test(text),
+      hasSurfcore: /\bstellar\b/.test(text),
     });
   }
   const healthy = profiles.filter((p) => p.missing.length === 0);

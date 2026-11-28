@@ -164,16 +164,19 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
     const libSrc = path.join(ROOT, 'plugins', 'stellar', 'tools', 'lib');
     const libDst = path.join(fixture, 'plugins', 'stellar', 'tools', 'lib');
     await fs.mkdir(libDst, { recursive: true });
-    await Promise.all((await fs.readdir(libSrc)).map((name) =>
-      fs.copyFile(path.join(libSrc, name), path.join(libDst, name))));
+    // 只复制文件：lib 下可能有子目录（如 pdf/），copyFile 遇到目录会 EPERM。
+    // 本测试只列工具与 schema，不会调用需要子目录的深层工具，跳过子目录即可。
+    await Promise.all((await fs.readdir(libSrc, { withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => fs.copyFile(path.join(libSrc, entry.name), path.join(libDst, entry.name))));
     // 2026-11-11：tools/lib/config.mjs 现在也会 import ../../lib/run-mode.js（三档运行模式），
     // 所以插件自身的 lib 目录也要一起复制，否则 fixture 里 MCP 一启动就 ERR_MODULE_NOT_FOUND。
     const pluginLibSrc = path.join(ROOT, 'plugins', 'stellar', 'lib');
     const pluginLibDst = path.join(fixture, 'plugins', 'stellar', 'lib');
     await fs.mkdir(pluginLibDst, { recursive: true });
-    await Promise.all((await fs.readdir(pluginLibSrc))
-      .filter((name) => /\.(?:js|mjs)$/.test(name))
-      .map((name) => fs.copyFile(path.join(pluginLibSrc, name), path.join(pluginLibDst, name))));
+    await Promise.all((await fs.readdir(pluginLibSrc, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && /\.(?:js|mjs)$/.test(entry.name))
+      .map((entry) => fs.copyFile(path.join(pluginLibSrc, entry.name), path.join(pluginLibDst, entry.name))));
     await fs.writeFile(path.join(fixture, 'config.json'), JSON.stringify({ consolePort: api.address().port, socialV2: { toolProfile: 'full' } }));
     const transport = new StdioClientTransport({
       command: process.execPath,

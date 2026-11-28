@@ -21,8 +21,8 @@ const mod = await import('../src/memory-db.js');
 const facts = await import('../src/memory-facts.js');
 const { openDb, closeDb, upsertFact, listFacts, getFact, searchFacts, updateFact, deleteFact, factStats, formatFactsForModel, formatFactLine, catalog, insertTopic } = mod;
 
-const OWNER = '1000000001';
-const OTHER = '1000000003';
+const OWNER = '3025145051';
+const OTHER = '2493502782';
 const db = openDb({ file: dbFile });
 
 test.after(() => {
@@ -30,8 +30,8 @@ test.after(() => {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
 });
 
-test('fact 表建好了（SCHEMA_VERSION 4）', () => {
-  assert.equal(mod.SCHEMA_VERSION, 4);
+test('fact 表建好了（SCHEMA_VERSION 5）', () => {
+  assert.equal(mod.SCHEMA_VERSION, 5);
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
   assert.ok(names.includes('fact'), '缺少 fact 表');
 });

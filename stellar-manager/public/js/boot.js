@@ -18,6 +18,7 @@ loadStatus().then(loadCapabilities).then(loadLog).then(loadReports).then(loadTod
   .then(function () { return window.loadTopics ? loadTopics(0) : null; })
   .then(function () { return window.loadFragments ? loadFragments() : null; })
   .then(loadContacts).then(loadOutbox).then(loadTask)
+  .then(function () { return window.loadPower ? loadPower() : null; })
   .then(loadOps).then(loadApprovals);
 
 // 页面切到后台（锁屏、切 App、标签页藏起来）就别再打接口：手机省电、隧道省流量、
@@ -51,6 +52,7 @@ every(30000, function () { if (state.ops.tab === 'agent') loadOps(); });
 every(120000, loadContacts);
 every(30000, loadOutbox);
 every(20000, loadTask);
+every(120000, function () { if (window.loadPower) loadPower(); });
 every(60000, function () { if (window.loadProfiles) loadProfiles(); });
 every(45000, function () { if (window.loadTown && state.tab === 'town') loadTown(); });
 

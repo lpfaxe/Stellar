@@ -5,8 +5,8 @@
 //   1. 安装两套 agent preset：qq-chat、qq-chat-v2
 //      （DSH 0.1.7 机制：作为 stellar bundle 的 patch 层插入
 //        @deepseek-ai/dsh-agent-preset 行；~/.dsh/.agent-presets/ 目录已不再被读取）
-//   2. 在 DSH profile 的 cordis.patch.yml 中挂载三个 MCP server：
-//      mcp-snowluma / mcp-snowluma-host / mcp-web-search-safe
+//   2. 在 DSH profile 的 cordis.patch.yml 中挂载四个 MCP server：
+//      mcp-snowluma / mcp-snowluma-host / mcp-web-search-safe / mcp-diagram
 //   3. 在 profile package.json 中只注册一个 bundle：stellar
 //      （stellar = QQ 设置 + B站养鱼 + 两个 chat preset，全部在一个 bundle 里）
 //
@@ -184,7 +184,7 @@ function yamlSingleQuote(s) {
 }
 
 // 由桥接托管的 MCP 条目 id：脚本对这三个 id 拥有所有权，可安全地按 id 增删。
-const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe'];
+const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-diagram'];
 
 function mcpEntries() {
   const node = NODE_EXE;
@@ -192,6 +192,8 @@ function mcpEntries() {
     'mcp-snowluma': { serverName: 'snowluma', script: path.join(REPO_ROOT, 'src', 'mcp-snowluma-safe.js'), toolCallTimeoutMs: 725000 },
     'mcp-snowluma-host': { serverName: 'snowluma-host', script: path.join(REPO_ROOT, 'src', 'mcp-host-server.js') },
     'mcp-web-search-safe': { serverName: 'web-search-safe', script: path.join(REPO_ROOT, 'src', 'mcp-web-search-safe.js') },
+    // 本地绘图（函数图/曲线/思维导图）：resvg 渲染，不联网；120s 给大图留余量。
+    'mcp-diagram': { serverName: 'diagram', script: path.join(REPO_ROOT, 'src', 'mcp-diagram.js'), toolCallTimeoutMs: 120000 },
   };
   let out = '# === stellar MCP BEGIN ===\n';
   out += '# 由 scripts/setup-dsh.mjs 维护；这段区块会被整体替换，请勿手工编辑内部条目。\n';

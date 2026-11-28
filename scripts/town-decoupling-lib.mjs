@@ -88,6 +88,10 @@ export const CORE_TOWN_ALLOW = {
   ],
   // 2026-11-22 摸鱼日：设置页模式说明里点了 town-jobs.js（不写死次数，只指路）
   'plugins/stellar/lib/client.js': ['这里**不写小镇次数**'],
+  // 记忆分区（2026-11-27）：区映射要认 town: 前缀与 zone='town'，只把来源归到 region_04，
+  // 不读小镇数据、不引小镇模块；真正的小镇逻辑仍在 town-* 文件里。
+  'src/memory-db.js': ["if (k.startsWith('town:')) return 'region_04';", "if (z === 'town') return 'region_04';"],
+  'scripts/test-memory-regions.mjs': ["regionForKey('town:plaza')"],
   'src/capabilities.js': ["id: 'town',", "path: 'town.enabled',"],
   // 新增的摸鱼模式测试自己也要提小镇：逐条登记，改动都在它的断言里
   'scripts/test-idle-mode.mjs': [

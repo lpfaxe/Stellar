@@ -22,7 +22,7 @@
 库文件跟着**角色**走；`DSH_HOME` 可以整体改位置。边界：只装「启用之后的新对话」，
 旧档案（`memory-card*.jsonl` / `memory-inbox.jsonl` / `vector-memory.jsonl`）一个字节都不读、不迁。
 
-## 2 十二张实体表（+ 一张虚拟表 `search_fts`）
+## 2 实体表（+ 一张虚拟表 `search_fts`）
 
 | 表 | 装什么 | 谁写 |
 | --- | --- | --- |
@@ -38,7 +38,9 @@
 | `job_state` | 后台作业进度（`split` / `window` / `profile`） | 作业自身 |
 | `meta` | schema 版本、引擎标记 | `openDb()` |
 
-改动表结构要同时改 `src/memory-db-schema.sql` 与 `SCHEMA_VERSION`（当前 **4**）。
+2026-11-27 又加了 `memory_region`（五个记忆区）、`memory_subject`（人 / 群 / UP / 地点）、`memory_page` / `memory_page_history`（主体页与版本）、`memory_title_history`（标题改动历史）；`topic` / `zone_note` / `fragment` / `fact` / `profile` 各加 `region_id` / `subject_id` 等列。
+
+改动表结构要同时改 `src/memory-db-schema.sql` 与 `SCHEMA_VERSION`（当前 **5**）。
 
 ## 3 写进来（三条路）
 
@@ -129,13 +131,23 @@
 
 ## 9 面板上能做什么
 
-`stellar-manager` 的「记忆」页有六张卡：记忆库概览、话题目录、零碎记忆、重要事实、B站 记忆、好友爱看记忆。（人物侧写在「通讯录」页，参考库在「设置」页。）
+`stellar-manager` 的「记忆」页是**一个工作区 + 六个页签**：概览（五个记忆区 + 整理状态 + 做梦结果）、话题、记忆页（主体页）、零碎、事实、见闻。点某个记忆区可以直接筛该区话题。
 能做的事：搜话题、读一个话题的原文、标为重要、**忘记**（先导出到 `memory-trash/` 再删）、
 新增/编辑/删除事实（选人、选类型、选隐私级、权重 1~5）、生成侧写、清空某天某人的见闻区。
 
 所有删除都**先导出再删**（`memory-trash/*.jsonl`）。删错了可以从那里捞回来。
 
 另外，DSH **设置窗口的「记忆」页签**里也有一块只读的「记忆库（memory.db）」：库里有几条、最近话题、重要事实（带隐私级标记）、人物侧写、B站 / 好友爱看两个见闻区。它是**只读**的 —— 要改（标重要、忘掉、加事实）还是走上面那个 3300 面板，避免两个写入口互相打架。
+
+## 9.5 记忆区、主体页与「做梦」（2026-11-27）
+
+- 五个区：`region_01` QQ聊天 / `region_02` 好友爱看 / `region_03` B站 / `region_04` 小镇 / `region_05` 未归类；区页只实时算数字，不存正文。
+- 主体页回答「关于这个人 / 这件事，她现在怎么看」：带标题、正文、`links`、`sources`（来源话题 id）、版本与隐私；没有来源的页写不进去。
+- 每天 06:30 之后「做梦」：读最近 3 天还没整理过的话题原文 + 零碎收件箱，重写标题、生成/更新主体页、把零碎路由到主体或归档；模型失败或 JSON 坏就整轮不写，并且**跳过 prune**（最多顺延 7 天）。
+- 标题有 `title_source`：`manual` > `dream` > `auto`；面板手改过的标题不会被做梦覆盖，改动进 `memory_title_history`。
+- 唤醒只额外带一行区域摘要（≤90 字）和主体页标题，正文仍靠 `stellar_memory_page` 按需读。
+
+详见 [MEMORY-REGIONS.md](MEMORY-REGIONS.md)。
 
 ## 10 配置（`config.json` 的 `memory` 段）
 

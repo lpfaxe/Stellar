@@ -91,6 +91,7 @@ export function warmCatalog(ownerId, opts = {}) {
       const text = mod.formatCatalogForModel({ ...data, persona: '' }, {
         titles,
         maxChars,
+        regionNames: true,
         // 名册里要标出「她」和「主人」：这两个身份不能靠猜名字（群里可能有人昵称就叫主人）。
         ownerQQ: String(opts.ownerQQ || ''),
         selfId: String(opts.selfId || ''),
@@ -101,6 +102,9 @@ export function warmCatalog(ownerId, opts = {}) {
         fragments: Number(data.fragments) || 0,
         topics: Array.isArray(data.rows) ? data.rows.length : 0,
         persona: String(data.persona || ''),
+        regionLine: String(data.regionLine || ''),
+        pages: Array.isArray(data.pages) ? data.pages.map((p) => ({ id: p.id, title: p.title, version: p.version, subjectId: p.subject_id })) : [],
+        subject: data.subject ? { id: data.subject.id, name: data.subject.name, kind: data.subject.kind } : null,
         at: Date.now(),
         error: '',
       };

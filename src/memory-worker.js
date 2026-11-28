@@ -18,7 +18,7 @@
 import {
   openDb, pendingRows, heldRows, segmentRows, insertTopic, insertFragment,
   markRows, dropStaleHeld, pruneWindow, saveJobState, jobState, dayKey, stats,
-  promoteTopic, getProfile, upsertProfile, upsertFact,
+  promoteTopic, getProfile, upsertProfile, upsertFact, ensureSubjectForOwner, upsertPage, updateTopicTitle, REGIONS,
 } from './memory-db.js';
 import { extractFacts, looksFactful } from './memory-facts.js';
 
@@ -398,17 +398,23 @@ export async function runReview(opts = {}) {
     const summary = String((item && item.summary) || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     if (!title && !summary) continue;
     try {
-      db.prepare("UPDATE topic SET title = CASE WHEN ? <> '' THEN ? ELSE title END, summary = CASE WHEN ? <> '' THEN ? ELSE summary END WHERE id = ?")
-        .run(title, title, summary, summary, id);
-      rewritten += 1;
+      const up = updateTopicTitle({ topicId: id, title, summary, source: 'auto', reason: 'review', db });
+      if (up.ok) rewritten += 1;
+      else if (up.reason && up.reason !== 'empty') errors.push('rewrite ' + id + ': ' + up.reason);
     } catch (e) { errors.push('rewrite ' + id + ': ' + (e && e.message ? e.message : e)); }
   }
 
   let deleted = {};
   if (!opts.dryRun) {
-    const res = pruneWindow({ targetDay, trashDir: opts.trashDir, db });
-    if (res.ok) deleted = res.deleted || {};
-    else errors.push('prune: ' + (res.reason || 'failed'));
+    // 3B：还有没做完梦的 daily 话题就不 prune（最多拖 7 天，pruneWindow 自己也有 7 天兜底）。
+    const backlog = dreamBacklog({ targetDay, db });
+    if (backlog > 0) {
+      errors.push('prune-deferred: dream-backlog ' + backlog);
+    } else {
+      const res = pruneWindow({ targetDay, trashDir: opts.trashDir, db });
+      if (res.ok) deleted = res.deleted || {};
+      else errors.push('prune: ' + (res.reason || 'failed'));
+    }
   }
   try {
     saveJobState('window', {
@@ -475,6 +481,184 @@ export function runWindow(opts = {}) {
   }
 }
 
+
+
+/**
+ * 做梦（2026-11-27）：读最近 days 天还没整理过的原始话题，改写标题/摘要、写主体页、路由零碎。
+ * 硬规则：没有模型通道 / JSON 坏 → 整轮不写、不标记 dreamed_at（prune 会因 dreamed_at=0 保留原文）。
+ */
+export function dreamBacklog({ targetDay = '', db: conn, days = WINDOW_DAYS } = {}) {
+  const db = conn || openDb();
+  const since = targetDay || ymd(Date.now() - days * 86400000);
+  try {
+    const row = db.prepare("SELECT COUNT(*) AS n FROM topic WHERE day_key >= ? AND COALESCE(dreamed_at, 0) = 0 AND tier = 'daily'").get(since);
+    return Number(row && row.n ? row.n : 0);
+  } catch { return 0; }
+}
+
+export function dreamCandidates({ now = Date.now(), db: conn, days = WINDOW_DAYS, maxTopics = 12, maxChars = 1200 } = {}) {
+  const db = conn || openDb();
+  const since = ymd(now - days * 86400000);
+  const topics = db.prepare(
+    "SELECT id, owner_id, title, summary, subject_id, day_key, scope FROM topic WHERE day_key >= ? AND COALESCE(dreamed_at, 0) = 0 AND tier = 'daily' ORDER BY day_key DESC, ended_at DESC LIMIT ?",
+  ).all(since, Math.max(1, Math.min(40, Number(maxTopics) || 12)));
+  const out = [];
+  for (const t of topics) {
+    const msgs = db.prepare('SELECT role, speaker_name, text FROM topic_msg WHERE topic_id = ? ORDER BY seq').all(t.id);
+    let used = 0;
+    const lines = [];
+    for (const m of msgs) {
+      const text = String(m.text || '').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const line = (m.role === 'user' ? String(m.speaker_name || '对方') : '她') + '：' + text;
+      if (used + line.length > maxChars) break;
+      lines.push(line);
+      used += line.length;
+    }
+    out.push({ id: String(t.id), ownerId: String(t.owner_id || ''), title: String(t.title || ''), summary: String(t.summary || ''), subjectId: String(t.subject_id || ''), dayKey: String(t.day_key || ''), scope: String(t.scope || 'direct'), text: lines.join('\n') });
+  }
+  const fragments = db.prepare(
+    "SELECT id, owner_id, text, facet, status FROM fragment WHERE COALESCE(status, 'inbox') IN ('inbox', 'deferred') ORDER BY at DESC LIMIT 30",
+  ).all().map((r) => ({ id: Number(r.id), ownerId: String(r.owner_id || ''), text: String(r.text || '').slice(0, 200), facet: String(r.facet || ''), status: String(r.status || 'inbox') }));
+  return { since, topics: out, fragments };
+}
+
+export function buildDreamPrompt(cand) {
+  const lines = [];
+  lines.push('下面是最近几天她还没整理过的原始记录（只给原文，不含已有结论）。像人睡前回想一样：把记错的改掉、把同一个人/同一件事接起来，最后只回 JSON。');
+  lines.push('');
+  lines.push('## 话题原文');
+  if (!cand.topics.length) lines.push('（无）');
+  for (const t of cand.topics) {
+    lines.push('### ' + t.id + ' [' + t.dayKey + '] 现标题：' + t.title);
+    lines.push(t.text || '（无原文）');
+    lines.push('');
+  }
+  lines.push('## 零碎收件箱');
+  if (!cand.fragments.length) lines.push('（无）');
+  for (const f of cand.fragments) lines.push('- #' + f.id + ' [' + (f.facet || 'note') + '] ' + f.text);
+  lines.push('');
+  lines.push('## 要求');
+  lines.push('1) 标题要一眼看出「跟谁、说了什么」，≤20 字，不要「聊天记录」「日常」这种空话；摘要 ≤60 字，只写原文有的事。');
+  lines.push('2) pages 是「对这个人/这件事，现在怎么看」的结论页：一页只写一个主体，≤300 字，必须带 topic 来源 id；证据不足就少写，不要编。');
+  lines.push('3) 零碎必须路由：长期偏好 → status=promoted 并在 note 写 fact:标签；一次性但还有用 → deferred；没用/已过时 → archived。');
+  lines.push('4) 只输出 JSON：{"topics":[{"id":"tp_...","title":"...","summary":"..."}],"pages":[{"topic":"tp_...","title":"...","body":"...","links":["..."]}],"fragments":[{"id":123,"status":"promoted|deferred|archived","note":"..."}],"reason":"一句话"}');
+  return lines.join('\n');
+}
+
+export function dreamDue({ now = Date.now(), db: conn, window: win } = {}) {
+  const db = conn || openDb();
+  const d = new Date(now);
+  const hour = Number.isFinite(Number(win && win.hour)) ? Number(win.hour) : WINDOW_HOUR;
+  const minute = Number.isFinite(Number(win && win.minute)) ? Number(win.minute) : WINDOW_MINUTE;
+  if (d.getHours() < hour) return { due: false, reason: 'too-early' };
+  if (d.getHours() === hour && d.getMinutes() < minute) return { due: false, reason: 'too-early' };
+  const backlog = dreamBacklog({ db, days: windowDays(win) });
+  if (!backlog) return { due: false, reason: 'no-backlog' };
+  const today = ymd(now);
+  const prev = jobState('dream', { db });
+  // 每天只做一次：06:30 之后当天的梦做完就停，白天新产生的话题留到明天（仍在 3 天窗口内）。
+  // 失败/未完成不留这个门禁：20 分钟后重试，避免模型临时不可用就整天不再整理。
+  if (prev && String(prev.state) === 'done' && String(prev.day_key || '') === today) {
+    return { due: false, reason: 'done-today', today, backlog };
+  }
+  if (prev && Number(prev.last_run_at || 0) > now - 20 * 60 * 1000) return { due: false, reason: 'recent', today, backlog };
+  return { due: true, today, backlog };
+}
+
+export async function runDream(opts = {}) {
+  const db = opts.db || openDb();
+  const log = typeof opts.log === 'function' ? opts.log : () => {};
+  const now = Number(opts.now) || Date.now();
+  const ask = typeof opts.ask === 'function' ? opts.ask : null;
+  const due = dreamDue({ now, db, window: opts.window });
+  if (!opts.force && !due.due) return { ok: true, skipped: due.reason, topics: 0 };
+  const cand = dreamCandidates({ now, db, days: windowDays(opts.window) });
+  if (!cand.topics.length) {
+    try { saveJobState('dream', { dayKey: due.today || ymd(now), cursor: cand.since, state: 'done', lastRunAt: now, lastError: '', stats: { topics: 0, pages: 0, fragments: 0 } }, { db }); } catch {}
+    return { ok: true, topics: 0, pages: 0, fragments: 0, empty: true };
+  }
+  if (!ask) {
+    try { saveJobState('dream', { dayKey: due.today || ymd(now), cursor: cand.since, state: 'pending', lastRunAt: now, lastError: 'model-unavailable', stats: { topics: cand.topics.length } }, { db }); } catch {}
+    log('[memory] 做梦跳过：模型通道不可用，' + cand.topics.length + ' 个话题保留原文');
+    return { ok: false, skipped: 'model-unavailable', topics: cand.topics.length };
+  }
+  let decision = null;
+  let askError = '';
+  try {
+    const text = await ask({
+      system: '你是 Stellar 的记忆整理器。只输出 JSON，不写解释，不编造原文没有的事。',
+      user: buildDreamPrompt(cand),
+      maxTokens: 2000,
+      reasoningEffort: 'low',
+    });
+    decision = parseReviewJson(text);
+    if (!decision) askError = 'model-returned-non-json';
+  } catch (error) {
+    askError = error && error.message ? error.message : String(error);
+  }
+  if (!decision || typeof decision !== 'object') {
+    try { saveJobState('dream', { dayKey: due.today || ymd(now), cursor: cand.since, state: 'failed', lastRunAt: now, lastError: askError, stats: { topics: cand.topics.length } }, { db }); } catch {}
+    log('[memory] 做梦失败（不写、不标记，等下一轮）：' + askError);
+    return { ok: false, error: askError, topics: cand.topics.length };
+  }
+  const byId = new Map(cand.topics.map((t) => [t.id, t]));
+  const errors = [];
+  let renamed = 0;
+  for (const item of Array.isArray(decision.topics) ? decision.topics.slice(0, 40) : []) {
+    const id = String((item && item.id) || '');
+    if (!byId.has(id)) continue;
+    try {
+      const r = updateTopicTitle({ topicId: id, title: item.title, summary: item.summary, source: 'dream', reason: 'dream', db });
+      if (r.ok) renamed += 1;
+    } catch (e) { errors.push('title ' + id + ': ' + (e && e.message ? e.message : e)); }
+  }
+  let pages = 0;
+  for (const item of Array.isArray(decision.pages) ? decision.pages.slice(0, 20) : []) {
+    const tid = String((item && (item.topic || item.topicId)) || '');
+    const t = byId.get(tid);
+    if (!t) continue;
+    try {
+      let subjectId = t.subjectId;
+      if (!subjectId) {
+        const sub = ensureSubjectForOwner(t.ownerId, { db });
+        subjectId = sub ? sub.id : '';
+      }
+      if (!subjectId) continue;
+      const r = upsertPage({ subjectId, title: item.title, body: item.body, links: item.links, sources: [tid], updatedBy: 'dream', reason: 'dream', db });
+      if (r.ok) pages += 1;
+    } catch (e) { errors.push('page ' + tid + ': ' + (e && e.message ? e.message : e)); }
+  }
+  let fragments = 0;
+  const fragIds = new Set(cand.fragments.map((x) => Number(x.id)));
+  for (const item of Array.isArray(decision.fragments) ? decision.fragments.slice(0, 60) : []) {
+    const id = Number(item && item.id);
+    if (!Number.isFinite(id) || !fragIds.has(id)) continue;
+    const raw = String((item && item.status) || '').toLowerCase();
+    const status = raw === 'promoted' ? 'promoted' : raw === 'archived' ? 'archived' : raw === 'deferred' ? 'deferred' : 'deferred';
+    try {
+      const note = String((item && item.note) || '').slice(0, 120);
+      if (status === 'promoted') {
+        db.prepare("UPDATE fragment SET status = 'promoted', routed_to = ?, promoted_at = ?, resolved_at = ? WHERE id = ?").run(note, now, now, id);
+      } else {
+        db.prepare('UPDATE fragment SET status = ?, routed_to = ?, resolved_at = ? WHERE id = ?').run(status, note, now, id);
+      }
+      fragments += 1;
+    } catch (e) { errors.push('fragment ' + id + ': ' + (e && e.message ? e.message : e)); }
+  }
+  // 只有模型给出了可解析结果才标记，标记后 prune 才允许删这些原文。
+  const mark = db.prepare('UPDATE topic SET dreamed_at = ? WHERE id = ?');
+  for (const t of cand.topics) { try { mark.run(now, t.id); } catch (e) { errors.push('mark ' + t.id); } }
+  try {
+    saveJobState('dream', {
+      dayKey: due.today || ymd(now), cursor: cand.since, state: errors.length ? 'failed' : 'done', lastRunAt: now,
+      lastError: errors[0] || '', stats: { topics: cand.topics.length, renamed, pages, fragments, reason: String(decision.reason || '').slice(0, 80) },
+    }, { db });
+  } catch {}
+  log('[memory] 做梦 ' + cand.since + '：话题 ' + cand.topics.length + ' / 改名 ' + renamed + ' / 页 ' + pages + ' / 零碎 ' + fragments);
+  return { ok: errors.length === 0, topics: cand.topics.length, renamed, pages, fragments, errors };
+}
+
 /**
  * 定时器一次心跳：切分 → 复核（有模型通道时复核+晋升后清理；没有通道时才退化成纯清理）。
  * 插件侧每 10 分钟调一次。返回结构里 window 与 review 是同一个作业的两条路，只会有其一非空。
@@ -485,8 +669,11 @@ export function runTick(opts = {}) {
   let window = null;
   let review = null;
   if (hasAsk) {
-    // runReview 是 async（要等模型），这里同步返回 promise 链：调用方 await runTick 即可
-    return Promise.resolve(runReview(opts)).then((res) => ({ split, window: null, review: res, ...(res && res.ok === false ? {} : {}) }));
+    // 先做梦、再复核：复核的 prune 依赖 dreamed_at 标记。做梦失败时复核仍可晋升，但 prune 会被
+    // dreamBacklog 拦住（原文留着，下一轮再试）。
+    return Promise.resolve(runDream(opts))
+      .then((dream) => Promise.resolve(runReview(opts)).then((res) => ({ split, window: null, dream, review: res })))
+      .catch((error) => ({ split, window: null, dream: null, review: { ok: false, error: error && error.message ? error.message : String(error) } }));
   }
   window = runWindow(opts);
   return { split, window, review: null };

@@ -13,9 +13,11 @@
 | csv / txt / md / rtf / html | 直接解码（自动认 UTF-8 / UTF-16 / GBK） | — |
 | 老式压缩包 | 明确拒绝 | 「这是一个压缩包，我没法直接读里面的内容」 |
 
-单文件上限：**PPT/PPTX 等演示文稿 256 MB**（一整本宣讲/课件动辄 100MB+，体积基本都在图里），其余文档 60 MB；整本文档会先抽全文（最多 40 万字），模型只看开头，细节用 `stellar_spill_read` 分段读。
+单文件上限：**PDF 与 PPT/PPTX 等演示文稿 256 MB**（一整本教材/宣讲动辄 100MB+，体积基本都在图里），其余文档 60 MB；整本文档会先抽全文（最多 40 万字），模型只看开头，细节用 `stellar_spill_read` 分段读。
 
-演示文稿放宽的边界：`.pptx` / `.ppt` / `.dps` / `.odp`；PDF / Word / Excel 仍是 60 MB。超过上限时她会直说「文件太大」和具体上限，不会猜内容。
+放宽的边界：`.pdf` / `.pptx` / `.ppt` / `.dps` / `.odp`；Word / Excel / 纯文本仍是 60 MB。超过上限时她会直说「文件太大」和具体上限，不会猜内容。
+
+**按章读 + 截插图（2026-11-27）**：PDF 另有 `stellar_pdf` 工具，`outline` 先建章目录、`read chapter=7` 只读第七章、`figure 图7-14` 截出插图 PNG 再用 `qq_send_image` 发。扫描版会 OCR 建索引（约 50 秒），可按印刷页/PDF 页偏移自动对齐。详见 [PDF-TOOLS.md](PDF-TOOLS.md)。
 
 ## 二、扫描件与纯图片 PDF
 

@@ -1,6 +1,6 @@
-// 回归（2026-11-26）：文档读取上限 —— PPT/PPTX 等演示文稿 256MB，其它文档 60MB。
-// 起因：主人在私聊发了一份 143MB 的宣讲 pptx，旧上限 60MB → 直接回「读不了」。
-// 这里钉住三件事：分档限额、61MB pptx 真能抽出正文、61MB docx 仍被拦；外加 MCP 侧接线。
+// 回归（2026-11-26 演示文稿 / 2026-11-27 PDF）：文档读取上限 —— PDF 与 PPT/PPTX 等演示文稿 256MB，其它文档 60MB。
+// 起因：主人在私聊发了一份 143MB 的宣讲 pptx（2026-11-26）、又要求扫描版 PDF 也能读到 256MB（2026-11-27），旧上限 60MB → 直接回「读不了」。
+// 这里钉住四件事：分档限额、61MB pptx 真能抽出正文、61MB docx 仍被拦、257MB PDF 在打开前被拦；外加 MCP 侧接线。
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -8,6 +8,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 import {
   MAX_INPUT_BYTES,
+  MAX_LARGE_BYTES,
+  MAX_PDF_BYTES,
   MAX_PRESENTATION_BYTES,
   extractDocument,
   inputLimitForKind,
@@ -75,19 +77,23 @@ function docxBuffer(dummyBytes) {
   ]);
 }
 
-test('限额表：演示文稿 256MB，其它文档 60MB', () => {
+test('限额表：PDF 与演示文稿 256MB，其它文档 60MB', () => {
+  assert.equal(MAX_LARGE_BYTES, 256 * MB);
   assert.equal(MAX_PRESENTATION_BYTES, 256 * MB);
+  assert.equal(MAX_PDF_BYTES, 256 * MB);
   assert.equal(MAX_INPUT_BYTES, 60 * MB);
-  for (const kind of ['pptx', 'ppt', 'dps', 'odp']) assert.equal(inputLimitForKind(kind), 256 * MB, kind);
-  for (const kind of ['pdf', 'docx', 'xlsx', 'doc', 'txt', '']) assert.equal(inputLimitForKind(kind), 60 * MB, kind || '(空)');
+  for (const kind of ['pdf', 'pptx', 'ppt', 'dps', 'odp']) assert.equal(inputLimitForKind(kind), 256 * MB, kind);
+  for (const kind of ['docx', 'xlsx', 'doc', 'txt', '']) assert.equal(inputLimitForKind(kind), 60 * MB, kind || '(空)');
 });
 
-test('按文件名估上限：pptx 256MB，pdf 60MB，认不出扩展名时按最高上限放行', () => {
+test('按文件名估上限：pdf/pptx 256MB，docx 60MB，认不出扩展名时按最高上限放行', () => {
   assert.equal(kindFromName('宣讲.PPTX'), 'pptx');
+  assert.equal(kindFromName('扫描书.PDF'), 'pdf');
   assert.equal(inputLimitForName('宣讲.pptx'), 256 * MB);
   assert.equal(inputLimitForName('a.ppt'), 256 * MB);
-  assert.equal(inputLimitForName('a.pdf'), 60 * MB);
-  assert.equal(inputLimitForName('a.bin'), 256 * MB, '未知扩展名可能是改名的 pptx，先按 256MB 放行，读完再判');
+  assert.equal(inputLimitForName('a.pdf'), 256 * MB);
+  assert.equal(inputLimitForName('a.docx'), 60 * MB);
+  assert.equal(inputLimitForName('a.bin'), 256 * MB, '未知扩展名可能是改名的 pptx/pdf，先按 256MB 放行，读完再判');
   assert.equal(inputLimitForName(''), 256 * MB);
 });
 
@@ -114,6 +120,23 @@ test('257MB 的 pptx 在打开前就被拦（不读进内存）', async () => {
   const file = path.join(dir, 'huge.pptx');
   try {
     const fd = fs.openSync(file, 'w');
+    fs.ftruncateSync(fd, 257 * MB);
+    fs.closeSync(fd);
+    const r = await extractDocument({ filePath: file });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /文件太大/);
+    assert.match(r.error, /256 MB/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('257MB 的 PDF 在打开前就被拦（256MB 才放行）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stellar-doc-limits-'));
+  const file = path.join(dir, 'huge.pdf');
+  try {
+    const fd = fs.openSync(file, 'w');
+    fs.writeSync(fd, '%PDF-1.4\n');
     fs.ftruncateSync(fd, 257 * MB);
     fs.closeSync(fd);
     const r = await extractDocument({ filePath: file });

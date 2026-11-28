@@ -24,7 +24,8 @@ for (const preset of ['qq-chat', 'qq-chat-v2']) {
   assert.equal(typeof guard, 'function');
   assert.ok(restricted.includes('dev_install_package'));
   for (const name of ['ask_user_question', 'todo_write', 'mcp__snowluma__qq_send_message',
-    'mcp__snowluma-host__snowluma_status', 'mcp__web-search-safe__web_fetch']) {
+    'mcp__snowluma-host__snowluma_status', 'mcp__web-search-safe__web_fetch',
+    'mcp__diagram__plot_function', 'mcp__diagram__plot_curve', 'mcp__diagram__draw_mindmap']) {
     assert.equal(guard({ name }), undefined, `${preset}: expected allowed ${name}`);
   }
   for (const name of ['web_fetch', 'web_search', 'bash', 'read_file', 'dev_future_tool',

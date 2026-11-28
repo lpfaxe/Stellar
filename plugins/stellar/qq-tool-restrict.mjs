@@ -27,6 +27,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { takeImageSlot } from './lib/image-budget.js'
+import { takeDiagramSlot } from './lib/diagram-budget.js'
+import { takePdfSlot } from './tools/lib/pdf/budget.mjs'
 import { readStop } from './lib/emergency-stop.js'
 import { approvalsEnabled, createApproval, finishApproval } from '../../src/approvals.js'
 
@@ -185,6 +187,10 @@ const SCHEMA_SLIM_GLOBAL_TOOLS = [
   'univer_api', 'univer_compile_svg', 'univer_execute', 'univer_export', 'univer_import',
   'univer_inspect', 'univer_lint', 'univer_new', 'univer_print_pdf', 'univer_resources',
   'univer_screenshot', 'univer_status', 'univer_unit', 'univer_worktree',
+  // DrawAI 画布三件（2026-11-27 补）：QQ 执行期白名单本来就不放行，但 schema 里留着
+  // 会诱导模型去调（2026-11-26 她误把 diagram_apply 当画图工具，被拒后才发现没工具）。
+  // 精确函数图/思维导图用 mcp__diagram__*，画布编辑只属于本地开发会话。
+  'diagram_apply', 'diagram_export', 'diagram_read',
   // 远程会话（11）
   'remote_create_session', 'remote_download_file', 'remote_get_operation', 'remote_interrupt_session',
   'remote_list_hosts', 'remote_list_sessions', 'remote_list_workspaces', 'remote_read_session',
@@ -262,15 +268,19 @@ const SAFE_PREFIXES = [
  * 都能花钱。而镇上的文字（昵称、招牌、留言）本来就可能带着指令，两者叠起来就是一条
  * 数据→指令→代主人办事的链（2026-11-21 安全体检的 S1 条目）。
  *
- * 当晚 21:56 主人拍板取「B 档」：**玩法五件放开**，三根红线继续拦。
- *   放行 = 只读五件（本机只读接口）+ 玩法五件（只动她自己的号，钱走游戏内额度）。
- *   拒绝 = setup（改人设/重绑接入码/搬会话）、owner（替主人表态）、phone（给别人发文本）。
+ * 当晚 21:56 主人拍板取「B 档」：玩法放开，三根红线继续拦。
+ * 2026-11-27 插件 0.9.20：老镇关门，聊天工具改成鱼缸岛的 look/act；旧 look/play/visit/place
+ * 已从插件里删掉，名单必须跟着换，否则岛上的事全落在 fail-closed 兜底。
+ *   放行 = 只读（recent/isle_look/album/chats/rules）+ 玩法（go/friends，只动她自己的号）。
+ *   仅主人私聊 = isle_act（能拿主人的饭票换鲸币、拍地、开店，非主人不能碰）。
+ *   拒绝 = setup（改人设/重绑接入码/搬会话）、owner（替主人表态）、phone（给别人发文本）、
+ *          build（在本机 Blender 里盖楼，属于本地执行）。
  * 名单之外的新工具一律 fail-closed。第三方插件自己的回合（答题）不吃这层白名单，
  * 因为它在插件的会话里跑，不经过 QQ preset。
  */
 const FISHBOWL_READONLY_TOOLS = Object.freeze([
   'fishbowl_town_recent',   // 读她的日记本与小镇此刻状态
-  'fishbowl_town_look',     // 读大厅：有哪些桌、哪些活动、哪些地方
+  'fishbowl_isle_look',     // 看岛上：鲸币/地/楼/店/订单/镇规/怎么做（0.9.17 起主世界）
   'fishbowl_town_album',    // 读相册
   'fishbowl_town_chats',    // 读聊天记录
   'fishbowl_town_rules',    // 读小镇规则
@@ -279,17 +289,20 @@ const FISHBOWL_READONLY_TOOLS = Object.freeze([
 /** 玩法（游戏内动作，只作用于她自己的号；花的是游戏里的钱，由小镇日上限与小预算闸管）。 */
 const FISHBOWL_PLAY_TOOLS = Object.freeze([
   'fishbowl_town_go',       // 让小镇立刻给她一个回合
-  'fishbowl_town_play',     // 坐下开一局
-  'fishbowl_town_visit',    // 去串门
-  'fishbowl_town_place',    // 去码头/电玩城
   'fishbowl_town_friends',  // 为朋友做点什么
 ])
 
-/** 明确拒绝的三根红线（schema 里也一并藏起来，避免模型反复尝试）。 */
+/** 仅主人私聊可用：isle_act 能动主人的饭票（fx_buy 自 0.9.16 起不再要求 owner_words）。 */
+const FISHBOWL_OWNER_TOOLS = Object.freeze([
+  'fishbowl_isle_act',      // 在岛上当场办事：换鲸币/出价/圈地/开店/画立绘
+])
+
+/** 明确拒绝的红线（schema 里也一并藏起来，避免模型反复尝试）。 */
 const FISHBOWL_BLOCKED_TOOLS = Object.freeze([
   'fishbowl_town_setup',    // 改人设 / 重绑接入码 / 搬会话
   'fishbowl_town_owner',    // 替主人提交同意/分手
   'fishbowl_town_phone',    // 给别的玩家发任意文本
+  'fishbowl_town_build',    // 在本机 Blender 里盖楼（本地执行）
 ])
 
 // 无害模型侧工具：ask_user_question 用于把问题转给管理员/用户，
@@ -311,13 +324,18 @@ const SAFE_EXACT = new Set([
   // 注意：read_image 不能放——它在 LOCAL_EXECUTION_TOOLS 里（能读任意本地文件）。
   // 画完要让主人看到，用 qq_send_image 发到聊天、stellar_qzone_post 发空间。
   'image_generate',
+  // 本地绘图（2026-11-26 主人拍板）：函数图/曲线/思维导图由 stellar 自绘 SVG，
+  // 不联网、不读任意本地文件，只写 generate/diagram/。非主人有每日/窗口硬闸。
+  'mcp__diagram__plot_function',
+  'mcp__diagram__plot_curve',
+  'mcp__diagram__draw_mindmap',
   // 小镇插件：只读五件 + 玩法五件（2026-11-21 主人拍板 B 档）；三根红线见 FISHBOWL_BLOCKED_TOOLS。
   ...FISHBOWL_READONLY_TOOLS,
   ...FISHBOWL_PLAY_TOOLS,
 ])
 
 // 对外写操作：紧急停止时一律拒绝（读工具不受影响）。
-const WRITE_TOOL_RE = /(?:qq_send_|qq_reply|qq_send_image|qq_send_sticker|stellar_qzone_post|stellar_qzone_react|stellar_qzone_delete_comment|stellar_bili_post|stellar_bili_comment|dynamic|image_generate|fishbowl_town_)/i
+const WRITE_TOOL_RE = /(?:qq_send_|qq_reply|qq_send_image|qq_send_sticker|stellar_qzone_post|stellar_qzone_react|stellar_qzone_delete_comment|stellar_bili_post|stellar_bili_comment|dynamic|image_generate|fishbowl_town_|fishbowl_isle_act)/i
 function isWriteTool(name) { return WRITE_TOOL_RE.test(String(name || '')) }
 
 // 紧急停止状态：3 秒缓存，避免每次工具调用都读盘。
@@ -335,9 +353,10 @@ function stopActive(now = Date.now()) {
 // state/turn-context.json 认「这条消息是谁说的」。快照 2 分钟内有效，对不上就
 // 当非主人处理（宁可多问一次，也不让群友用一句提示词把图画出来）。
 const TURN_CONTEXT_FILE = path.join(__dirname, '..', '..', 'state', 'turn-context.json')
-function currentTurnContext(now = Date.now()) {
+const TURN_CONTEXT_DIR = path.join(__dirname, '..', '..', 'state', 'turn-context')
+function readTurnContextFile(file, now) {
   try {
-    const ctx = JSON.parse(fs.readFileSync(TURN_CONTEXT_FILE, 'utf8'))
+    const ctx = JSON.parse(fs.readFileSync(file, 'utf8'))
     if (!ctx || typeof ctx !== 'object' || !ctx.at) return null
     // 15 分钟：一轮长任务里身份快照不能中途过期，否则非主人的画图请求会掉进额度分支。
     if (now - Number(ctx.at) > 15 * 60 * 1000) return null
@@ -345,6 +364,28 @@ function currentTurnContext(now = Date.now()) {
   } catch {
     return null
   }
+}
+function currentTurnContext(now = Date.now()) {
+  return readTurnContextFile(TURN_CONTEXT_FILE, now)
+}
+// PDF 这类带 key 参数的工具按会话读自己的快照：全局 turn-context.json 会被
+// 另一个会话的最后一条消息覆盖（2026-11-09 小号审批挂到主人会话的同一个坑）。
+// 文件名规则与 bridge.js 的 turnContextFileFor 必须逐字一致。
+function currentTurnContextForKey(key, now = Date.now()) {
+  const k = String(key || '')
+  if (k) {
+    const safe = k.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)
+    const ctx = readTurnContextFile(path.join(TURN_CONTEXT_DIR, safe + '.json'), now)
+    if (ctx && String(ctx.key || '') === k) return ctx
+  }
+  return currentTurnContext(now)
+}
+
+// 精确数学图形的提示词特征（2026-11-27）：她昨天拿 image_generate 画 y=x，连画三张都歪。
+// 只拦「明确要函数图/坐标系」的窄口径，避免误伤插画；命中后让她改用本地绘图 MCP。
+const MATH_PLOT_PROMPT_RE = /(?:函数(?:图像|图|曲线)|坐标系|坐标轴|抛物线|双曲线|正弦|余弦|正切|指数函数|对数函数|幂函数|y\s*[=＝]\s*[-+0-9a-zA-Zπθ(])/;
+function looksLikeMathPlotPrompt(prompt) {
+  return MATH_PLOT_PROMPT_RE.test(String(prompt || ''));
 }
 
 /** 生图额度硬闸：每天 3 张、每 10 分钟最多 3 张；超了拒绝。**不用请示主人**（2026-11-11 改）。 */
@@ -366,11 +407,58 @@ function imageBudgetGuard(now = Date.now()) {
   }
 }
 
+/** PDF 深度读额度：非主人每天 5 次、10 分钟 2 次；主人（15 分钟内 turn-context 且 isOwner）不限。 */
+function pdfBudgetGuard(exec, now = Date.now()) {
+  try {
+    // 按调用方传来的会话 key 读自己的身份快照；主人豁免必须命中这一条，
+    // 不能靠「最后一条消息是谁说的」——两个会话交替时会误判。
+    const args = exec?.arguments ?? exec?.args ?? null
+    const key = args && typeof args === 'object' ? args.key : undefined
+    const ctx = currentTurnContextForKey(key, now)
+    const isOwner = ctx?.isOwner === true
+    const slot = takePdfSlot({ now, isOwner })
+    if (slot.ok) return
+    if (slot.daily) {
+      return '今天的 PDF 深度读额度用完了（非主人每天最多 5 次，代码硬拦）。这次别读，也别重试；'
+        + '跟对方说「今天读不了了，明天再来」就行，不用找主人批。'
+    }
+    const waitMs = Number(slot.waitMs)
+    const mins = Number.isFinite(waitMs) ? Math.max(1, Math.ceil(waitMs / 60000)) : 1
+    return 'PDF 读得太频繁了（10 分钟内最多 2 次）。等一会儿再读；'
+      + '大约 ' + mins + ' 分钟后能再读，不要连续重试。'
+  } catch (error) {
+    console.error('[qq-tool-restrict] PDF 额度检查失败：' + (error?.message ?? error))
+    return
+  }
+}
+
+/** 绘图额度硬闸：非主人每天 20 张、10 分钟 10 张；主人（15 分钟内 turn-context 且 isOwner）不限。 */
+function diagramBudgetGuard(now = Date.now()) {
+  try {
+    const ctx = currentTurnContext(now)
+    const isOwner = ctx?.isOwner === true
+    const slot = takeDiagramSlot({ now, isOwner })
+    if (slot.ok) return
+    if (slot.daily) {
+      return '今天的绘图额度用完了（非主人每天最多 20 张，代码硬拦）。这次别画，也别重试；'
+        + '跟对方说「今天画不了了，明天再来」就行，不用找主人批。'
+    }
+    const mins = Math.max(1, Math.ceil(slot.waitMs / 60000))
+    return '绘图额度用完了：' + slot.reason + '。不用请示主人，等额度自己恢复；'
+      + `（大约 ${mins} 分钟后能再画；不要连续重试。）`
+  } catch (error) {
+    // 额度文件坏了不能把绘图功能整体打死，但要留痕。
+    console.error('[qq-tool-restrict] 绘图额度检查失败：' + (error?.message ?? error))
+    return
+  }
+}
+
 // 给「插件兼容性体检」读取的只读快照：不要在别处再抄一份白名单。
 export const SAFE_EXACT_TOOLS = Object.freeze([...SAFE_EXACT])
 export const SAFE_TOOL_PREFIXES = Object.freeze([...SAFE_PREFIXES])
 export const FISHBOWL_READONLY = Object.freeze([...FISHBOWL_READONLY_TOOLS])
 export const FISHBOWL_PLAY = Object.freeze([...FISHBOWL_PLAY_TOOLS])
+export const FISHBOWL_OWNER = Object.freeze([...FISHBOWL_OWNER_TOOLS])
 export const FISHBOWL_BLOCKED = Object.freeze([...FISHBOWL_BLOCKED_TOOLS])
 
 export function apply(ctx) {
@@ -481,14 +569,36 @@ export function apply(ctx) {
         return '已紧急停止：主人按了停止键，现在不画图、不发消息。等主人在控制台恢复。'
       }
       // 2026-11-11 主人：开放生图，不再请示管理员；只剩每日 3 张的硬闸。
-      if (name === 'image_generate') return imageBudgetGuard()
+      if (name === 'image_generate') {
+        // 2026-11-27：精确函数图不要交给生图模型（画不准，还白烧每天 3 张额度）。
+        if (looksLikeMathPlotPrompt(argOf(exec, 'prompt'))) {
+          return '这看起来是要精确的函数图/坐标系，不要用 image_generate 重画。'
+            + '请改用 mcp__diagram__plot_function（参数/极坐标曲线用 mcp__diagram__plot_curve），'
+            + '生成 PNG 后用 qq_send_image 发；如果确实想要插画风格，请在提示词里说明「插画/海报」并避开 y=... 这种精确表达式。'
+        }
+        return imageBudgetGuard()
+      }
+      if (name.startsWith('mcp__diagram__')) {
+        if (stopActive()) return '已紧急停止：主人按了停止键，现在不画图。等主人在控制台恢复。'
+        return diagramBudgetGuard()
+      }
       return
     }
-    // 小镇插件的工具：逐名放行只读五件 + 玩法五件；三根红线与未来新名字一律 fail-closed。
-    if (name.startsWith('fishbowl_town_')) {
+    // 小镇插件：逐名放行只读 + 玩法；isle_act 仅主人私聊；红线与未来新名字一律 fail-closed。
+    if (name.startsWith('fishbowl_town_') || name.startsWith('fishbowl_isle_')) {
       if (FISHBOWL_READONLY_TOOLS.includes(name) || FISHBOWL_PLAY_TOOLS.includes(name)) return
-      return `小镇工具 "${name}" 不在 QQ 会话的白名单内：只放行只读（recent/look/album/chats/rules）与玩法（go/play/visit/place/friends）。`
-        + '改人设（setup）、替主人表态（owner）、给别人发文本（phone）这三件仍然拦着。'
+      if (FISHBOWL_OWNER_TOOLS.includes(name)) {
+        if (stopActive()) return '已紧急停止：主人按了停止键，现在不在岛上办事、不花饭票。等主人在控制台恢复。'
+        const ctx = currentTurnContext()
+        if (ctx?.isOwner === true && ctx?.kind === 'private') return
+        return '岛上办事（' + name + '）只能在主人私聊里做：它可能拿主人的饭票换鲸币、拍地、开店。'
+          + '非主人或群聊里先用 fishbowl_isle_look 查，别替主人花钱。'
+      }
+      return `小镇工具 "${name}" 不在 QQ 会话的白名单内：只放行只读（recent/isle_look/album/chats/rules）与玩法（go/friends）；`
+        + '岛上办事（isle_act）只给主人私聊；改人设（setup）、替主人表态（owner）、给别人发文本（phone）、盖楼（build）仍然拦着。'
+    }
+    if (name === 'mcp__snowluma__stellar_pdf') {
+      return pdfBudgetGuard(exec)
     }
     if (SAFE_PREFIXES.some((prefix) => name.startsWith(prefix))) {
       // 紧急停止：停掉一切对外发言/发帖，只保留读工具
@@ -496,6 +606,10 @@ export function apply(ctx) {
         return '已紧急停止：主人按了停止键，现在不发消息、不发动态、不评论。等主人在控制台点「恢复运行」。'
       }
       return
+    }
+    // DrawAI 画布工具在 QQ 不可用；模型偶尔会凭旧上下文去调，直接把正确入口给它。
+    if (name === 'diagram_apply' || name === 'diagram_export' || name === 'diagram_read') {
+      return 'DrawAI 画布工具在 QQ 不可用。要画精确函数图请用 mcp__diagram__plot_function（参数/极坐标曲线用 mcp__diagram__plot_curve），思维导图用 mcp__diagram__draw_mindmap；生成 PNG 后用 qq_send_image 发。'
     }
     return `工具 "${name}" 不在 QQ 桥接白名单内，已拒绝（仅允许 QQ MCP 工具与无害模型侧工具）`
   })

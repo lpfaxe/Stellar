@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const parserRoot = process.env.QQ_BRIDGE_TEST_YAML_ROOT || path.dirname(require.resolve('js-yaml/package.json'));
 const yaml = (await import(pathToFileURL(path.join(parserRoot, 'dist/js-yaml.mjs')).href)).default;
-const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'stellar-audit-setup-'));
+const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'Stellar-audit-setup-'));
 // ComSpec 必须是反斜杠路径：宿主若注入 C:/Windows/System32/cmd.exe，cmd 一解析
 // argv 就报「命令语法不正确」（连 cmd /c echo hi 都失败），夹具里跑 dsh.cmd 会
 // 被伪装成「插件装不上」。真实 Windows 环境本来就是反斜杠，这里只是归一畸形值。
@@ -25,7 +25,7 @@ let failures = 0;
 // Node v24.12.0（本机 Windows + 中文路径）上 `fs.cpSync` 会在原生层直接崩进程：
 // exit 3221226505 / 0xC0000409，stdout 与 stderr 都是空的，连 try/catch 都进不去。
 // 同一份目录换成 ASCII 路径就正常，`fs/promises.cp` 与手写递归也都正常——只有同步 cpSync 崩。
-// 仓库在 `C:\Desktop\...`，所以夹具复制一律走这个手写递归，别再改回 cpSync。
+// 仓库在 `D:\桌面\...`，所以夹具复制一律走这个手写递归，别再改回 cpSync。
 function copyTreeSync(from, to) {
   const stat = fs.statSync(from);
   if (stat.isDirectory()) {
@@ -45,7 +45,7 @@ function fixture(name, patch = '') {
   fs.copyFileSync(path.join(root, 'scripts/setup-dsh.mjs'), path.join(repo, 'scripts/setup-dsh.mjs'));
   // setup-dsh.mjs 直接从仓库源生成 bundle patch，生成器必须一起进夹具。
   fs.copyFileSync(path.join(root, 'scripts/build-agent-preset-patches.mjs'), path.join(repo, 'scripts/build-agent-preset-patches.mjs'));
-  // setup-dsh 现在用 dsh-locate 去找 DSH 自带的 CLI（桌面版 dsh.cmd 不在 PATH），也得进夹具。
+  // setup-dsh 用 dsh-locate 找 DSH 自带 CLI（桌面版 dsh.cmd 不在 PATH），夹具也要带上。
   fs.copyFileSync(path.join(root, 'scripts/dsh-locate.mjs'), path.join(repo, 'scripts/dsh-locate.mjs'));
   copyTreeSync(path.join(root, 'dsh'), path.join(repo, 'dsh'));
   copyTreeSync(path.join(root, 'plugins'), path.join(repo, 'plugins'));
@@ -83,10 +83,12 @@ try {
       const doc = yaml.load(fs.readFileSync(f.patchFile, 'utf8'));
       const entries = doc.flatMap((op) => op.insert || []);
       assert.deepEqual(entries.find((entry) => entry.id === 'custom'), originalCustom);
-      for (const id of ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe']) {
+      for (const id of ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-diagram']) {
         assert.equal(entries.filter((entry) => entry.id === id).length, 1, `${id} duplicate`);
       }
       assert.equal(entries.find((entry) => entry.id === 'mcp-snowluma').config.toolCallTimeoutMs, 725000);
+      assert.equal(entries.find((entry) => entry.id === 'mcp-diagram').config.serverName, 'diagram');
+      assert.equal(entries.find((entry) => entry.id === 'mcp-diagram').config.toolCallTimeoutMs, 120000);
     }
     const pkg = JSON.parse(fs.readFileSync(path.join(f.home, 'profiles/web/package.json')));
     assert.equal(pkg.dependencies.existing, '1.0.0');
@@ -138,7 +140,7 @@ try {
 
   // 这条要真起 cmd.exe 去跑 dsh.cmd。跑测试的宿主若没给 ComSpec/PATH（例如 DSH 的
   // PTC run_code 里 process.env 是空的），setup-dsh.mjs 会拿到 ENOENT，边界就测不成。
-  // 那种情况下跳过并说明原因，别让整条基线被环境假失败钉死。
+  // 那种情况下跳过并说明原因，别让整条基线被环境假失败钉死（见 PITFALLS #131）。
   //
   // 光有 ComSpec 也不算数：宿主给的 ComSpec 可能是**正斜杠**路径
   // （C:/Windows/System32/cmd.exe）。那样 spawn 起得来，但 cmd 解析 argv 时会报

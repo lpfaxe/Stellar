@@ -1,5 +1,5 @@
 -- 记忆库 schema（memory-db.js 打开连接时执行；全部 IF NOT EXISTS，可重复跑）
--- 设计：CHANGELOG.md §3
+-- 设计：docs/designs/2026-11-13-memory-refactor-design.md §3
 
 -- ① 缓冲：所有聊天先落盘（唯一高频写入表，只 INSERT + 定期 DELETE）
 CREATE TABLE IF NOT EXISTS cache_msg (
@@ -41,7 +41,13 @@ CREATE TABLE IF NOT EXISTS topic (
   created_at INTEGER NOT NULL,
   -- scope（2026-11-15 群聊改造）：direct = 她参与过；ambient = 她只是旁观（群里别人在聊）。
   -- 为什么不用 tier 表达：tier 是「值不值得长期留」，scope 是「我在不在场」，两件事不能混。
-  scope TEXT NOT NULL DEFAULT 'direct'
+  scope TEXT NOT NULL DEFAULT 'direct',
+  -- 记忆分区（2026-11-27）：region_01 QQ / 02 好友爱看 / 03 B站 / 04 小镇 / 05 未归类
+  region_id TEXT NOT NULL DEFAULT '',
+  subject_id TEXT NOT NULL DEFAULT '',
+  -- 标题来源：auto=切分机械标题，dream=做梦整理，manual=人改（永不自动覆盖）
+  title_source TEXT NOT NULL DEFAULT 'auto',
+  dreamed_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_topic_cat ON topic(owner_id, tier, ended_at DESC);
 CREATE INDEX IF NOT EXISTS idx_topic_day ON topic(day_key, tier);
@@ -86,7 +92,13 @@ CREATE TABLE IF NOT EXISTS fragment (
   tier TEXT NOT NULL DEFAULT 'daily',
   topic_id TEXT,
   at INTEGER NOT NULL,
-  promoted_at INTEGER
+  promoted_at INTEGER,
+  -- 零碎收件箱：inbox → deferred → archived；routed_to 记录去了哪（fact:/topic:/subject:）
+  region_id TEXT NOT NULL DEFAULT '',
+  subject_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'inbox',
+  routed_to TEXT NOT NULL DEFAULT '',
+  resolved_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_frag_owner ON fragment(owner_id, tier, at DESC);
 CREATE INDEX IF NOT EXISTS idx_frag_day ON fragment(day_key, tier);
@@ -101,7 +113,8 @@ CREATE TABLE IF NOT EXISTS profile (
   confidence INTEGER NOT NULL DEFAULT 0,
   msg_count INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL,
-  edited_by TEXT NOT NULL DEFAULT ''
+  edited_by TEXT NOT NULL DEFAULT '',
+  subject_id TEXT NOT NULL DEFAULT ''
 );
 
 -- ⑥ 角色风格参考切片（模块三）
@@ -167,7 +180,9 @@ CREATE TABLE IF NOT EXISTS zone_note (
   text TEXT NOT NULL,
   items TEXT NOT NULL DEFAULT '[]',
   source TEXT NOT NULL DEFAULT 'tool',
-  at INTEGER NOT NULL
+  at INTEGER NOT NULL,
+  region_id TEXT NOT NULL DEFAULT '',
+  subject_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_zone_at ON zone_note(zone, at DESC);
 CREATE INDEX IF NOT EXISTS idx_zone_day ON zone_note(zone, day_key);
@@ -190,7 +205,71 @@ CREATE TABLE IF NOT EXISTS fact (
   day_key TEXT NOT NULL,
   at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  subject_id TEXT NOT NULL DEFAULT '',
   UNIQUE(owner_id, kind, label)
 );
 CREATE INDEX IF NOT EXISTS idx_fact_owner ON fact(owner_id, weight DESC, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_fact_kind ON fact(kind, updated_at DESC);
+
+-- ⑫ 记忆分区与主体（2026-11-27）。区域页不存正文，按 region 实时生成；
+--    主体页 memory_page 才是「关于这个人/这件事我现在怎么看」。
+CREATE TABLE IF NOT EXISTS memory_region (
+  code TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  sort INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS memory_subject (
+  id TEXT PRIMARY KEY,
+  region_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  external_id TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  aliases TEXT NOT NULL DEFAULT '[]',
+  privacy TEXT NOT NULL DEFAULT 'normal',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(region_id, kind, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_msubject_region ON memory_subject(region_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS memory_page (
+  id TEXT PRIMARY KEY,
+  region_id TEXT NOT NULL,
+  subject_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  links TEXT NOT NULL DEFAULT '[]',
+  sources TEXT NOT NULL DEFAULT '[]',
+  privacy TEXT NOT NULL DEFAULT 'normal',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT 'dream'
+);
+CREATE INDEX IF NOT EXISTS idx_mpage_subject ON memory_page(subject_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mpage_region ON memory_page(region_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS memory_page_history (
+  id INTEGER PRIMARY KEY,
+  page_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  links TEXT NOT NULL DEFAULT '[]',
+  sources TEXT NOT NULL DEFAULT '[]',
+  privacy TEXT NOT NULL DEFAULT 'normal',
+  reason TEXT NOT NULL DEFAULT '',
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mpage_history ON memory_page_history(page_id, version DESC);
+CREATE TABLE IF NOT EXISTS memory_title_history (
+  id INTEGER PRIMARY KEY,
+  topic_id TEXT NOT NULL,
+  old_title TEXT NOT NULL DEFAULT '',
+  new_title TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL DEFAULT '',
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mtitle_topic ON memory_title_history(topic_id, at DESC);
